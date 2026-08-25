@@ -8,6 +8,9 @@
 #include "ui/framexml_takeover.hpp"
 #include "ui/keybinding_manager.hpp"
 #include "core/config_paths.hpp"
+#ifdef __APPLE__
+#include "core/macos_platform.hpp"
+#endif
 #include <array>
 #include <cctype>
 #include <filesystem>
@@ -1555,6 +1558,16 @@ std::string wowKeyFromImGui(ImGuiKey key) {
     const char* name = ImGui::GetKeyName(key);
     if (!name || !*name) return "";
     std::string out(name);
+#ifdef __APPLE__
+    // ImGui keys name physical ANSI positions. Translate that position through
+    // the active layout before exposing it to Blizzard's binding UI, so the
+    // key between T and U is Z on German QWERTZ rather than Y.
+    const SDL_Scancode scancode = SDL_GetScancodeFromName(name);
+    if (const std::string localized = core::localizedKeyName(scancode);
+        !localized.empty()) {
+        out = localized;
+    }
+#endif
     for (char& c : out) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     return out;
 }
@@ -1660,6 +1673,10 @@ void seedBindingDefaults() {
         {"ACTIONBUTTON11", "-"},{"ACTIONBUTTON12", "="},
     };
     for (const auto& d : kDefaults) keys[d.command] = {d.key, ""};
+    // These defaults refer to the two physical keys following zero, whose
+    // printed characters vary by layout (ß and ´ on German, - and = on US).
+    keys["ACTIONBUTTON11"] = {wowKeyFromImGui(ImGuiKey_Minus), ""};
+    keys["ACTIONBUTTON12"] = {wowKeyFromImGui(ImGuiKey_Equal), ""};
 
     // Where a command corresponds to something the client really does, the key
     // shown is the one it really answers to.
