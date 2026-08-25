@@ -125,6 +125,31 @@ TEST_CASE("Expansion registry prefers a profile with extracted assets",
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("Shipped definitions override stale extracted tables without replacing realm settings",
+          "[expansion_profile]") {
+    const auto extracted = writeProfileTree();
+    const auto shipped = std::filesystem::temp_directory_path() /
+                         "wowee_expansion_definition_test";
+    std::filesystem::remove_all(shipped);
+    const auto definitionDir = shipped / "expansions" / "turtle";
+    std::filesystem::create_directories(definitionDir);
+    std::ofstream(definitionDir / "opcodes.json") << "{}";
+    std::ofstream(definitionDir / "update_fields.json") << "{}";
+    std::ofstream(definitionDir / "dbc_layouts.json") << "{}";
+
+    wowee::game::ExpansionRegistry registry;
+    REQUIRE(registry.initialize(extracted.string(), shipped.string()) == 1);
+    const auto* profile = registry.getProfile("turtle");
+    REQUIRE(profile != nullptr);
+    CHECK(profile->dataPath == (extracted / "expansions" / "turtle").string());
+    CHECK(profile->definitionPath == definitionDir.string());
+    // Profile values remain realm-local; only client-owned tables move.
+    CHECK(profile->worldBuild == 5875);
+
+    std::filesystem::remove_all(extracted);
+    std::filesystem::remove_all(shipped);
+}
+
 TEST_CASE("A realm's own Warden key is read from its profile", "[expansion_profile]") {
     // 512 hex characters, which is the only length a 2048-bit modulus has.
     const std::string key(512, 'a');

@@ -289,8 +289,10 @@ bool Application::initialize() {
     const char* dataPathEnv = std::getenv("WOW_DATA_PATH");
     std::string dataPath = dataPathEnv ? dataPathEnv : "./Data";
 
-    // Scan for available expansion profiles
-    expansionRegistry_->initialize(dataPath);
+    // Scan the extracted assets, but keep protocol/DBC definitions on the
+    // executable's shipped copy. Extracted definitions are a snapshot from the
+    // day extraction ran and otherwise silently fall behind client updates.
+    expansionRegistry_->initialize(dataPath, "./Data");
 
     // Load the tables this expansion's protocol is described by.
     if (gameHandler && expansionRegistry_) {
@@ -362,7 +364,7 @@ bool Application::initialize() {
         // Wire AppearanceComposer to UI components (Phase A singleton breaking)
         if (uiManager) {
             uiManager->setAppearanceComposer(appearanceComposer_.get());
-            
+
             // Wire all services to UI components (Phase B singleton breaking)
             ui::UIServices uiServices;
             uiServices.window = window.get();
@@ -2006,13 +2008,16 @@ bool Application::setAssetExpansionOverride(const std::string& id) {
 void Application::loadExpansionTables(const game::ExpansionProfile& profile) {
     if (!gameHandler) return;
 
-    const std::string opcodesPath = profile.dataPath + "/opcodes.json";
+    const std::string& definitions = profile.definitionPath.empty()
+                                         ? profile.dataPath
+                                         : profile.definitionPath;
+    const std::string opcodesPath = definitions + "/opcodes.json";
     if (!gameHandler->getOpcodeTable().loadFromJson(opcodesPath)) {
         LOG_ERROR("Failed to load opcodes from ", opcodesPath);
     }
     game::setActiveOpcodeTable(&gameHandler->getOpcodeTable());
 
-    const std::string updateFieldsPath = profile.dataPath + "/update_fields.json";
+    const std::string updateFieldsPath = definitions + "/update_fields.json";
     if (!gameHandler->getUpdateFieldTable().loadFromJson(updateFieldsPath)) {
         LOG_ERROR("Failed to load update fields from ", updateFieldsPath);
     }
@@ -2021,7 +2026,7 @@ void Application::loadExpansionTables(const game::ExpansionProfile& profile) {
     gameHandler->setPacketParsers(game::createPacketParsers(profile.id));
 
     if (dbcLayout_) {
-        const std::string dbcLayoutsPath = profile.dataPath + "/dbc_layouts.json";
+        const std::string dbcLayoutsPath = definitions + "/dbc_layouts.json";
         if (!dbcLayout_->loadFromJson(dbcLayoutsPath)) {
             LOG_ERROR("Failed to load DBC layouts from ", dbcLayoutsPath);
         }

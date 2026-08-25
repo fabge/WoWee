@@ -29,7 +29,8 @@ struct ExpansionProfile {
     std::string os = "Win";
     std::string locale = "enUS";
     uint32_t timezone = 0;
-    std::string dataPath;      // Absolute path to expansion data dir
+    std::string dataPath;       // Extracted assets and server-local profile data
+    std::string definitionPath; // Shipped opcode/update-field/DBC definitions
     uint32_t maxLevel = 60;
     std::vector<uint32_t> races;
     std::vector<uint32_t> classes;
@@ -52,10 +53,14 @@ class ExpansionRegistry {
 public:
     /**
      * Scan dataRoot/expansions/ for expansion.json files.
-     * @param dataRoot Path to Data/ directory (e.g. "./Data")
+     * @param dataRoot Path to extracted Data/ (e.g. "./Data")
+     * @param definitionRoot Optional read-only shipped Data/ tree. When it has
+     * an expansion matching an extracted profile, protocol tables are loaded
+     * from this current copy rather than the stale copy made during extraction.
      * @return Number of profiles discovered
      */
-    size_t initialize(const std::string& dataRoot);
+    size_t initialize(const std::string& dataRoot,
+                      const std::string& definitionRoot = {});
 
     /** All discovered profiles. */
     [[nodiscard]] const std::vector<ExpansionProfile>& getAllProfiles() const { return profiles_; }
