@@ -112,10 +112,11 @@ cat > "${APP_PATH}/Contents/Info.plist" <<'PLIST'
 PLIST
 
 echo "==> signing (${IDENTITY})"
-bash tools/macos/sign_app.sh "${APP_PATH}" "${IDENTITY}" >/dev/null
+bash tools/macos/sign_app.sh "${APP_PATH}" "${IDENTITY}" >/dev/null 2>&1
 
 echo "==> verifying"
-bash tools/macos/verify_signature.sh "${APP_PATH}" "${IDENTITY}" | tail -1
-bash tools/macos/verify_bundle.sh "${APP_PATH}" "${ARCH}" | tail -1
+# codesign reports on stderr, and its per-component chatter buries the verdict.
+bash tools/macos/verify_signature.sh "${APP_PATH}" "${IDENTITY}" 2>&1 | tail -1
+bash tools/macos/verify_bundle.sh "${APP_PATH}" "${ARCH}" 2>&1 | tail -1
 
 echo "built ${APP_PATH} (${ARCH}, identity ${IDENTITY})"

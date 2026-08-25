@@ -44,8 +44,8 @@ rm -rf "${DEST_APP}"
 ditto "${SOURCE_APP}" "${DEST_APP}"
 
 echo "==> verifying"
-bash "${REPO_ROOT}/tools/macos/verify_bundle.sh" "${DEST_APP}" "$(uname -m)" | tail -1
-bash "${REPO_ROOT}/tools/macos/verify_signature.sh" "${DEST_APP}" - | tail -1
+bash "${REPO_ROOT}/tools/macos/verify_bundle.sh" "${DEST_APP}" "$(uname -m)" 2>&1 | tail -1
+bash "${REPO_ROOT}/tools/macos/verify_signature.sh" "${DEST_APP}" - 2>&1 | tail -1
 
 if [ -n "${DATA_BEFORE}" ]; then
     DATA_AFTER="$(stat -f '%i:%m:%z' "${DATA_DIR}")"
