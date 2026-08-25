@@ -33,9 +33,20 @@ Before replacing the installed app:
 1. Confirm WoWee is not running.
 2. Fetch and integrate upstream.
 3. Build and run the full test suite.
-4. Build a macOS arm64 app bundle from the fork.
+4. Build a macOS app bundle from the fork.
 5. Replace the installed app in place. Do not keep a backup copy of the previous bundle: the app carries no state worth recovering, an upstream release can be downloaded at any time, and any earlier build can be rebuilt from this fork's history. Delete any `Wowee.app.backup-*` left behind by an older upgrade.
 6. Verify the bundle architecture and signature state and inspect the new runtime log.
+
+Steps 3 to 6 are scripted, and the scripts are the record of how it is done:
+
+```bash
+tools/validate.sh
+tools/macos/configure_release.sh          # release tree, Homebrew prefixes and all
+tools/macos/make_app.sh                   # dist/Wowee.app, ad-hoc signed and verified
+tools/macos/install_app.sh                # /Applications/Wowee.app, data checked untouched
+```
+
+`install_app.sh` refuses to replace a running client and fails if the extracted data directory changes underneath it.
 
 Never delete or re-extract game assets during an application upgrade unless extraction itself is the task. The approximately 18 GB of extracted data lives outside the app at `~/Library/Application Support/Wowee/Data` and must remain untouched. User configuration lives in `~/.wowee`.
 
@@ -72,19 +83,18 @@ Use a separate ignored build directory such as `build-review` for local work. Th
 Minimum validation for every code change:
 
 ```bash
+tools/validate.sh
+```
+
+That builds, runs CTest, checks whitespace, and — on this machine, where the extracted WotLK interface exists — runs both `framexml_compile_check` trees and the frame-emitted check against it, reporting one summary. The individual steps are still worth running directly while iterating:
+
+```bash
 cmake --build build-review --parallel "$(sysctl -n hw.logicalcpu)"
 ctest --test-dir build-review --output-on-failure -j "$(sysctl -n hw.logicalcpu)"
 git diff --check
 ```
 
-The current suite has 176 CTest checks. Two FrameXML compilation checks skip in a public checkout because the repository cannot contain Blizzard interface data. On this machine, run them manually against the extracted WotLK interface when changing XML emission, templates, widgets, or Lua APIs:
-
-```bash
-build-review/bin/framexml_compile_check "$HOME/Library/Application Support/Wowee/Data/expansions/wotlk/interface/framexml"
-build-review/bin/framexml_compile_check "$HOME/Library/Application Support/Wowee/Data/expansions/wotlk/interface/addons"
-```
-
-Both commands must report zero failed compilations, zero unparsed XML files, and zero unbuilt elements. Gameplay, rendering, movement, packet, or FrameXML lifecycle changes also require a manual smoke test against the configured ChromieCraft WotLK server.
+The current suite has 180 CTest checks. Two FrameXML compilation checks skip in a public checkout because the repository cannot contain Blizzard interface data; `tools/validate.sh` reports the FrameXML arms as skipped there rather than failing. The FrameXML checks must report zero failed compilations, zero unparsed XML files, and zero unbuilt elements. Gameplay, rendering, movement, packet, or FrameXML lifecycle changes also require a manual smoke test against the configured ChromieCraft WotLK server.
 
 Do not dismiss a failing custom sweep as noise. The repository's tools encode many previously observed silent failures. Determine whether a failure is a real regression, missing proprietary test data, a missing optional server checkout, or a harness path assumption before changing a pinned ceiling.
 

@@ -6,7 +6,7 @@
 #include "ui/interface_fonts.hpp"
 #include "ui/ui_colors.hpp"
 #include "ui/framexml_takeover.hpp"
-#include "ui/mouse_binding.hpp"
+#include "ui/key_names.hpp"
 #include <chrono>
 #include <cfloat>
 #include <cctype>
@@ -8914,64 +8914,9 @@ void LuaEngine::dispatchText(const char* utf8) {
     }
 }
 
-/// SDL's keycode as WoW names it, or empty for one WoW has no name for.
-///
-/// The handlers compare against these by name - CoinPickupFrame checks for
-/// "ESCAPE" and the digits - so a wrong spelling is a handler that never
-/// matches rather than an error anyone would see.
-static std::string wowKeyName(int sym) {
-#ifdef __APPLE__
-    // SDL2's letter keycodes retain the ANSI physical position on macOS. The
-    // binding UI needs the character printed on that key under the active
-    // layout; otherwise German Z is recorded and displayed as English Y.
-    const SDL_Scancode scancode = SDL_GetScancodeFromKey(sym);
-    if (std::string localized = core::localizedKeyName(scancode);
-        !localized.empty()) {
-        for (char& value : localized) {
-            unsigned char c = static_cast<unsigned char>(value);
-            if (c >= 'a' && c <= 'z') value = static_cast<char>(c - ('a' - 'A'));
-        }
-        return localized;
-    }
-#endif
-    if (sym >= 'a' && sym <= 'z') return std::string(1, static_cast<char>(sym - 32));
-    if (sym >= '0' && sym <= '9') return std::string(1, static_cast<char>(sym));
-    if (sym == '-' || sym == '=' || sym == '[' || sym == ']' || sym == '\\' ||
-        sym == ';' || sym == '\'' || sym == '`' || sym == ',' || sym == '.' ||
-        sym == '/') {
-        return std::string(1, static_cast<char>(sym));
-    }
-    switch (sym) {
-        case 27:         return "ESCAPE";
-        case ' ':        return "SPACE";
-        case '\r':       return "ENTER";
-        case '\t':       return "TAB";
-        case '\b':       return "BACKSPACE";
-        case 0x4000004A: return "HOME";
-        case 0x4000004D: return "END";
-        case 0x4000004B: return "PAGEUP";
-        case 0x4000004E: return "PAGEDOWN";
-        case 0x4000004C: return "DELETE";
-        case 0x40000049: return "INSERT";
-        case SDLK_NUMLOCKCLEAR: return "NUMLOCK";
-        case SDLK_PRINTSCREEN: return "PRINTSCREEN";
-        case SDLK_KP_ENTER: return "ENTER";
-        case 0x40000050: return "LEFT";
-        case 0x4000004F: return "RIGHT";
-        case 0x40000052: return "UP";
-        case 0x40000051: return "DOWN";
-        default: break;
-    }
-    // F1..F12 are contiguous in SDL's scancode-derived range.
-    if (sym >= 0x4000003A && sym <= 0x40000045) {
-        return "F" + std::to_string(sym - 0x4000003A + 1);
-    }
-    return {};
-}
-
 std::string LuaEngine::bindingCommandFor(int sdlKeycode, bool shift, bool ctrl,
                                          bool alt) {
-    return bindingCommandForName(wowKeyName(sdlKeycode), shift, ctrl, alt);
+    return bindingCommandForName(ui::wowKeyNameFromKeycode(sdlKeycode), shift, ctrl, alt);
 }
 
 std::string LuaEngine::bindingCommandForName(std::string key, bool shift,
@@ -9071,7 +9016,7 @@ bool LuaEngine::dispatchResolvedBinding(int physicalKey, std::string command,
 
 bool LuaEngine::dispatchFrameKey(int sdlKeycode, bool down) {
     if (!L_) return false;
-    const std::string key = wowKeyName(sdlKeycode);
+    const std::string key = ui::wowKeyNameFromKeycode(sdlKeycode);
     if (key.empty()) return false;
 
     // The topmost frame that is both visible and listening. Everything that

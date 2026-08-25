@@ -7,10 +7,8 @@
 #include "game/inventory_slots.hpp"
 #include "ui/framexml_takeover.hpp"
 #include "ui/keybinding_manager.hpp"
+#include "ui/key_names.hpp"
 #include "core/config_paths.hpp"
-#ifdef __APPLE__
-#include "core/macos_platform.hpp"
-#endif
 #include <array>
 #include <cctype>
 #include <filesystem>
@@ -1549,29 +1547,6 @@ std::string bindingsFilePath() {
     return core::getConfigRoot() + "/bindings.cfg";
 }
 
-/// ImGui spells keys as "C" and "Space"; the interface expects "C" and "SPACE",
-/// and compares them as strings everywhere.
-std::string wowKeyFromImGui(ImGuiKey key) {
-    // An action with nothing bound to it answers "None", which uppercased is a
-    // perfectly ordinary-looking key name and would show as one.
-    if (key == ImGuiKey_None) return "";
-    const char* name = ImGui::GetKeyName(key);
-    if (!name || !*name) return "";
-    std::string out(name);
-#ifdef __APPLE__
-    // ImGui keys name physical ANSI positions. Translate that position through
-    // the active layout before exposing it to Blizzard's binding UI, so the
-    // key between T and U is Z on German QWERTZ rather than Y.
-    const SDL_Scancode scancode = SDL_GetScancodeFromName(name);
-    if (const std::string localized = core::localizedKeyName(scancode);
-        !localized.empty()) {
-        out = localized;
-    }
-#endif
-    for (char& c : out) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    return out;
-}
-
 /// The commands the client has a real action behind. Rebinding one of these has
 /// to reach the manager, or the list would show the new key while the client
 /// went on answering to the old one.
@@ -1591,19 +1566,6 @@ const LiveBinding kLiveBindings[] = {
     {"TOGGLEGUILDTAB",    wowee::ui::KeybindingManager::Action::TOGGLE_GUILD_ROSTER},
 };
 
-/// The named key whose name matches, or none. ImGui offers no reverse lookup,
-/// and the set is small enough that walking it costs nothing next to the file
-/// write that follows a rebind.
-ImGuiKey imGuiKeyFromWow(const std::string& name) {
-    if (name.empty()) return ImGuiKey_None;
-    for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k) {
-        if (wowKeyFromImGui(static_cast<ImGuiKey>(k)) == name) {
-            return static_cast<ImGuiKey>(k);
-        }
-    }
-    return ImGuiKey_None;
-}
-
 /// Tells the client what a command is bound to now, for the commands it acts
 /// on. Silent for the rest, which are listed and saved but not yet answered.
 /// Hand a binding to the client's own keybinding manager, if it answers that
@@ -1617,7 +1579,7 @@ void pushBindingToClient(const std::string& command,
     for (const auto& live : kLiveBindings) {
         if (command != live.command) continue;
         wowee::ui::KeybindingManager::getInstance().setKeysForAction(
-            live.action, imGuiKeyFromWow(keys[0]), imGuiKeyFromWow(keys[1]));
+            live.action, wowee::ui::imGuiKeyFromWowName(keys[0]), wowee::ui::imGuiKeyFromWowName(keys[1]));
         return;
     }
 }
@@ -1634,8 +1596,8 @@ std::optional<std::array<std::string, 2>> liveKeysFor(
         if (command != live.command) continue;
         const auto bound = wowee::ui::KeybindingManager::getInstance()
                                .getKeysForAction(live.action);
-        return std::array<std::string, 2>{wowKeyFromImGui(bound[0]),
-                                          wowKeyFromImGui(bound[1])};
+        return std::array<std::string, 2>{wowee::ui::wowKeyNameFromImGuiKey(bound[0]),
+                                          wowee::ui::wowKeyNameFromImGuiKey(bound[1])};
     }
     return std::nullopt;
 }
@@ -1655,7 +1617,7 @@ void seedBindingDefaults() {
         {"JUMP", "SPACE"},      {"SITORSTAND", "X"},
         {"TOGGLEAUTORUN", "NUMLOCK"},
         {"TOGGLEGAMEMENU", "ESCAPE"},
-        {"OPENCHAT", "ENTER"},  {"OPENCHATSLASH", "/"},
+        {"OPENCHAT", "ENTER"},  {"OPENCHATSLASH", "SLASH"},
         {"TARGETNEARESTENEMY", "TAB"}, {"TOGGLESHEATH", "Z"},
         {"SCREENSHOT", "PRINTSCREEN"},
         {"ACTIONBUTTON1", "1"}, {"ACTIONBUTTON2", "2"},
@@ -1663,7 +1625,10 @@ void seedBindingDefaults() {
         {"ACTIONBUTTON5", "5"}, {"ACTIONBUTTON6", "6"},
         {"ACTIONBUTTON7", "7"}, {"ACTIONBUTTON8", "8"},
         {"ACTIONBUTTON9", "9"}, {"ACTIONBUTTON10", "0"},
-        {"ACTIONBUTTON11", "-"},{"ACTIONBUTTON12", "="},
+        // The two physical keys after zero. WoW names them by position, not by
+        // the character printed on them, which is why these are not - and =
+        // and why they read the same on a German keyboard as on a US one.
+        {"ACTIONBUTTON11", "MINUS"}, {"ACTIONBUTTON12", "PLUS"},
     };
     for (const auto& d : kDefaults) keys[d.command] = {d.key, ""};
     // Arrow keys are the stock secondary movement bindings.
@@ -1671,16 +1636,11 @@ void seedBindingDefaults() {
     keys["MOVEBACKWARD"][1] = "DOWN";
     keys["TURNLEFT"][1] = "LEFT";
     keys["TURNRIGHT"][1] = "RIGHT";
-    // These defaults refer to the two physical keys following zero, whose
-    // printed characters vary by layout (ß and ´ on German, - and = on US).
-    keys["ACTIONBUTTON11"] = {wowKeyFromImGui(ImGuiKey_Minus), ""};
-    keys["ACTIONBUTTON12"] = {wowKeyFromImGui(ImGuiKey_Equal), ""};
-
     // Where a command corresponds to something the client really does, the key
     // shown is the one it really answers to.
     auto& manager = wowee::ui::KeybindingManager::getInstance();
     for (const auto& live : kLiveBindings) {
-        const std::string key = wowKeyFromImGui(manager.getKeyForAction(live.action));
+        const std::string key = wowee::ui::wowKeyNameFromImGuiKey(manager.getKeyForAction(live.action));
         if (!key.empty()) keys[live.command] = {key, ""};
     }
 }
@@ -1872,10 +1832,25 @@ static int lua_LoadBindings(lua_State* L) {
         const std::string command = line.substr(0, eq);
         const std::string rest = line.substr(eq + 1);
         const size_t comma = rest.find(',');
-        bindingKeys()[command] = {
+        const std::array<std::string, 2> saved = {
             rest.substr(0, comma),
             comma == std::string::npos ? "" : rest.substr(comma + 1)
         };
+        // A saved name this build cannot match is a name from an older spelling
+        // of this vocabulary - the panel used to write ImGui's debug names, so
+        // files exist carrying EQUAL, LEFTARROW and bare punctuation. Keeping
+        // one lists a binding that can never fire; the seeded default is the
+        // honest answer. An empty slot is a key the player unbound and is kept.
+        auto& slots = bindingKeys()[command];
+        for (size_t i = 0; i < saved.size(); ++i) {
+            if (saved[i].empty() || wowee::ui::isBindableName(saved[i])) {
+                slots[i] = saved[i];
+            } else {
+                LOG_WARNING("Binding ", command, " was saved as '", saved[i],
+                            "', which no key answers to; using the default '",
+                            slots[i], "'");
+            }
+        }
         // What was saved is what the client should answer to, not what it
         // started with - otherwise a rebind survives in the list and nowhere
         // else, and only until the next save overwrites it.
