@@ -1445,6 +1445,23 @@ void Application::run() {
                     }
                 }
             }
+            if (event.type == SDL_KEYUP && addonManager_ && addonsLoaded_) {
+                if (auto* engine = addonManager_->getLuaEngine()) {
+                    const SDL_Keymod mods = SDL_GetModState();
+                    // A binding script receives both halves of a press. A
+                    // hundred stock WotLK bindings branch on `keystate`; some
+                    // activate only on release, while held actions need the up
+                    // call to clear their pressed state.
+                    const bool hadBinding =
+                        engine->hasActiveBindingKey(event.key.keysym.sym);
+                    engine->dispatchBindingKey(
+                        event.key.keysym.sym,
+                        (mods & KMOD_SHIFT) != 0,
+                        (mods & KMOD_CTRL) != 0,
+                        (mods & KMOD_ALT) != 0, false);
+                    if (!hadBinding) engine->dispatchFrameKey(event.key.keysym.sym, false);
+                }
+            }
             if (event.type == SDL_KEYDOWN) {
                 // An addon's edit box takes the keystroke before anything
                 // else looks at it. Otherwise typing into one would also
@@ -1518,7 +1535,8 @@ void Application::run() {
                     // has no path for, which until now could be bound in
                     // the interface's own key-binding panel and then never
                     // honoured by any press.
-                    if (auto* engine = addonManager_->getLuaEngine()) {
+                    if (auto* engine = addonManager_->getLuaEngine();
+                        engine && event.key.repeat == 0) {
                         const SDL_Keymod mods = SDL_GetModState();
                         if (engine->dispatchBindingKey(
                                 event.key.keysym.sym,

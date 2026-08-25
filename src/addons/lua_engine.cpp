@@ -5188,6 +5188,7 @@ void LuaEngine::shutdown() {
         L_ = nullptr;
         LOG_INFO("LuaEngine: shut down");
     }
+    bindingPresses_.clear();
 }
 
 void LuaEngine::setGameHandler(game::GameHandler* handler) {
@@ -8991,8 +8992,21 @@ std::string LuaEngine::bindingCommandFor(int sdlKeycode, bool shift, bool ctrl,
 bool LuaEngine::dispatchBindingKey(int sdlKeycode, bool shift, bool ctrl,
                                    bool alt, bool down) {
     if (!L_) return false;
-    const std::string command = bindingCommandFor(sdlKeycode, shift, ctrl, alt);
-    if (command.empty()) return false;
+
+    std::string command;
+    if (down) {
+        command = bindingCommandFor(sdlKeycode, shift, ctrl, alt);
+        if (command.empty()) return false;
+        bindingPresses_.press(sdlKeycode, command);
+    } else {
+        // Release exactly what this physical key pressed. Looking the command
+        // up with today's modifiers loses CTRL-X when Ctrl came up before X;
+        // looking it up after a rebind can release an entirely different one.
+        auto active = bindingPresses_.release(sdlKeycode);
+        if (!active) return false;
+        command = std::move(*active);
+    }
+
     // Left alone if the client performs it. Not "already handled, so skip the
     // work" - running it as well would undo it.
     if (clientActsOnBinding(command)) return false;

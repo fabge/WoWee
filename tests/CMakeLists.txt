@@ -2059,6 +2059,12 @@ wowee_add_test(test_cache_paths
             ${TEST_COMMON_SOURCES}
             ${CMAKE_SOURCE_DIR}/src/core/config_paths.cpp)
 
+# ── test_binding_press_tracker ───────────────────────────────
+# Key-up must release the command selected on key-down even if modifiers or
+# bindings changed while the physical key was held.
+wowee_add_test(test_binding_press_tracker
+    SOURCES test_binding_press_tracker.cpp)
+
 # ── Sanitizers, once every test target exists ────────────────
 # This must be the last thing in this file. The loop walks ALL_TEST_TARGETS,
 # which register_test_target appends to as each test is declared, so the

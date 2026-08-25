@@ -1609,25 +1609,15 @@ ImGuiKey imGuiKeyFromWow(const std::string& name) {
 /// Hand a binding to the client's own keybinding manager, if it answers that
 /// command at all.
 ///
-/// Two things do not survive this, both worth knowing before chasing either as
-/// a bug.
-///
-/// A second key for one command is accepted, works for the session and is gone
-/// at the next start. The interface allows two per command and this manager
-/// holds one per action, so what is pushed here is keys[0] - the primary - and
-/// the other lives only in the Lua map above, which nothing saves. Setting a
-/// primary does persist: rebinding the bags from B to N writes toggle_bags=N
-/// and comes back as N. Making the second key stick means the manager holding
-/// two, which is a change to what a binding is here rather than a repair.
-///
-/// A binding for a command not in kLiveBindings does not reach the client at
-/// all, and is not saved either. That is the intended half of this: those are
-/// the commands the interface answers for itself.
-void pushBindingToClient(const std::string& command, const std::string& key) {
+/// Both primary and secondary keys reach the manager. A binding for a command
+/// not in kLiveBindings does not: those commands are executed by their
+/// FrameXML scripts instead.
+void pushBindingToClient(const std::string& command,
+                         const std::array<std::string, 2>& keys) {
     for (const auto& live : kLiveBindings) {
         if (command != live.command) continue;
-        const ImGuiKey imKey = imGuiKeyFromWow(key);
-        wowee::ui::KeybindingManager::getInstance().setKeyForAction(live.action, imKey);
+        wowee::ui::KeybindingManager::getInstance().setKeysForAction(
+            live.action, imGuiKeyFromWow(keys[0]), imGuiKeyFromWow(keys[1]));
         return;
     }
 }
@@ -1638,14 +1628,14 @@ void pushBindingToClient(const std::string& command, const std::string& key) {
 /// client's own settings panel can rebind these too - and then the copy is a
 /// second answer to a question the manager already owns, one keystroke out of
 /// date and shown on every action button.
-std::optional<std::string> liveKeyFor(const std::string& command) {
+std::optional<std::array<std::string, 2>> liveKeysFor(
+    const std::string& command) {
     for (const auto& live : kLiveBindings) {
         if (command != live.command) continue;
-        std::string key =
-            wowKeyFromImGui(wowee::ui::KeybindingManager::getInstance()
-                                .getKeyForAction(live.action));
-        if (key.empty()) return std::nullopt;
-        return key;
+        const auto bound = wowee::ui::KeybindingManager::getInstance()
+                               .getKeysForAction(live.action);
+        return std::array<std::string, 2>{wowKeyFromImGui(bound[0]),
+                                          wowKeyFromImGui(bound[1])};
     }
     return std::nullopt;
 }
@@ -1745,9 +1735,10 @@ bool clientActsOnBinding(const std::string& command) {
 static int lua_GetBindingKey(lua_State* L) {
     seedBindingDefaults();
     const std::string command = luaL_checkstring(L, 1);
-    if (auto live = liveKeyFor(command)) {
-        lua_pushstring(L, live->c_str());
-        lua_pushnil(L);
+    if (auto live = liveKeysFor(command)) {
+        for (const std::string& key : *live) {
+            if (key.empty()) lua_pushnil(L); else lua_pushstring(L, key.c_str());
+        }
         return 2;
     }
     auto it = bindingKeys().find(command);
@@ -1789,9 +1780,10 @@ static int lua_GetBinding(lua_State* L) {
     const std::string command = bindingAt(L, index);
     if (command.empty()) { lua_pushnil(L); return 1; }
     lua_pushstring(L, command.c_str());
-    if (auto live = liveKeyFor(command)) {
-        lua_pushstring(L, live->c_str());
-        lua_pushnil(L);
+    if (auto live = liveKeysFor(command)) {
+        for (const std::string& key : *live) {
+            if (key.empty()) lua_pushnil(L); else lua_pushstring(L, key.c_str());
+        }
         return 3;
     }
     auto it = bindingKeys().find(command);
@@ -1820,13 +1812,13 @@ static int lua_SetBinding(lua_State* L) {
             // one that gained it, or the client answers to both. What it
             // answers to now is whichever slot still holds something, which is
             // not always the first.
-            pushBindingToClient(existing, keys[0].empty() ? keys[1] : keys[0]);
+            pushBindingToClient(existing, keys);
         }
     }
     if (command) {
         auto& keys = bindingKeys()[command];
         if (keys[0].empty()) keys[0] = key; else keys[1] = key;
-        pushBindingToClient(command, keys[0]);
+        pushBindingToClient(command, keys);
     }
     // Six frames wait on this, the action buttons among them: it is what
     // redraws the little key printed in the corner. Without it a rebind takes
@@ -1876,7 +1868,7 @@ static int lua_LoadBindings(lua_State* L) {
         // What was saved is what the client should answer to, not what it
         // started with - otherwise a rebind survives in the list and nowhere
         // else, and only until the next save overwrites it.
-        pushBindingToClient(command, bindingKeys()[command][0]);
+        pushBindingToClient(command, bindingKeys()[command]);
     }
     if (auto* gh = getGameHandler(L)) gh->fireAddonEvent("UPDATE_BINDINGS", {});
     return 0;

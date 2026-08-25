@@ -2,6 +2,7 @@
 
 #include "addons/lua_services.hpp"
 #include "ui/widget_tree.hpp"
+#include "ui/binding_press_tracker.hpp"
 #include <map>
 #include <functional>
 #include <unordered_map>
@@ -182,6 +183,9 @@ public:
     /// cancel out.
     bool dispatchBindingKey(int sdlKeycode, bool shift, bool ctrl, bool alt,
                             bool down);
+    [[nodiscard]] bool hasActiveBindingKey(int sdlKeycode) const {
+        return bindingPresses_.contains(sdlKeycode);
+    }
 
     /// The command this key holds, or empty. Whether the client would run it is
     /// a separate question - see clientActsOnBinding - and keeping the two
@@ -262,6 +266,7 @@ private:
     /// Distinct Lua errors this session and how often each fired. A handler
     /// that raises on every frame is one entry, not forty thousand.
     std::map<std::string, uint64_t> luaErrors_;
+    ui::BindingPressTracker bindingPresses_;
     OpenSettingsCallback openSettingsCallback_;
     /// How many events are being dispatched inside one another right now.
     /// Guards against two handlers triggering each other without end.
