@@ -34,7 +34,7 @@ Before replacing the installed app:
 2. Fetch and integrate upstream.
 3. Build and run the full test suite.
 4. Build a macOS arm64 app bundle from the fork.
-5. Preserve the previous working app until the new build has launched, logged in, entered the world, and rendered the FrameXML interface successfully.
+5. Replace the installed app in place. Do not keep a backup copy of the previous bundle: the app carries no state worth recovering, an upstream release can be downloaded at any time, and any earlier build can be rebuilt from this fork's history. Delete any `Wowee.app.backup-*` left behind by an older upgrade.
 6. Verify the bundle architecture and signature state and inspect the new runtime log.
 
 Never delete or re-extract game assets during an application upgrade unless extraction itself is the task. The approximately 18 GB of extracted data lives outside the app at `~/Library/Application Support/Wowee/Data` and must remain untouched. User configuration lives in `~/.wowee`.
