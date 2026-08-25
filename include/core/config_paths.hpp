@@ -23,6 +23,11 @@ std::string getConfigRoot();
 // ~/.cache/wowee) elsewhere. The directory is created before it is returned.
 std::string getCacheRoot();
 
+// Restrict a credential-bearing file to its owner on POSIX. Windows user data
+// inherits the profile directory's ACL, so this is a no-op there. Returns false
+// when a POSIX permission update fails.
+bool restrictFileToOwner(const std::string& path);
+
 // One-time seeding of portable config. On the first launch after the user drops
 // a "portable.txt" marker next to the executable (before any config folder
 // exists), copies the existing per-user config tree into <exe_dir>/config so

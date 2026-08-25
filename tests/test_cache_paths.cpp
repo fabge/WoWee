@@ -1,6 +1,7 @@
 #include <catch_amalgamated.hpp>
 
 #include <filesystem>
+#include <fstream>
 
 #include "core/config_paths.hpp"
 #include "core/env.hpp"
@@ -31,3 +32,23 @@ TEST_CASE("an explicit cache root is returned and created", "[config-paths]") {
 
     std::filesystem::remove_all(root);
 }
+
+#ifndef _WIN32
+TEST_CASE("a credential file is restricted to its owner", "[config-paths]") {
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "wowee_private_file_test";
+    {
+        std::ofstream out(path);
+        out << "credential";
+    }
+
+    REQUIRE(wowee::core::restrictFileToOwner(path.string()));
+    const auto permissions = std::filesystem::status(path).permissions();
+    CHECK((permissions & std::filesystem::perms::owner_read) != std::filesystem::perms::none);
+    CHECK((permissions & std::filesystem::perms::owner_write) != std::filesystem::perms::none);
+    CHECK((permissions & std::filesystem::perms::group_all) == std::filesystem::perms::none);
+    CHECK((permissions & std::filesystem::perms::others_all) == std::filesystem::perms::none);
+
+    std::filesystem::remove(path);
+}
+#endif

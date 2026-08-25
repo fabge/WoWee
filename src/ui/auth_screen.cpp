@@ -1079,6 +1079,11 @@ void AuthScreen::saveLoginInfo(bool includePasswordHash) {
         LOG_WARNING("Could not save login info to ", path);
         return;
     }
+    // password_hash is sufficient to authenticate without the password, so it
+    // is a credential rather than harmless remembered UI state.
+    if (!core::restrictFileToOwner(path)) {
+        LOG_WARNING("Could not restrict login info to the current user: ", path);
+    }
 
     out << "version=3\n";
     out << "active=" << makeServerKey(hostname_.text(), port) << "\n";

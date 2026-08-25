@@ -136,6 +136,18 @@ std::string getCacheRoot() {
     return root.string();
 }
 
+bool restrictFileToOwner(const std::string& path) {
+#ifdef _WIN32
+    (void)path;
+    return true;
+#else
+    std::error_code ec;
+    fs::permissions(path, fs::perms::owner_read | fs::perms::owner_write,
+                    fs::perm_options::replace, ec);
+    return !ec;
+#endif
+}
+
 void migratePortableConfigIfNeeded() {
     std::error_code ec;
     const std::string exeDir = getExecutableDir();
