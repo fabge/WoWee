@@ -79,6 +79,7 @@ public class WoweeActivity extends SDLActivity {
         setEnv("WOWEE_RESOURCE_ROOT", root.getAbsolutePath());
         setEnv("WOW_DATA_PATH", data.getAbsolutePath());
         setEnv("WOWEE_CONFIG_ROOT", new File(root, "config").getAbsolutePath());
+        setEnv("WOWEE_CACHE_ROOT", getCacheDir().getAbsolutePath());
         new File(root, "config").mkdirs();
 
         super.onCreate(savedInstanceState);
