@@ -131,6 +131,44 @@ TEST_CASE("a quest count larger than the bytes behind it keeps the rest", "[loot
     CHECK(data.items[0].itemId == 555);
 }
 
+TEST_CASE("display slots keep their wire identity after money and item removal", "[loot]") {
+    LootResponseData data;
+    data.gold = 50;
+    data.coinSlotOffset = true;
+    data.items = {
+        LootItem{.slotIndex = 0, .itemId = 100},
+        LootItem{.slotIndex = 3, .itemId = 400},
+    };
+
+    CHECK(data.displaySlotFor(0) == 2);
+    CHECK(data.displaySlotFor(3) == 5);
+    CHECK(data.itemAtDisplaySlot(5)->itemId == 400);
+
+    // Clearing money changes what is shown, not the numbering assigned when
+    // the response opened. Removing a lower item likewise cannot move slot 5.
+    data.gold = 0;
+    data.items.erase(data.items.begin());
+    CHECK(data.displaySlotFor(3) == 5);
+    REQUIRE(data.itemAtDisplaySlot(5) != nullptr);
+    CHECK(data.itemAtDisplaySlot(5)->itemId == 400);
+    CHECK(data.itemAtDisplaySlot(2) == nullptr);
+}
+
+TEST_CASE("coin-only and item-only loot use their natural display slots", "[loot]") {
+    LootResponseData coins;
+    coins.gold = 25;
+    coins.coinSlotOffset = true;
+    CHECK(coins.items.empty());
+    CHECK(coins.itemAtDisplaySlot(1) == nullptr);
+
+    LootResponseData items;
+    items.coinSlotOffset = false;
+    items.items = {LootItem{.slotIndex = 0, .itemId = 77}};
+    CHECK(items.displaySlotFor(0) == 1);
+    REQUIRE(items.itemAtDisplaySlot(1) != nullptr);
+    CHECK(items.itemAtDisplaySlot(1)->itemId == 77);
+}
+
 TEST_CASE("a refusal is not loot", "[loot]") {
     // guid + lootType and nothing else: the realm answered the use and offered
     // nothing. The caller must not open a window on it.
