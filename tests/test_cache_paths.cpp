@@ -44,6 +44,10 @@ TEST_CASE("an untrusted filename cannot leave its directory", "[config-paths]") 
     CHECK_FALSE(wowee::core::safeChildPath(root.string(), "../settings.cfg"));
     CHECK_FALSE(wowee::core::safeChildPath(root.string(), "nested/Alice.cfg"));
     CHECK_FALSE(wowee::core::safeChildPath(root.string(), "/tmp/Alice.cfg"));
+#ifdef _WIN32
+    CHECK_FALSE(wowee::core::safeChildPath(root.string(), "C:Alice.cfg"));
+    CHECK_FALSE(wowee::core::safeChildPath(root.string(), "nested\\Alice.cfg"));
+#endif
 }
 
 #ifndef _WIN32

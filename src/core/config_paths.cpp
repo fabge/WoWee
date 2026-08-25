@@ -151,7 +151,7 @@ bool restrictFileToOwner(const std::string& path) {
 std::optional<std::string> safeChildPath(const std::string& directory,
                                          const std::string& filename) {
     const fs::path leaf(filename);
-    if (leaf.empty() || leaf.is_absolute() || leaf.has_parent_path() ||
+    if (leaf.empty() || leaf.has_root_path() || leaf.has_parent_path() ||
         leaf == "." || leaf == "..") {
         return std::nullopt;
     }
