@@ -1980,7 +1980,7 @@ public:
     }
 
     // ---- Loot ----
-    void lootTarget(uint64_t guid);
+    void lootTarget(uint64_t guid, bool autoLootModifierHeld = false);
     void lootItem(uint8_t slotIndex, bool confirmed = false);
     void confirmPendingLoot();
     void confirmBindOnUse();

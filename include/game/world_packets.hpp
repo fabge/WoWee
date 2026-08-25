@@ -2387,12 +2387,29 @@ struct LootResponseData {
     uint64_t lootGuid = 0;
     uint8_t lootType = 0;
     uint32_t gold = 0;           // In copper
+    // Money is display slot one but is not a wire item. Keep its original
+    // offset after the money is cleared so the remaining item slots do not
+    // shift underneath buttons that FrameXML already created.
+    bool coinSlotOffset = false;
     std::vector<LootItem> items;
 
     [[nodiscard]] bool isValid() const { return true; }
     [[nodiscard]] uint32_t getGold() const { return gold / 10000; }
     [[nodiscard]] uint32_t getSilver() const { return (gold / 100) % 100; }
     [[nodiscard]] uint32_t getCopper() const { return gold % 100; }
+
+    [[nodiscard]] int displaySlotFor(uint8_t wireSlot) const {
+        return static_cast<int>(wireSlot) + 1 + (coinSlotOffset ? 1 : 0);
+    }
+
+    [[nodiscard]] const LootItem* itemAtDisplaySlot(int displaySlot) const {
+        const int wireSlot = displaySlot - 1 - (coinSlotOffset ? 1 : 0);
+        if (wireSlot < 0 || wireSlot > 255) return nullptr;
+        for (const auto& item : items) {
+            if (item.slotIndex == static_cast<uint8_t>(wireSlot)) return &item;
+        }
+        return nullptr;
+    }
 };
 
 /** CMSG_LOOT packet builder */

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #ifdef __APPLE__
 
 namespace wowee {
@@ -21,6 +23,12 @@ namespace core {
  * Must be called before SDL_Init brings up NSApplication.
  */
 void disablePressAndHoldAccents();
+
+/// The printable character produced by a physical SDL scancode under the
+/// active macOS keyboard layout. Empty for keys without a printable layout
+/// mapping. This is what makes a German QWERTZ key identify itself as Z rather
+/// than as the ANSI position's Y.
+std::string localizedKeyName(int sdlScancode);
 
 } // namespace core
 } // namespace wowee

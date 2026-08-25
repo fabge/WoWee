@@ -26,6 +26,9 @@
 #include <fstream>
 #include "core/app_clock.hpp"
 #include "core/config_paths.hpp"
+#ifdef __APPLE__
+#include "core/macos_platform.hpp"
+#endif
 #include <filesystem>
 
 extern "C" {
@@ -8391,7 +8394,7 @@ void LuaEngine::installMissingApiFallback() {
         "local counting = {\n"
         "  'GetCurrencyListSize','GetFieldSize','GetInventoryItemCount',\n"
         "  'GetLFDLockPlayerCount','GetNumArenaTeamMembers',\n"
-        
+
         "  'GetNumBattlefields','GetNumBuybackItems',\n"
         "  'GetNumCompanions',\n"
         "  'GetNumGuildBankTabs','GetNumGuildEvents','GetNumLanguages',\n"
@@ -8913,6 +8916,20 @@ void LuaEngine::dispatchText(const char* utf8) {
 /// "ESCAPE" and the digits - so a wrong spelling is a handler that never
 /// matches rather than an error anyone would see.
 static std::string wowKeyName(int sym) {
+#ifdef __APPLE__
+    // SDL2's letter keycodes retain the ANSI physical position on macOS. The
+    // binding UI needs the character printed on that key under the active
+    // layout; otherwise German Z is recorded and displayed as English Y.
+    const SDL_Scancode scancode = SDL_GetScancodeFromKey(sym);
+    if (std::string localized = core::localizedKeyName(scancode);
+        !localized.empty()) {
+        for (char& value : localized) {
+            unsigned char c = static_cast<unsigned char>(value);
+            if (c >= 'a' && c <= 'z') value = static_cast<char>(c - ('a' - 'A'));
+        }
+        return localized;
+    }
+#endif
     if (sym >= 'a' && sym <= 'z') return std::string(1, static_cast<char>(sym - 32));
     if (sym >= '0' && sym <= '9') return std::string(1, static_cast<char>(sym));
     switch (sym) {

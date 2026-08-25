@@ -2650,8 +2650,8 @@ void GameHandler::offerPetition(uint64_t petitionGuid, uint64_t targetGuid) {
 // Loot, Gossip, Vendor
 // ============================================================
 
-void GameHandler::lootTarget(uint64_t guid) {
-    if (inventoryHandler_) inventoryHandler_->lootTarget(guid);
+void GameHandler::lootTarget(uint64_t guid, bool autoLootModifierHeld) {
+    if (inventoryHandler_) inventoryHandler_->lootTarget(guid, autoLootModifierHeld);
 }
 
 void GameHandler::lootItem(uint8_t slotIndex, bool confirmed) {

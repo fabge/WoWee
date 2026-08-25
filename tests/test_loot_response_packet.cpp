@@ -71,9 +71,13 @@ TEST_CASE("a realm with no quest section still yields its loot", "[loot]") {
     REQUIRE(LootResponseParser::parse(packet, data, /*isWotlkFormat=*/true));
     CHECK(data.lootGuid == 0xF110000689000699ull);
     CHECK(data.gold == 120);
+    CHECK(data.coinSlotOffset);
     REQUIRE(data.items.size() == 1);
     CHECK(data.items[0].itemId == 1673);
     CHECK(data.items[0].count == 2);
+    CHECK(data.displaySlotFor(data.items[0].slotIndex) == 2);
+    CHECK(data.itemAtDisplaySlot(2) == &data.items[0]);
+    CHECK(data.itemAtDisplaySlot(1) == nullptr);
     CHECK_FALSE(data.items[0].isQuestItem);
 }
 
@@ -83,6 +87,7 @@ TEST_CASE("the same body parsed as its own expansion", "[loot]") {
     LootResponseData data;
     REQUIRE(LootResponseParser::parse(packet, data, /*isWotlkFormat=*/false));
     CHECK(data.gold == 120);
+    CHECK(data.coinSlotOffset);
     REQUIRE(data.items.size() == 1);
     CHECK(data.items[0].itemId == 1673);
 }
