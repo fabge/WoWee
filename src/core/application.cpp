@@ -289,8 +289,10 @@ bool Application::initialize() {
     const char* dataPathEnv = std::getenv("WOW_DATA_PATH");
     std::string dataPath = dataPathEnv ? dataPathEnv : "./Data";
 
-    // Scan for available expansion profiles
-    expansionRegistry_->initialize(dataPath);
+    // Scan the extracted assets, but keep protocol/DBC definitions on the
+    // executable's shipped copy. Extracted definitions are a snapshot from the
+    // day extraction ran and otherwise silently fall behind client updates.
+    expansionRegistry_->initialize(dataPath, "./Data");
 
     // Load the tables this expansion's protocol is described by.
     if (gameHandler && expansionRegistry_) {
@@ -362,7 +364,7 @@ bool Application::initialize() {
         // Wire AppearanceComposer to UI components (Phase A singleton breaking)
         if (uiManager) {
             uiManager->setAppearanceComposer(appearanceComposer_.get());
-            
+
             // Wire all services to UI components (Phase B singleton breaking)
             ui::UIServices uiServices;
             uiServices.window = window.get();
@@ -1299,6 +1301,7 @@ void Application::run() {
         // ever describes the iteration it was set in: the pump sets it and
         // the draw, further down this same iteration, is the only reader.
         ui::clearInterfaceConsumedKeys();
+        Input::getInstance().beginFrame();
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
 #ifdef __ANDROID__
@@ -1338,8 +1341,37 @@ void Application::run() {
                 uiManager->processEvent(event);
             }
 
-            // Pass mouse events to camera controller (skip when UI has mouse focus)
-            if (renderer && renderer->getCameraController() && !ImGui::GetIO().WantCaptureMouse) {
+            // What the interface has bound to a mouse button. The binding
+            // panel accepts them and the stock tables carry them, but nothing
+            // dispatched them, so a button bound there did nothing at all.
+            bool mouseBindingTaken = false;
+            if ((event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP) &&
+                addonManager_ && addonsLoaded_) {
+                if (auto* engine = addonManager_->getLuaEngine()) {
+                    const bool down = event.type == SDL_MOUSEBUTTONDOWN;
+                    // A click the interface owns belongs to the frame under
+                    // the cursor, not to a binding - clicking a bag would
+                    // otherwise also fire whatever BUTTON1 is bound to. The
+                    // release is always offered, whatever the cursor is over
+                    // by then: a button pressed on the world and released on a
+                    // frame has to end its press, or the command stays held
+                    // and the character keeps running.
+                    const bool uiOwnsClick = ImGui::GetIO().WantCaptureMouse ||
+                                             engine->mouseOverFrameXml();
+                    if (!down || !uiOwnsClick) {
+                        const SDL_Keymod mods = SDL_GetModState();
+                        mouseBindingTaken = engine->dispatchBindingMouseButton(
+                            event.button.button,
+                            (mods & KMOD_SHIFT) != 0,
+                            (mods & KMOD_CTRL) != 0,
+                            (mods & KMOD_ALT) != 0, down);
+                    }
+                }
+            }
+
+            // Pass mouse events to camera controller (skip when UI or a binding claimed it)
+            if (renderer && renderer->getCameraController() &&
+                !ImGui::GetIO().WantCaptureMouse && !mouseBindingTaken) {
                 if (event.type == SDL_MOUSEMOTION) {
                     renderer->getCameraController()->processMouseMotion(event.motion);
                 }
@@ -1404,6 +1436,17 @@ void Application::run() {
                     const bool playInBackground =
                         addons::storedCVarValue("Sound_EnableSoundWhenGameIsInBG", "0") != "0";
                     audio::AudioEngine::instance().setSuspended(!focused && !playInBackground);
+                    if (!focused) {
+                        Input::getInstance().clearBindingCommands();
+                        // The presses those commands came from, too. The key
+                        // or button comes up somewhere else entirely, so the
+                        // release that would have ended them never arrives.
+                        if (addonManager_) {
+                            if (auto* engine = addonManager_->getLuaEngine()) {
+                                engine->clearBindingPresses();
+                            }
+                        }
+                    }
                 }
             }
             // Typed text, when an addon's edit box is listening for it.
@@ -1441,6 +1484,23 @@ void Application::run() {
                             "MODIFIER_STATE_CHANGED",
                             {modName, event.type == SDL_KEYDOWN ? "1" : "0"});
                     }
+                }
+            }
+            if (event.type == SDL_KEYUP && addonManager_ && addonsLoaded_) {
+                if (auto* engine = addonManager_->getLuaEngine()) {
+                    const SDL_Keymod mods = SDL_GetModState();
+                    // A binding script receives both halves of a press. A
+                    // hundred stock WotLK bindings branch on `keystate`; some
+                    // activate only on release, while held actions need the up
+                    // call to clear their pressed state.
+                    const bool hadBinding =
+                        engine->hasActiveBindingKey(event.key.keysym.sym);
+                    engine->dispatchBindingKey(
+                        event.key.keysym.sym,
+                        (mods & KMOD_SHIFT) != 0,
+                        (mods & KMOD_CTRL) != 0,
+                        (mods & KMOD_ALT) != 0, false);
+                    if (!hadBinding) engine->dispatchFrameKey(event.key.keysym.sym, false);
                 }
             }
             if (event.type == SDL_KEYDOWN) {
@@ -1516,7 +1576,8 @@ void Application::run() {
                     // has no path for, which until now could be bound in
                     // the interface's own key-binding panel and then never
                     // honoured by any press.
-                    if (auto* engine = addonManager_->getLuaEngine()) {
+                    if (auto* engine = addonManager_->getLuaEngine();
+                        engine && event.key.repeat == 0) {
                         const SDL_Keymod mods = SDL_GetModState();
                         if (engine->dispatchBindingKey(
                                 event.key.keysym.sym,
@@ -2006,13 +2067,16 @@ bool Application::setAssetExpansionOverride(const std::string& id) {
 void Application::loadExpansionTables(const game::ExpansionProfile& profile) {
     if (!gameHandler) return;
 
-    const std::string opcodesPath = profile.dataPath + "/opcodes.json";
+    const std::string& definitions = profile.definitionPath.empty()
+                                         ? profile.dataPath
+                                         : profile.definitionPath;
+    const std::string opcodesPath = definitions + "/opcodes.json";
     if (!gameHandler->getOpcodeTable().loadFromJson(opcodesPath)) {
         LOG_ERROR("Failed to load opcodes from ", opcodesPath);
     }
     game::setActiveOpcodeTable(&gameHandler->getOpcodeTable());
 
-    const std::string updateFieldsPath = profile.dataPath + "/update_fields.json";
+    const std::string updateFieldsPath = definitions + "/update_fields.json";
     if (!gameHandler->getUpdateFieldTable().loadFromJson(updateFieldsPath)) {
         LOG_ERROR("Failed to load update fields from ", updateFieldsPath);
     }
@@ -2021,7 +2085,7 @@ void Application::loadExpansionTables(const game::ExpansionProfile& profile) {
     gameHandler->setPacketParsers(game::createPacketParsers(profile.id));
 
     if (dbcLayout_) {
-        const std::string dbcLayoutsPath = profile.dataPath + "/dbc_layouts.json";
+        const std::string dbcLayoutsPath = definitions + "/dbc_layouts.json";
         if (!dbcLayout_->loadFromJson(dbcLayoutsPath)) {
             LOG_ERROR("Failed to load DBC layouts from ", dbcLayoutsPath);
         }
@@ -3350,7 +3414,8 @@ void Application::updateInGame(float deltaTime, const char*& updateCheckpoint) {
         const bool uiWantsKeyboard = ImGui::GetIO().WantCaptureKeyboard ||
                                      ui::interfaceTakingTypedInput();
         auto& input = Input::getInstance();
-        if (!uiWantsKeyboard && input.isKeyJustPressed(SDL_SCANCODE_Z) && appearanceComposer_) {
+        if (!uiWantsKeyboard && input.isBindingCommandJustPressed("TOGGLESHEATH") &&
+            appearanceComposer_) {
             const bool sheathing = !appearanceComposer_->isWeaponsSheathed();
             if (renderer && renderer->getAnimationController()) {
                 renderer->getAnimationController()->playWeaponSheathAnimation(sheathing);

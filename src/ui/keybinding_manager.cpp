@@ -24,29 +24,29 @@ KeybindingManager::KeybindingManager() {
 
 void KeybindingManager::initializeDefaults() {
     // Set default keybindings
-    bindings_[static_cast<int>(Action::TOGGLE_CHARACTER_SCREEN)] = ImGuiKey_C;
-    bindings_[static_cast<int>(Action::TOGGLE_INVENTORY)] = ImGuiKey_I;
-    bindings_[static_cast<int>(Action::TOGGLE_BAGS)] = ImGuiKey_B;
-    bindings_[static_cast<int>(Action::TOGGLE_SPELLBOOK)] = ImGuiKey_P;  // WoW standard key
-    bindings_[static_cast<int>(Action::TOGGLE_TALENTS)] = ImGuiKey_N;     // WoW standard key
-    bindings_[static_cast<int>(Action::TOGGLE_QUESTS)] = ImGuiKey_L;
-    bindings_[static_cast<int>(Action::TOGGLE_MINIMAP)] = ImGuiKey_None;  // minimap is always visible; no default toggle
-    bindings_[static_cast<int>(Action::TOGGLE_SETTINGS)] = ImGuiKey_Escape;
-    bindings_[static_cast<int>(Action::TOGGLE_CHAT)] = ImGuiKey_Enter;
-    bindings_[static_cast<int>(Action::TOGGLE_GUILD_ROSTER)] = ImGuiKey_O;
-    bindings_[static_cast<int>(Action::TOGGLE_DUNGEON_FINDER)] = ImGuiKey_J;  // Originally I, reassigned to avoid conflict
-    bindings_[static_cast<int>(Action::TOGGLE_WORLD_MAP)] = ImGuiKey_M;  // WoW standard: M opens world map
-    bindings_[static_cast<int>(Action::TOGGLE_NAMEPLATES)] = ImGuiKey_V;
-    bindings_[static_cast<int>(Action::TOGGLE_ACHIEVEMENTS)] = ImGuiKey_Y;  // WoW standard key (Shift+Y in retail)
-    bindings_[static_cast<int>(Action::TOGGLE_SKILLS)]      = ImGuiKey_K;  // WoW standard: K opens Skills/Professions
+    const auto one = [](ImGuiKey key) {
+        return std::array<ImGuiKey, 2>{key, ImGuiKey_None};
+    };
+    bindings_[static_cast<int>(Action::TOGGLE_CHARACTER_SCREEN)] = one(ImGuiKey_C);
+    bindings_[static_cast<int>(Action::TOGGLE_INVENTORY)] = one(ImGuiKey_I);
+    bindings_[static_cast<int>(Action::TOGGLE_BAGS)] = one(ImGuiKey_B);
+    bindings_[static_cast<int>(Action::TOGGLE_SPELLBOOK)] = one(ImGuiKey_P);
+    bindings_[static_cast<int>(Action::TOGGLE_TALENTS)] = one(ImGuiKey_N);
+    bindings_[static_cast<int>(Action::TOGGLE_QUESTS)] = one(ImGuiKey_L);
+    bindings_[static_cast<int>(Action::TOGGLE_MINIMAP)] = one(ImGuiKey_None);
+    bindings_[static_cast<int>(Action::TOGGLE_SETTINGS)] = one(ImGuiKey_Escape);
+    bindings_[static_cast<int>(Action::TOGGLE_CHAT)] = one(ImGuiKey_Enter);
+    bindings_[static_cast<int>(Action::TOGGLE_GUILD_ROSTER)] = one(ImGuiKey_O);
+    bindings_[static_cast<int>(Action::TOGGLE_DUNGEON_FINDER)] = one(ImGuiKey_J);
+    bindings_[static_cast<int>(Action::TOGGLE_WORLD_MAP)] = one(ImGuiKey_M);
+    bindings_[static_cast<int>(Action::TOGGLE_NAMEPLATES)] = one(ImGuiKey_V);
+    bindings_[static_cast<int>(Action::TOGGLE_ACHIEVEMENTS)] = one(ImGuiKey_Y);
+    bindings_[static_cast<int>(Action::TOGGLE_SKILLS)] = one(ImGuiKey_K);
 }
 
 bool KeybindingManager::isActionPressed(Action action, bool repeat) {
     auto it = bindings_.find(static_cast<int>(action));
     if (it == bindings_.end()) return false;
-    ImGuiKey key = it->second;
-    if (key == ImGuiKey_None) return false;
-
     // Someone typing into a FrameXML edit box gets no bindings at all, which is
     // what the real client does and what the event path here already did - it
     // hands the key to the box and stops. This is the other way in: every panel
@@ -56,14 +56,16 @@ bool KeybindingManager::isActionPressed(Action action, bool repeat) {
 
     // When typing in a text field (e.g. chat input), never treat A-Z or 0-9 as shortcuts.
     const ImGuiIO& io = ImGui::GetIO();
-    if (io.WantTextInput) {
-        if ((key >= ImGuiKey_A && key <= ImGuiKey_Z) ||
-            (key >= ImGuiKey_0 && key <= ImGuiKey_9)) {
-            return false;
+    for (const ImGuiKey key : it->second) {
+        if (key == ImGuiKey_None) continue;
+        if (io.WantTextInput &&
+            ((key >= ImGuiKey_A && key <= ImGuiKey_Z) ||
+             (key >= ImGuiKey_0 && key <= ImGuiKey_9))) {
+            continue;
         }
+        if (ImGui::IsKeyPressed(key, repeat)) return true;
     }
-
-    return ImGui::IsKeyPressed(key, repeat);
+    return false;
 }
 
 namespace {
@@ -105,18 +107,26 @@ void noteInterfaceConsumedKey(ImGuiKey key) {
 void clearInterfaceConsumedKeys() { consumedKeys().clear(); }
 
 ImGuiKey KeybindingManager::getKeyForAction(Action action) const {
+    return getKeysForAction(action)[0];
+}
+
+std::array<ImGuiKey, 2> KeybindingManager::getKeysForAction(Action action) const {
     auto it = bindings_.find(static_cast<int>(action));
-    if (it == bindings_.end()) return ImGuiKey_None;
+    if (it == bindings_.end()) return {ImGuiKey_None, ImGuiKey_None};
     return it->second;
 }
 
 void KeybindingManager::setKeyForAction(Action action, ImGuiKey key) {
-    // Reserve movement keys so they cannot be used as UI shortcuts.
-    (void)action;
-    if (isReservedMovementKey(key)) {
-        key = ImGuiKey_None;
-    }
-    bindings_[static_cast<int>(action)] = key;
+    setKeysForAction(action, key, getKeysForAction(action)[1]);
+}
+
+void KeybindingManager::setKeysForAction(Action action, ImGuiKey primary,
+                                         ImGuiKey secondary) {
+    // Movement still owns these physical keys until movement itself is routed
+    // through this registry; accepting one here would make both actions fire.
+    if (isReservedMovementKey(primary)) primary = ImGuiKey_None;
+    if (isReservedMovementKey(secondary)) secondary = ImGuiKey_None;
+    bindings_[static_cast<int>(action)] = {primary, secondary};
 }
 
 void KeybindingManager::resetToDefaults() {
@@ -252,7 +262,7 @@ void KeybindingManager::loadFromConfigFile(const std::string& filePath) {
             continue;
         }
 
-        bindings_[actionIdx] = key;
+        bindings_[actionIdx] = {key, ImGuiKey_None};
     }
 
     file.close();
@@ -310,7 +320,7 @@ void KeybindingManager::saveToConfigFile(const std::string& filePath) const {
         auto it = bindings_.find(static_cast<int>(action));
         if (it == bindings_.end()) continue;
 
-        ImGuiKey key = it->second;
+        ImGuiKey key = it->second[0];
         std::string keyStr;
 
         // Convert ImGuiKey to string

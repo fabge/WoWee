@@ -2253,23 +2253,22 @@ void CameraController::update(float deltaTime) {
     }
     bool movementSuppressed = movementSuppressTimer_ > 0.0f;
 
-    // Determine current key states
-    // Arrow keys mirror WASD the way the original client maps them:
-    // Up/Down move, Left/Right turn (strafe stays on Q/E).
-    bool keyW = !uiWantsKeyboard && !sitting && !movementSuppressed && (input.isKeyPressed(SDL_SCANCODE_W) || input.isKeyPressed(SDL_SCANCODE_UP));
-    bool keyS = !uiWantsKeyboard && !sitting && !movementSuppressed && (input.isKeyPressed(SDL_SCANCODE_S) || input.isKeyPressed(SDL_SCANCODE_DOWN));
-    bool keyA = !uiWantsKeyboard && !sitting && !movementSuppressed && (input.isKeyPressed(SDL_SCANCODE_A) || input.isKeyPressed(SDL_SCANCODE_LEFT));
-    bool keyD = !uiWantsKeyboard && !sitting && !movementSuppressed && (input.isKeyPressed(SDL_SCANCODE_D) || input.isKeyPressed(SDL_SCANCODE_RIGHT));
-    bool keyQ = !uiWantsKeyboard && !sitting && !movementSuppressed && input.isKeyPressed(SDL_SCANCODE_Q);
-    bool keyE = !uiWantsKeyboard && !sitting && !movementSuppressed && input.isKeyPressed(SDL_SCANCODE_E);
+    // These are commands, not keyboard positions. The event pump resolves the
+    // player's current bindings once and records their held state; movement,
+    // animation and packets all consume that one answer.
+    const bool canMove = !uiWantsKeyboard && !sitting && !movementSuppressed;
+    bool keyW = canMove && input.isBindingCommandHeld("MOVEFORWARD");
+    bool keyS = canMove && input.isBindingCommandHeld("MOVEBACKWARD");
+    bool keyA = canMove && input.isBindingCommandHeld("TURNLEFT");
+    bool keyD = canMove && input.isBindingCommandHeld("TURNRIGHT");
+    bool keyQ = canMove && input.isBindingCommandHeld("STRAFELEFT");
+    bool keyE = canMove && input.isBindingCommandHeld("STRAFERIGHT");
     bool shiftDown = !uiWantsKeyboard && (input.isKeyPressed(SDL_SCANCODE_LSHIFT) || input.isKeyPressed(SDL_SCANCODE_RSHIFT));
     bool ctrlDown = !uiWantsKeyboard && (input.isKeyPressed(SDL_SCANCODE_LCTRL) || input.isKeyPressed(SDL_SCANCODE_RCTRL));
-    bool nowJump = !uiWantsKeyboard && !sitting && !movementSuppressed && input.isKeyJustPressed(SDL_SCANCODE_SPACE);
-    // Swimming needs the held state, not the press edge: on land space is a
-    // one-shot jump, but in water it is continuous ascent, and an edge gave a
-    // single impulse that then bled away.
-    bool swimUpHeld = !uiWantsKeyboard && !sitting && !movementSuppressed && input.isKeyPressed(SDL_SCANCODE_SPACE);
-    bool spaceDown = !uiWantsKeyboard && !sitting && !movementSuppressed && input.isKeyPressed(SDL_SCANCODE_SPACE);
+    bool nowJump = canMove && input.isBindingCommandJustPressed("JUMP");
+    // Swimming needs the held state, not the press edge.
+    bool swimUpHeld = canMove && input.isBindingCommandHeld("JUMP");
+    bool spaceDown = swimUpHeld;
 
     // Idle camera: any input resets the timer; timeout triggers a slow orbit pan
     bool anyInput = leftMouseDown || rightMouseDown || keyW || keyS || keyA || keyD || keyQ || keyE || nowJump;
@@ -2316,13 +2315,10 @@ void CameraController::update(float deltaTime) {
         keyW = keyS = keyA = keyD = keyQ = keyE = nowJump = swimUpHeld = false;
     }
 
-    // Tilde or NumLock toggles auto-run; any forward/backward key cancels it
-    bool tildeDown = !uiWantsKeyboard && (input.isKeyPressed(SDL_SCANCODE_GRAVE) ||
-                                           input.isKeyPressed(SDL_SCANCODE_NUMLOCKCLEAR));
-    if (tildeDown && !tildeWasDown) {
+    // The binding, rather than a second hardcoded copy of NumLock/tilde.
+    if (!uiWantsKeyboard && input.isBindingCommandJustPressed("TOGGLEAUTORUN")) {
         autoRunning = !autoRunning;
     }
-    tildeWasDown = tildeDown;
     // Helper: cancel auto-follow and notify game handler
     auto doCancelAutoFollow = [&]() {
         if (autoFollowTarget_) {
@@ -2498,16 +2494,15 @@ void CameraController::update(float deltaTime) {
     glm::vec3 forward(std::cos(moveYawRad), std::sin(moveYawRad), 0.0f);
     glm::vec3 right(-std::sin(moveYawRad), std::cos(moveYawRad), 0.0f);
 
-    // Toggle sit/crouch with X key (edge-triggered) - only when UI doesn't want keyboard
-    // Blocked while mounted
+    // Sit/stand follows its binding. While swimming the held command dives
+    // instead; that path still reads xDown further below.
     bool prevSitting = sitting;
-    bool xDown = !uiWantsKeyboard && input.isKeyPressed(SDL_SCANCODE_X);
-    // While swimming, X dives down instead of toggling sit
-    if (xDown && !xKeyWasDown && !mounted_ && !swimming) {
+    bool xDown = !uiWantsKeyboard && input.isBindingCommandHeld("SITORSTAND");
+    if (!mounted_ && !swimming &&
+        input.isBindingCommandJustPressed("SITORSTAND")) {
         sitting = !sitting;
     }
     if (mounted_) sitting = false;
-    xKeyWasDown = xDown;
 
     // Reset camera angles with R key (edge-triggered) - only when UI doesn't want keyboard
     // Does NOT move the player; full reset() is reserved for world-entry/respawn.
@@ -2526,12 +2521,13 @@ void CameraController::update(float deltaTime) {
     // have stood the character up was the one input that could not.
     if (sitting && !movementSuppressed) {
         const bool anyMoveKey = !uiWantsKeyboard && (
-            input.isKeyPressed(SDL_SCANCODE_W) || input.isKeyPressed(SDL_SCANCODE_S) ||
-            input.isKeyPressed(SDL_SCANCODE_A) || input.isKeyPressed(SDL_SCANCODE_D) ||
-            input.isKeyPressed(SDL_SCANCODE_Q) || input.isKeyPressed(SDL_SCANCODE_E) ||
-            input.isKeyPressed(SDL_SCANCODE_UP) || input.isKeyPressed(SDL_SCANCODE_DOWN) ||
-            input.isKeyPressed(SDL_SCANCODE_LEFT) || input.isKeyPressed(SDL_SCANCODE_RIGHT) ||
-            input.isKeyPressed(SDL_SCANCODE_SPACE));
+            input.isBindingCommandHeld("MOVEFORWARD") ||
+            input.isBindingCommandHeld("MOVEBACKWARD") ||
+            input.isBindingCommandHeld("TURNLEFT") ||
+            input.isBindingCommandHeld("TURNRIGHT") ||
+            input.isBindingCommandHeld("STRAFELEFT") ||
+            input.isBindingCommandHeld("STRAFERIGHT") ||
+            input.isBindingCommandHeld("JUMP"));
         // Not gated on uiWantsKeyboard, which is a different question, and not
         // on the interface wanting the mouse either: both flags are already
         // cleared at the press when it did.

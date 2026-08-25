@@ -3,6 +3,9 @@
 #include <SDL2/SDL.h>
 #include <array>
 #include <glm/glm.hpp>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace wowee {
 namespace core {
@@ -12,6 +15,14 @@ public:
     static Input& getInstance();
 
     void update();
+    /// Starts an event-pump iteration. Command press edges are valid until the
+    /// next call, unlike held state which survives across frames.
+    void beginFrame();
+
+    void setBindingCommandHeld(const std::string& command, bool held);
+    [[nodiscard]] bool isBindingCommandHeld(const std::string& command) const;
+    [[nodiscard]] bool isBindingCommandJustPressed(const std::string& command) const;
+    void clearBindingCommands();
 
     // Keyboard
     [[nodiscard]] bool isKeyPressed(SDL_Scancode key) const;
@@ -49,6 +60,8 @@ private:
     std::array<bool, NUM_KEYS> currentKeyState = {};
     std::array<bool, NUM_KEYS> virtualKeyState = {};
     std::array<bool, NUM_KEYS> previousKeyState = {};
+    std::unordered_map<std::string, unsigned> heldBindingCommands_;
+    std::unordered_set<std::string> pressedBindingCommands_;
 
     std::array<bool, NUM_MOUSE_BUTTONS> currentMouseState = {};
     std::array<bool, NUM_MOUSE_BUTTONS> previousMouseState = {};

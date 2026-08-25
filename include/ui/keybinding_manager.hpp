@@ -1,6 +1,7 @@
 #pragma once
 
 #include <imgui.h>
+#include <array>
 #include <string>
 #include <unordered_map>
 #include <memory>
@@ -46,11 +47,11 @@ public:
      * Get the currently bound key for an action.
      */
     [[nodiscard]] ImGuiKey getKeyForAction(Action action) const;
+    [[nodiscard]] std::array<ImGuiKey, 2> getKeysForAction(Action action) const;
 
-    /**
-     * Rebind an action to a different key.
-     */
+    /** Rebind the primary key, or both keys as supplied by FrameXML. */
     void setKeyForAction(Action action, ImGuiKey key);
+    void setKeysForAction(Action action, ImGuiKey primary, ImGuiKey secondary);
 
     /**
      * Reset all keybindings to defaults.
@@ -80,7 +81,7 @@ public:
 private:
     KeybindingManager();
 
-    std::unordered_map<int, ImGuiKey> bindings_;  // action -> key
+    std::unordered_map<int, std::array<ImGuiKey, 2>> bindings_;  // action -> primary, secondary
 
     void initializeDefaults();
 };

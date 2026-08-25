@@ -102,7 +102,8 @@ std::string ExpansionProfile::versionString() const {
     return ss.str();
 }
 
-size_t ExpansionRegistry::initialize(const std::string& dataRoot) {
+size_t ExpansionRegistry::initialize(const std::string& dataRoot,
+                                     const std::string& definitionRoot) {
     profiles_.clear();
     activeId_.clear();
 
@@ -118,6 +119,22 @@ size_t ExpansionRegistry::initialize(const std::string& dataRoot) {
         std::string jsonPath = entry.path().string() + "/expansion.json";
         if (std::filesystem::exists(jsonPath, ec)) {
             loadProfile(jsonPath, entry.path().string());
+        }
+    }
+
+    // Extraction copies the protocol descriptions beside the game data, but
+    // that copy does not update with the client. Keep the realm-local profile
+    // above (it can carry a custom build or Warden key) while taking the tables
+    // the executable understands from its read-only resource tree.
+    if (!definitionRoot.empty()) {
+        for (auto& profile : profiles_) {
+            const auto shipped = std::filesystem::path(definitionRoot) /
+                                 "expansions" / profile.id;
+            if (std::filesystem::is_regular_file(shipped / "opcodes.json", ec) &&
+                std::filesystem::is_regular_file(shipped / "update_fields.json", ec) &&
+                std::filesystem::is_regular_file(shipped / "dbc_layouts.json", ec)) {
+                profile.definitionPath = shipped.string();
+            }
         }
     }
 
@@ -181,6 +198,7 @@ bool ExpansionRegistry::loadProfile(const std::string& jsonPath, const std::stri
     p.name = jsonValue(json, "name");
     p.shortName = jsonValue(json, "shortName");
     p.dataPath = dirPath;
+    p.definitionPath = dirPath;
 
     // Version nested object
     std::string ver = jsonValue(json, "version");
