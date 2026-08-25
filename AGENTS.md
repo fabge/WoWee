@@ -78,6 +78,18 @@ Do not restore the old `Data/fonts` symlink or disable `blizzard_tokenui`; both 
 
 # Validation
 
+Once per checkout, link the extracted data and the built helper tools into the
+paths the sweeps read:
+
+```bash
+tools/link_local_data.sh
+```
+
+Without those links 77 of `sweep_guard`'s 92 sweeps skip themselves and the
+suite reports a clean run it did not earn — which is how the FrameXML half of
+the safety net went missing for as long as it did. `tools/validate.sh` makes
+them itself; a bare `ctest` does not.
+
 Use a separate ignored build directory such as `build-review` for local work. The macOS development setup uses Homebrew dependencies and CMake as documented in `BUILD_INSTRUCTIONS.md`.
 
 Minimum validation before pushing a change:
@@ -96,7 +108,7 @@ Measured on this machine, 2026-08-25:
 | --- | --- |
 | Incremental build after an edit | 4s to ~1 min, depending on the file |
 | `tools/validate.sh --quick` (179 tests, no `sweep_guard`) | ~15s |
-| `sweep_guard` alone | ~3 min |
+| `sweep_guard` alone (92 sweeps, run in parallel) | ~3 min |
 | `tools/validate.sh` (everything) | ~4 min |
 | Release configure and build from scratch | ~5 min |
 | `make_app.sh` plus `install_app.sh` | ~2 min |

@@ -42,6 +42,14 @@ INTERFACE="${DATA_ROOT}/expansions/wotlk/interface"
 
 cd "${REPO_ROOT}"
 
+# The links the sweeps and the FrameXML checks read the real interface through.
+# Made before anything runs, because ctest runs sweep_guard: without them 77 of
+# its 92 sweeps skip themselves and the suite reports a clean run it did not
+# earn. Cheap and idempotent when they already exist.
+if [ -d "${INTERFACE}" ]; then
+    bash tools/link_local_data.sh "${DATA_ROOT}" >/dev/null || true
+fi
+
 failures=()
 skipped=()
 
@@ -86,16 +94,9 @@ elif [ -d "${INTERFACE}" ]; then
     done
 
     step "framexml_frame_emitted_check"
-    # The check resolves the emitter and the interface through paths a checkout
-    # does not have. Links, then removed however this ends.
-    mkdir -p build/bin
-    ln -sf "${BUILD_DIR}/bin/framexml_emit" build/bin/framexml_emit
-    ln -sfn "${INTERFACE}" Data/interface
     if ! python3 tools/framexml_frame_emitted_check.py | tail -3; then
         note_failure "framexml_frame_emitted_check"
     fi
-    rm -f build/bin/framexml_emit Data/interface
-    rmdir build/bin build 2>/dev/null || true
 else
     skipped+=("FrameXML checks (no extracted data at ${INTERFACE})")
 fi

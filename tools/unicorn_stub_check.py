@@ -55,7 +55,11 @@ def compile_db(build_dir):
     candidates = []
     if build_dir:
         candidates.append(pathlib.Path(build_dir) / "compile_commands.json")
-    candidates.append(ROOT / "build" / "compile_commands.json")
+    # build/ is the conventional name and the one CI uses; AGENTS.md has local
+    # work in build-review, and a build/ directory can exist holding only the
+    # helper-tool links, which is not a configured tree.
+    for name in ("build", "build-review", "build-release-arm64", "build-clang"):
+        candidates.append(ROOT / name / "compile_commands.json")
     for path in candidates:
         if path.is_file():
             return path, None

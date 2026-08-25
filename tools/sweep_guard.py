@@ -24,6 +24,7 @@ true the moment someone adds to it, and this one is worth keeping honest
 because it is the argument for what belongs here.
 """
 import argparse
+import concurrent.futures
 import pathlib
 import os
 import re
@@ -1183,6 +1184,13 @@ _SERVER_SRC = os.environ.get("WOWEE_SERVER_SRC", "").strip()
 DATA_INPUTS = {
     "Data/interface": ROOT / "Data/interface",
     "Data/db": ROOT / "Data/db",
+    # The column-agreement sweep scores another expansion's layout against the
+    # WotLK reference, so it needs that expansion's tables as well as the
+    # reference ones. An install with only WotLK extracted has the reference
+    # and nothing to compare, which it reports as zero columns compared - and
+    # zero compared reads as a matcher gone blind rather than as an input it
+    # never had.
+    "Data/expansions/tbc/overlay/db": ROOT / "Data/expansions/tbc/overlay/db",
     # The server source these compare against is a separate local clone, so it
     # is absent everywhere except a machine that has one. WOWEE_SERVER_SRC says
     # where; unset means the sweep has nothing to read and is skipped rather
@@ -1190,6 +1198,20 @@ DATA_INPUTS = {
     # meant a clone anywhere else was skipped as if it were not there.
     "WOWEE_SERVER_SRC": (pathlib.Path(_SERVER_SRC) if _SERVER_SRC else None),
 }
+
+
+def _framexml_run_binary():
+    """The headless runner, wherever this checkout builds.
+
+    It looked only in build/bin, which is neither of the directories AGENTS.md
+    names - so the eleven sweeps that drive the runner skipped even on a
+    machine that had just built it.
+    """
+    for build in ("build", "build-review", "build-release-arm64", "build-clang"):
+        candidate = ROOT / build / "bin" / "framexml_run"
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def missing_input(tool):
@@ -1207,7 +1229,7 @@ def missing_input(tool):
     # drives it has nothing to drive until someone asks for that target. The
     # checks further down already report this as a skip; a sweep in the tables
     # above went to the failure list instead.
-    if "framexml_run" in source and not (ROOT / "build/bin/framexml_run").is_file():
+    if "framexml_run" in source and not _framexml_run_binary():
         return "build/bin/framexml_run"
     return None
 
@@ -1234,8 +1256,17 @@ STDOUT = {}
 
 
 def run(tool):
+    # Its own config root. Several sweeps drive the client through
+    # framexml_run, which writes settings.cfg and bindings.cfg where
+    # WOWEE_CONFIG_ROOT points - so run side by side they read each other's
+    # files, and the one checking that a setting survives a round trip failed
+    # against a file another sweep had rewritten underneath it. Nothing here
+    # wants a shared root; they only ever had one because they ran one at a
+    # time.
+    env = dict(os.environ)
+    env["WOWEE_CONFIG_ROOT"] = str(ROOT / "logs/sweep_guard_config" / tool)
     out = subprocess.run([sys.executable, str(TOOLS / tool)],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, env=env)
     STDOUT[tool] = out.stdout
     return out.stdout + out.stderr
 
@@ -1260,10 +1291,10 @@ def check_rebuild_idiom():
     a plain Show() must fire, the pair must fire both, and a redundant Show()
     on something already shown must stay silent.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "the Hide();Show() rebuild idiom fires OnHide and OnShow"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
     setup = (
         "P = CreateFrame('Frame', 'SweepRebuildProbe', UIParent)\n"
@@ -1324,10 +1355,10 @@ def check_removed_controls_are_gone():
     The first thing checked is a control that must NOT be removed. Without it a
     probe that cannot see visibility at all would report a clean list.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "the controls this client removes are gone, and still name frames"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
 
     header = (ROOT / "include/addons/addon_lua_snippets.hpp").read_text(errors="ignore")
@@ -1407,10 +1438,10 @@ def check_paragraph_wrapping():
     Both halves, because either alone can pass while the other is broken: the
     declared width has to survive, and the height has to follow the text.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "a font string with a declared width wraps inside it"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
     # QuestInfoDescriptionText is the reported one and declares x=285 y=0.
     argv = [
@@ -1458,16 +1489,20 @@ def check_binding_dispatch():
     All three, since each alone can pass while the others are broken: a
     client-owned command must be declined, an unbound key must do nothing, and a
     command the client has no path for must actually run.
+
+    The unbound key was X until the client's native controls were routed through
+    the binding registry: X is WoW's own default for SITORSTAND, so it now
+    resolves and is declined - correctly. G is bound by nothing.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "key presses reach bindings, except ones the client answers"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
     argv = [str(exe), str(data),
             "--bind:W",                                   # MOVEFORWARD, polled
             "--bind:B",                                   # TOGGLEBACKPACK, live
-            "--bind:X",                                   # nothing bound
+            "--bind:G",                                   # nothing bound
             "SetBinding('J', 'OPENALLBAGS')", "--bind:J"] # no client path
     try:
         out = subprocess.run(argv, capture_output=True, text=True, timeout=300)
@@ -1479,7 +1514,7 @@ def check_binding_dispatch():
          "movement is polled every frame; a binding for it would move twice"),
         ("B -> declined TOGGLEBACKPACK",
          "the client opens the bags itself; a binding would shut them again"),
-        ("X -> nothing bound to this key",
+        ("G -> nothing bound to this key",
          "an unbound key must stay silent"),
         ("J -> ran OPENALLBAGS",
          "a command the client has no path for must actually run"),
@@ -1583,10 +1618,10 @@ def check_bags_tile():
     the anchor pass walks and a wrong list is the fault. Three bags in, three
     names out, and each anchored to a different frame.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "bags reopened together are tiled rather than stacked"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
     # The command the client actually sends, read out of the call site rather
     # than written again here - so putting OpenAllBags back would be run by
@@ -1656,10 +1691,10 @@ def check_npc_dialogs_fill():
     string has text, it has height (a paragraph laid on one line reports the
     height of one line however much it holds), and it is visible.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "all four NPC dialogs fill themselves in"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
     # Each panel with the binding that feeds it, because the event is fired
     # twice and what the second one must show is new text.
@@ -1734,10 +1769,10 @@ def check_nothing_unsized():
     they are not there: a clean answer from a run that could not read a single
     texture would mean nothing.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "nothing on a panel is drawn with no room to draw in"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
     for panel in ("CharacterFrame", "FriendsFrame", "MerchantFrame"):
         argv = [str(exe), str(data),
@@ -1785,10 +1820,10 @@ def check_panels_without_the_standin():
     A raise inside a handler is swallowed by the client, so this is the only
     way to see one. Skipped rather than passed without assets.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "panels open, click, draw and raise nothing with no stand-in"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
     env = dict(os.environ, WOWEE_LUA_API_FALLBACK="0")
     for panel in ("AuctionFrame", "CharacterFrame", "MerchantFrame",
@@ -1827,10 +1862,10 @@ def check_dialogs_without_the_standin():
     A harness that reaches a state the client cannot is worse than one that
     reaches less, and a permanent failure here would drown the real ones.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "the event-driven dialogs open, click and raise nothing"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
     env = dict(os.environ, WOWEE_LUA_API_FALLBACK="0")
     for event in ("QUEST_GREETING", "QUEST_DETAIL", "QUEST_PROGRESS",
@@ -1869,10 +1904,10 @@ def check_tooltip_colour_arguments():
     carries money, so with no mail behind it the hover walks straight past.
     Checked directly instead.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "a tooltip colour that is not a number is taken as a default"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, what
     argv = [str(exe), str(data),
             # The exact shapes the interface uses.
@@ -1911,9 +1946,9 @@ def check_without_the_standin():
     WOWEE_BUILD_FRAMEXML_RUN is off by default and most builds will not have
     it. A skip prints as a skip so it is never mistaken for a pass.
     """
-    exe = ROOT / "build" / "bin" / "framexml_run"
+    exe = _framexml_run_binary()
     data = ROOT / "Data"
-    if not exe.exists() or not data.is_dir():
+    if not exe or not data.is_dir():
         return None, "the interface loads with no missing-API stand-in"
     env = dict(os.environ, WOWEE_LUA_API_FALLBACK="0")
     try:
@@ -1954,12 +1989,24 @@ def main():
     for tool, *_ in SENTENCES:
         outputs.setdefault(tool, None)
     skipped = {}
+    wanted = []
     for tool in outputs:
         absent = missing_input(tool)
         if absent:
             skipped[tool] = absent
-            continue
-        outputs[tool] = run(tool)
+        else:
+            wanted.append(tool)
+
+    # In parallel, because every sweep is an independent process reading the
+    # tree and writing nothing: the loop was serial, and three whole-codebase
+    # hygiene scans alone accounted for two minutes of it. STDOUT is the only
+    # shared state and each tool writes its own key.
+    #
+    # The order of `outputs` is unchanged, so the report reads the same.
+    with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(len(wanted), (os.cpu_count() or 4))) as pool:
+        for tool, output in zip(wanted, pool.map(run, wanted)):
+            outputs[tool] = output
 
     failures = []
     for tool, pattern, ceiling, what in CHECKS:
