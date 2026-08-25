@@ -2059,6 +2059,12 @@ wowee_add_test(test_cache_paths
             ${TEST_COMMON_SOURCES}
             ${CMAKE_SOURCE_DIR}/src/core/config_paths.cpp)
 
+# ── test_quest_poi_order ────────────────────────────────────
+# FrameXML allocates completed and incomplete map markers as dense ranges and
+# crashes while hiding them if the API interleaves those groups.
+wowee_add_test(test_quest_poi_order
+    SOURCES test_quest_poi_order.cpp)
+
 # ── test_binding_press_tracker ───────────────────────────────
 # Key-up must release the command selected on key-down even if modifiers or
 # bindings changed while the physical key was held.

@@ -7,6 +7,7 @@
 #include "game/auction_filters.hpp"
 #include "game/game_utils.hpp"
 #include "game/packed_time.hpp"
+#include "game/quest_poi_order.hpp"
 #include "ui/chat/chat_utils.hpp"
 #include "core/logger.hpp"
 
@@ -825,6 +826,17 @@ static std::vector<uint32_t> questsWithPois(game::GameHandler* gh) {
         if (poi.questObjectiveIndex == -2 || poi.data == 0) continue;
         if (std::find(out.begin(), out.end(), poi.data) == out.end()) out.push_back(poi.data);
     }
+
+    // The map's own button arithmetic assumes every completed quest appears
+    // first. Server POIs arrive in no such order: an incomplete quest followed
+    // by a complete one made the complete button start at index two, leaving
+    // index one absent. The next hide pass walked one through the maximum and
+    // raised in QuestPOI.lua while indexing that gap.
+    std::set<uint32_t> completed;
+    for (const auto& quest : gh->getQuestLog()) {
+        if (quest.complete) completed.insert(quest.questId);
+    }
+    game::orderQuestPoisForFrameXml(out, completed);
     return out;
 }
 
@@ -4094,7 +4106,7 @@ void registerQuestLuaAPI(lua_State* L) {
             lua_pushboolean(L, 0);
             return 1;
         }},
-                
+
                 // SetCursor(art) - the pointer's own image, which this client
                 // does not change.
                 {"SetCursor", [](lua_State* L) -> int { (void)L; return 0; }},
