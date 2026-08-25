@@ -128,6 +128,23 @@ constexpr SettingDesc kSchema[] = {
     // this client's own compute shaders and runs either way, but frame
     // generation is the SDK's alone. With the backend off the control would
     // tick, save, and change nothing.
+#if WOWEE_HAS_AMD_FSR3_FRAMEGEN
+    {"framegen", "Frame generation", SettingKind::Bool, 0, 0, 0, "Upscaling", "",
+     "Experimental. FSR 3 only, and known broken on RADV/Mesa.",
+     "", 0, "upscaling=2"},
+#endif
+    // A debugging aid, so it is not built into a release.
+    //
+    // Its own tooltip says the rest of the range is "for finding out why",
+    // which is not a sentence a player can act on: the control has one correct
+    // value and every other setting of it makes the picture worse. It stays in
+    // a debug build, where the finding-out happens.
+#ifndef NDEBUG
+    {"fsrjittersign", "Jitter sign", SettingKind::Float, -2, 2, 0.02f, "Upscaling", "FSR 3 tuning",
+     "Which way FSR 3's sub-pixel jitter is applied. 0.38 is the value that\n"
+     "currently looks right; the rest of the range is for finding out why.", "", 0.38f, "upscaling=2"},
+#endif
+
     // Their own category, which the interface's options panel turns into its
     // own page. They belong beside ground clutter under Graphics, but that
     // page is full - two rows pushed lens flare and sharp stars off the bottom
@@ -145,23 +162,6 @@ constexpr SettingDesc kSchema[] = {
     {"grassdistance", "Distance", SettingKind::Float, 30, 2000, 5, "Grass", "",
      "How far out grass draws, in yards. Past 45 the field thins with\n"
      "distance, and each blade grows in gently as you ride toward it.", "", 150},
-
-#if WOWEE_HAS_AMD_FSR3_FRAMEGEN
-    {"framegen", "Frame generation", SettingKind::Bool, 0, 0, 0, "Upscaling", "",
-     "Experimental. FSR 3 only, and known broken on RADV/Mesa.",
-     "", 0, "upscaling=2"},
-#endif
-    // A debugging aid, so it is not built into a release.
-    //
-    // Its own tooltip says the rest of the range is "for finding out why",
-    // which is not a sentence a player can act on: the control has one correct
-    // value and every other setting of it makes the picture worse. It stays in
-    // a debug build, where the finding-out happens.
-#ifndef NDEBUG
-    {"fsrjittersign", "Jitter sign", SettingKind::Float, -2, 2, 0.02f, "Upscaling", "FSR 3 tuning",
-     "Which way FSR 3's sub-pixel jitter is applied. 0.38 is the value that\n"
-     "currently looks right; the rest of the range is for finding out why.", "", 0.38f, "upscaling=2"},
-#endif
 
     // ----------------------------------------------------------------- Display
     {"fullscreen", "Fullscreen", SettingKind::Bool, 0, 0, 0, "Display", "Screen",
