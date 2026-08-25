@@ -8,6 +8,7 @@ extern "C" {
 }
 #include "addons/addon_globals.hpp"
 #include "ui/framexml_takeover.hpp"
+#include "ui/key_names.hpp"
 #include "core/logger.hpp"
 #include "core/config_paths.hpp"
 #include <sstream>
@@ -724,6 +725,28 @@ bool AddonManager::loadFrameXml(const std::string& frameXmlDir) {
     luaEngine_.executeString(
         std::string("__WoweeOwnsGameMenu = ") +
         (ui::frameXmlOwns(ui::UiElement::GameMenu) ? "true" : "false") + "\n");
+
+    // What the keys are called on the keyboard actually plugged in.
+    //
+    // GetBindingText labels a binding with KEY_<name> out of GlobalStrings,
+    // which is one locale's file - and the extracted interface here is enUS.
+    // Binding the key beside L on a German keyboard therefore offered to bind
+    // Ä and then displayed an apostrophe, which is what that key prints on the
+    // keyboard that file was written for. The binding itself was right the
+    // whole time: it is APOSTROPHE either way, and only the label was wrong.
+    //
+    // Written after the manifest, because GlobalStrings.lua is in it and would
+    // otherwise overwrite these.
+    for (const auto& [name, label] : ui::layoutKeyLabels()) {
+        // The label is whatever character the key prints, and two of those -
+        // the backslash and the quote - end the string they are written into.
+        std::string quoted;
+        for (const char c : label) {
+            if (c == '\\' || c == '"') quoted += '\\';
+            quoted += c;
+        }
+        luaEngine_.executeString("KEY_" + name + " = \"" + quoted + "\"\n");
+    }
 
     // The colour of every kind of chat message, which nothing had ever sent.
     //

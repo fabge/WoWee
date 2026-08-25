@@ -2720,3 +2720,25 @@ TEST_CASE("Ordinary children still stack one above their parent", "[widget][leve
     tree.layout(1920.0f, 1080.0f);
     CHECK(tree.get(inner)->effLevel == tree.get(outer)->effLevel + 1);
 }
+
+// A scroll frame takes the wheel by being one.
+//
+// Nothing in FrameXML calls EnableMouseWheel on a scroll frame:
+// UIPanelScrollFrameTemplate declares OnMouseWheel and stops there, and the
+// only four call sites in the whole interface are two chat frames and one
+// options panel. So the wheel reached no list at all and the camera zoomed
+// instead - the options panels, the key bindings among them.
+TEST_CASE("A scroll frame takes the wheel without being told to", "[widget][wheel]") {
+    WidgetTree tree;
+    const uint32_t scroll = tree.create(WidgetKind::Frame, tree.uiParentId(), "List");
+    CHECK_FALSE(tree.get(scroll)->wheelEnabled);
+
+    tree.markScrollFrame(scroll);
+    CHECK(tree.get(scroll)->wheelEnabled);
+
+    // And a panel that is finished with one still turns it off, which
+    // interfaceoptionspanels.lua does through EnableMouseWheel(false).
+    tree.get(scroll)->wheelEnabled = false;
+    tree.markScrollFrame(scroll);
+    CHECK_FALSE(tree.get(scroll)->wheelEnabled);
+}

@@ -1262,6 +1262,14 @@ int lua_Texture_SetButtonArt(lua_State* L) {
     return 0;
 }
 
+int lua_Frame_IsWheelEnabled(lua_State* L) {
+    auto* tree = wowee::addons::getWidgetTree(L);
+    const uint32_t id = widgetIdOf(L, 1);
+    const auto* w = (tree && id != 0) ? tree->get(id) : nullptr;
+    lua_pushboolean(L, w && w->wheelEnabled);
+    return 1;
+}
+
 int lua_Frame_SetWheelEnabled(lua_State* L) {
     auto* tree = wowee::addons::getWidgetTree(L);
     const uint32_t id = widgetIdOf(L, 1);
@@ -5674,6 +5682,13 @@ void LuaEngine::registerCoreAPI() {
         "function mt:EnableMouseWheel(enable)\n"
         "    __WoweeSetWheelEnabled(self, enable ~= false)\n"
         "end\n"
+        // Its other half, which WoW has and which is the only way to ask
+        // whether a frame takes the wheel at all - a scroll frame takes it by
+        // being one, so the answer is not simply "whatever was passed to
+        // EnableMouseWheel".
+        "function mt:IsMouseWheelEnabled()\n"
+        "    return __WoweeIsWheelEnabled(self)\n"
+        "end\n"
         // A scroll frame's range is recomputed after every layout, so asking
         // for it again has nothing to do - but answering rather than falling
         // through to the no-op list keeps it out of a report whose whole
@@ -6527,6 +6542,9 @@ void LuaEngine::registerCoreAPI() {
     // so it applies to every frame without another entry in the method list.
     lua_pushcfunction(L_, lua_Frame_SetWheelEnabled);
     lua_setglobal(L_, "__WoweeSetWheelEnabled");
+
+    lua_pushcfunction(L_, lua_Frame_IsWheelEnabled);
+    lua_setglobal(L_, "__WoweeIsWheelEnabled");
 
     // Reached from the button-art setters, which are written in Lua so they
     // cover every slot from one loop.

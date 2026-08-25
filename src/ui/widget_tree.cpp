@@ -163,6 +163,16 @@ void WidgetTree::markScrollFrame(uint32_t id) {
     Widget* w = get(id);
     if (!w || w->isScrollFrame) return;
     w->isScrollFrame = true;
+    // And it takes the wheel by being one. Nothing in FrameXML calls
+    // EnableMouseWheel on a scroll frame - UIPanelScrollFrameTemplate declares
+    // OnMouseWheel and stops there, and the four call sites in the whole
+    // interface are two chat frames and one options panel - so the wheel
+    // reached none of them and the camera zoomed instead. That is every list
+    // in the options panels, the key bindings among them.
+    //
+    // EnableMouseWheel(false) still turns it off: that binding writes the same
+    // flag, and interfaceoptionspanels.lua uses it on a panel it is done with.
+    w->wheelEnabled = true;
     scrollFrames_.push_back(id);
 }
 
