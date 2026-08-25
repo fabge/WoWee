@@ -1007,6 +1007,7 @@ set(WOWEE_SOURCES
     src/ui/inventory_screen.cpp
     src/ui/item_tooltip.cpp
     src/ui/spellbook_screen.cpp
+    src/ui/key_names.cpp
     src/ui/keybinding_manager.cpp
 
     # Addons

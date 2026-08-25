@@ -2073,12 +2073,30 @@ target_link_libraries(test_input_binding_state PRIVATE SDL2::SDL2)
 wowee_add_test(test_quest_poi_order
     SOURCES test_quest_poi_order.cpp)
 
+# ── test_key_names ───────────────────────────────────────────
+# The interface's vocabulary for physical inputs. The binding panel and the
+# event pump each used to spell keys their own way, so a key could be bound in
+# the panel and never fire: the panel wrote ImGui's debug names (LEFTARROW,
+# GRAVEACCENT, KEYPAD0) while the pump answered Blizzard's (LEFT, TILDE, and
+# nothing at all). Both now read one table, and this is what holds them to it.
+wowee_add_test(test_key_names
+    SOURCES test_key_names.cpp ${CMAKE_SOURCE_DIR}/src/ui/key_names.cpp
+            ${TEST_COMMON_SOURCES})
+target_link_libraries(test_key_names PRIVATE SDL2::SDL2)
+# imgui for the ImGuiKey enum only: no context is created and nothing is drawn.
+target_include_directories(test_key_names SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/extern/imgui)
+if(APPLE)
+    # The layout-aware half: localizedKeyName reads the active macOS layout, so
+    # the test sees the same names a German keyboard produces in play.
+    target_sources(test_key_names PRIVATE ${CMAKE_SOURCE_DIR}/src/core/macos_platform.mm)
+    target_link_libraries(test_key_names PRIVATE "-framework Carbon" "-framework AppKit")
+endif()
+
 # ── test_binding_press_tracker ───────────────────────────────
 # Key-up must release the command selected on key-down even if modifiers or
 # bindings changed while the physical key was held.
 wowee_add_test(test_binding_press_tracker
     SOURCES test_binding_press_tracker.cpp)
-target_link_libraries(test_binding_press_tracker PRIVATE SDL2::SDL2)
 
 # ── Sanitizers, once every test target exists ────────────────
 # This must be the last thing in this file. The loop walks ALL_TEST_TARGETS,
