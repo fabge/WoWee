@@ -43,7 +43,7 @@ This guide covers common issues and solutions for WoWee.
 ### Black Screen or Rendering Issues
 - **Cause**: Missing shaders, GPU memory allocation failure, or incorrect graphics settings
 - **Solution**:
-  1. Check logs: Look in `logs/wowee.log` (relative to the working directory, typically `build/bin/`) for error messages
+  1. Check logs: Look in `logs/wowee.log` (relative to the working directory, typically `build/bin/`) for error messages. A packaged macOS app uses `~/Library/Logs/Wowee/wowee.log`.
   2. Verify shaders compiled: Check for `.spv` files in `assets/shaders/`
   3. Reduce shadow distance: Press Escape → Video Settings → Lower shadow distance from 300m to 100m
   4. Disable shadows entirely if issues persist
@@ -151,7 +151,7 @@ Graphics Preset: HIGH or ULTRA
 ## Getting Help
 
 ### Check Logs
-Detailed logs are saved to `logs/wowee.log` in the working directory (typically `build/bin/`).
+Detailed logs are saved to `logs/wowee.log` in the working directory (typically `build/bin/`). A packaged macOS app saves them to `~/Library/Logs/Wowee/wowee.log` to avoid modifying its signed bundle.
 
 Include relevant log entries when reporting issues.
 

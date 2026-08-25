@@ -12,6 +12,7 @@
 #include "rendering/animation_controller.hpp"
 #include "core/logger.hpp"
 #include "core/app_clock.hpp"
+#include "core/config_paths.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cctype>
@@ -107,7 +108,9 @@ void ChatHandler::initializeChatLog() {
 
     const char* pathRaw = std::getenv("WOWEE_CHAT_LOG_PATH");
     const bool hasPathOverride = pathRaw && *pathRaw;
-    chatLogPath_ = hasPathOverride ? pathRaw : "logs/chat.log";
+    chatLogPath_ = hasPathOverride
+        ? pathRaw
+        : (std::filesystem::path(core::getConfigRoot()) / "logs" / "chat.log").string();
     if (!hasPathOverride && !isTruthyEnvValue(enabledValue) && !enabledValue.empty()) {
         chatLogPath_ = enabledValue;
     }

@@ -176,7 +176,7 @@ Pick the expansion from the realm/auth screen at launch - the selection is wired
 
 ### General Issues
 - Comprehensive troubleshooting: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- Check `logs/wowee.log` in the working directory for errors
+- Check `logs/wowee.log` in the working directory for errors. A packaged macOS app writes to `~/Library/Logs/Wowee/wowee.log` instead, so its signed bundle remains unchanged.
 - Verify expansion matches server requirements
 
 ## Server Configuration

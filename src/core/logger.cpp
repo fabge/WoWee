@@ -13,6 +13,8 @@
 #include <cstdio>
 #ifdef __ANDROID__
 #include <android/log.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
 #endif
 
 namespace wowee {
@@ -53,6 +55,23 @@ std::filesystem::path perUserLogDir() {
 #endif
     return std::filesystem::temp_directory_path() / "wowee-logs";
 }
+
+#ifdef __APPLE__
+bool runningFromAppBundle() {
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    if (size == 0) return false;
+    std::string executable(size, '\0');
+    if (_NSGetExecutablePath(executable.data(), &size) != 0) return false;
+    if (const auto nul = executable.find('\0'); nul != std::string::npos) {
+        executable.resize(nul);
+    }
+    const std::filesystem::path macosDir = std::filesystem::path(executable).parent_path();
+    return macosDir.filename() == "MacOS" &&
+           macosDir.parent_path().filename() == "Contents" &&
+           macosDir.parent_path().parent_path().extension() == ".app";
+}
+#endif
 
 }  // namespace
 
@@ -95,7 +114,15 @@ void Logger::ensureFile() {
         else if (std::ranges::equal(v, "fatal"sv)) setLogLevel(LogLevel::FATAL);
     }
     std::error_code ec;
-    std::filesystem::create_directories("logs", ec);
+    std::filesystem::path logDir = "logs";
+#ifdef __APPLE__
+    // Contents/Resources is deliberately the working directory of a bundled
+    // build so all relative assets resolve. It is also inside the signed seal:
+    // successfully writing a log there invalidates the notarized bundle after
+    // its first launch. A checkout keeps the convenient local logs/ directory.
+    if (runningFromAppBundle()) logDir = perUserLogDir();
+#endif
+    std::filesystem::create_directories(logDir, ec);
     // WOWEE_LOG_FILE names the file, so a tool run beside the client does not
     // destroy the log the client wrote.
     //
@@ -106,18 +133,13 @@ void Logger::ensureFile() {
     // could be: by being asked to read a log and finding my own run in it.
     const char* logName = std::getenv("WOWEE_LOG_FILE");
     const std::string logFile = (logName && *logName) ? logName : "wowee.log";
-    const std::string logPath = std::string("logs/") + logFile;
-    fileStream.open(logPath, std::ios::out | std::ios::trunc);
+    fileStream.open(logDir / logFile, std::ios::out | std::ios::trunc);
 
-    // Beside the working directory when that is writable, which is how this is
-    // run from a checkout and where every tool expects to find it.
-    //
-    // A bundled application has no such directory. macOS launches an .app with
-    // the working directory set to "/", so create_directories("logs") fails on
-    // a read-only root, the open fails with it, and the client runs with no log
-    // at all. That is not a quiet degradation: the log is the only thing a bug
-    // report has to go on, and the absence looks exactly like a client that
-    // wrote nothing worth saying.
+    // A checkout normally writes beside its working directory, while a macOS
+    // bundle chooses the user log directory above. Keep a fallback for a
+    // read-only checkout, a missing home directory, or any other location that
+    // cannot take the preferred file: running without a log is not a quiet
+    // degradation because the log is the only useful bug-report artifact.
     if (!fileStream.is_open()) {
         const std::filesystem::path fallback = perUserLogDir();
         std::filesystem::create_directories(fallback, ec);

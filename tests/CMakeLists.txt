@@ -2051,6 +2051,14 @@ wowee_add_test(test_grass_cull_math
     SOURCES test_grass_cull_math.cpp
             ${CMAKE_SOURCE_DIR}/src/rendering/frustum.cpp)
 
+# ── test_cache_paths ────────────────────────────────────────
+# Runtime caches must have a writable home outside packaged application files.
+# The explicit override is also what isolates cache-writing test harnesses.
+wowee_add_test(test_cache_paths
+    SOURCES test_cache_paths.cpp
+            ${TEST_COMMON_SOURCES}
+            ${CMAKE_SOURCE_DIR}/src/core/config_paths.cpp)
+
 # ── Sanitizers, once every test target exists ────────────────
 # This must be the last thing in this file. The loop walks ALL_TEST_TARGETS,
 # which register_test_target appends to as each test is declared, so the

@@ -62,7 +62,7 @@ Wowee follows a modular architecture with clear separation of concerns:
 
 **Logger** (`logger.hpp/cpp`) - Thread-safe logging
 - Multiple log levels (DEBUG, INFO, WARNING, ERROR, FATAL)
-- File output to `logs/wowee.log`
+- File output to `logs/wowee.log`, or `~/Library/Logs/Wowee/wowee.log` from a packaged macOS app
 - Configurable via `WOWEE_LOG_LEVEL` env var
 
 ### 2. Rendering System (`src/rendering/`)

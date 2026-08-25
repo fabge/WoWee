@@ -105,6 +105,37 @@ std::string getConfigRoot() {
     return perUserConfigDir();
 }
 
+std::string getCacheRoot() {
+    fs::path root;
+    if (const char* overrideRoot = std::getenv("WOWEE_CACHE_ROOT");
+        overrideRoot && *overrideRoot) {
+        root = overrideRoot;
+    } else {
+#if defined(_WIN32)
+        if (const char* local = std::getenv("LOCALAPPDATA"); local && *local) {
+            root = fs::path(local) / "Wowee" / "cache";
+        } else if (const char* appdata = std::getenv("APPDATA"); appdata && *appdata) {
+            root = fs::path(appdata) / "Wowee" / "cache";
+        }
+#elif defined(__APPLE__)
+        if (const char* home = std::getenv("HOME"); home && *home) {
+            root = fs::path(home) / "Library" / "Caches" / "Wowee";
+        }
+#else
+        if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg && *xdg) {
+            root = fs::path(xdg) / "wowee";
+        } else if (const char* home = std::getenv("HOME"); home && *home) {
+            root = fs::path(home) / ".cache" / "wowee";
+        }
+#endif
+    }
+
+    if (root.empty()) root = fs::temp_directory_path() / "wowee-cache";
+    std::error_code ec;
+    fs::create_directories(root, ec);
+    return root.string();
+}
+
 void migratePortableConfigIfNeeded() {
     std::error_code ec;
     const std::string exeDir = getExecutableDir();

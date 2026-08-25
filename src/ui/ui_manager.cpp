@@ -9,6 +9,7 @@
 #include <chrono>
 #include "core/window.hpp"
 #include "core/application.hpp"
+#include "core/config_paths.hpp"
 #include "core/logger.hpp"
 #include "auth/auth_handler.hpp"
 #include "game/game_handler.hpp"
@@ -93,6 +94,11 @@ bool UIManager::initialize(core::Window* win) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    std::error_code configEc;
+    const std::filesystem::path configRoot = core::getConfigRoot();
+    std::filesystem::create_directories(configRoot, configEc);
+    imguiIniPath_ = (configRoot / "imgui.ini").string();
+    io.IniFilename = imguiIniPath_.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 

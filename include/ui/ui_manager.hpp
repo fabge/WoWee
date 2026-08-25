@@ -135,6 +135,7 @@ private:
 
     // ImGui state
     bool imguiInitialized = false;
+    std::string imguiIniPath_;
 };
 
 } // namespace ui

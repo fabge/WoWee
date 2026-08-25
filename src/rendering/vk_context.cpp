@@ -6,6 +6,7 @@
 
 #include <fstream>
 #include "rendering/vk_utils.hpp"
+#include "core/config_paths.hpp"
 #include "core/logger.hpp"
 #include "pipeline/blp_loader.hpp"
 #include <VkBootstrap.h>
@@ -894,19 +895,7 @@ bool VkContext::createAllocator() {
 // ---------------------------------------------------------------------------
 
 static std::string getPipelineCachePath() {
-#ifdef _WIN32
-    if (const char* appdata = std::getenv("APPDATA"))
-        return std::string(appdata) + "\\wowee\\pipeline_cache.bin";
-    return ".\\pipeline_cache.bin";
-#elif defined(__APPLE__)
-    if (const char* home = std::getenv("HOME"))
-        return std::string(home) + "/Library/Caches/wowee/pipeline_cache.bin";
-    return "./pipeline_cache.bin";
-#else
-    if (const char* home = std::getenv("HOME"))
-        return std::string(home) + "/.local/share/wowee/pipeline_cache.bin";
-    return "./pipeline_cache.bin";
-#endif
+    return (std::filesystem::path(core::getCacheRoot()) / "pipeline_cache.bin").string();
 }
 
 bool VkContext::createPipelineCache() {

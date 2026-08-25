@@ -17,6 +17,12 @@ std::string getExecutableDir();
 //   - Per-user (default): %APPDATA%\wowee on Windows, ~/.wowee elsewhere.
 std::string getConfigRoot();
 
+// Root directory for disposable runtime caches. WOWEE_CACHE_ROOT overrides the
+// platform default, which is %LOCALAPPDATA%\Wowee\cache on Windows,
+// ~/Library/Caches/Wowee on macOS, and $XDG_CACHE_HOME/wowee (or
+// ~/.cache/wowee) elsewhere. The directory is created before it is returned.
+std::string getCacheRoot();
+
 // One-time seeding of portable config. On the first launch after the user drops
 // a "portable.txt" marker next to the executable (before any config folder
 // exists), copies the existing per-user config tree into <exe_dir>/config so

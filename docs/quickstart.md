@@ -90,7 +90,7 @@ Use `BUILD_INSTRUCTIONS.md` for distro-specific package lists.
 
 - Verify auth/world server is running
 - Check host/port settings
-- Check server logs and client logs in `logs/wowee.log`
+- Check server logs and client logs in `logs/wowee.log` (`~/Library/Logs/Wowee/wowee.log` for a packaged macOS app)
 
 ### Missing assets (models/textures/terrain)
 
