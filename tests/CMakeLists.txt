@@ -2078,6 +2078,7 @@ wowee_add_test(test_quest_poi_order
 # bindings changed while the physical key was held.
 wowee_add_test(test_binding_press_tracker
     SOURCES test_binding_press_tracker.cpp)
+target_link_libraries(test_binding_press_tracker PRIVATE SDL2::SDL2)
 
 # ── Sanitizers, once every test target exists ────────────────
 # This must be the last thing in this file. The loop walks ALL_TEST_TARGETS,

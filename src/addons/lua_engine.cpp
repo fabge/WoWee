@@ -6,6 +6,7 @@
 #include "ui/interface_fonts.hpp"
 #include "ui/ui_colors.hpp"
 #include "ui/framexml_takeover.hpp"
+#include "ui/mouse_binding.hpp"
 #include <chrono>
 #include <cfloat>
 #include <cctype>
@@ -8970,9 +8971,12 @@ static std::string wowKeyName(int sym) {
 
 std::string LuaEngine::bindingCommandFor(int sdlKeycode, bool shift, bool ctrl,
                                          bool alt) {
-    if (!L_) return "";
-    std::string key = wowKeyName(sdlKeycode);
-    if (key.empty()) return "";
+    return bindingCommandForName(wowKeyName(sdlKeycode), shift, ctrl, alt);
+}
+
+std::string LuaEngine::bindingCommandForName(std::string key, bool shift,
+                                             bool ctrl, bool alt) {
+    if (!L_ || key.empty()) return "";
     // WoW's own spelling, and the order is part of it: ALT before CTRL before
     // SHIFT, because that is how the binding tables are keyed and a prefix in
     // any other order matches nothing at all.
@@ -9001,18 +9005,41 @@ std::string LuaEngine::bindingCommandFor(int sdlKeycode, bool shift, bool ctrl,
 
 bool LuaEngine::dispatchBindingKey(int sdlKeycode, bool shift, bool ctrl,
                                    bool alt, bool down) {
-    if (!L_) return false;
+    const std::string command = down
+        ? bindingCommandFor(sdlKeycode, shift, ctrl, alt)
+        : std::string();
+    return dispatchResolvedBinding(sdlKeycode, command, down);
+}
 
-    std::string command;
+bool LuaEngine::dispatchBindingMouseButton(int sdlButton, bool shift, bool ctrl,
+                                           bool alt, bool down) {
+    const std::string key = ui::wowMouseButtonName(sdlButton);
+    if (key.empty()) return false;
+    const int pressKey = ui::mouseBindingPressKey(ui::wowMouseButton(sdlButton));
+
+    const bool wasHeld = bindingPresses_.contains(pressKey);
+    const std::string command =
+        down ? bindingCommandForName(key, shift, ctrl, alt) : std::string();
+    dispatchResolvedBinding(pressKey, command, down);
+
+    // Claimed when the button is bound at all, rather than when a binding
+    // script answered: the caller uses this to keep the camera off the click,
+    // and a camera handed one half of a press starts a mouse-look it is never
+    // told to end.
+    return down ? bindingPresses_.contains(pressKey) : wasHeld;
+}
+
+bool LuaEngine::dispatchResolvedBinding(int physicalKey, std::string command,
+                                        bool down) {
+    if (!L_) return false;
     if (down) {
-        command = bindingCommandFor(sdlKeycode, shift, ctrl, alt);
         if (command.empty()) return false;
-        bindingPresses_.press(sdlKeycode, command);
+        bindingPresses_.press(physicalKey, command);
     } else {
         // Release exactly what this physical key pressed. Looking the command
         // up with today's modifiers loses CTRL-X when Ctrl came up before X;
         // looking it up after a rebind can release an entirely different one.
-        auto active = bindingPresses_.release(sdlKeycode);
+        auto active = bindingPresses_.release(physicalKey);
         if (!active) return false;
         command = std::move(*active);
     }

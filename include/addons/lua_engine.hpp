@@ -183,9 +183,15 @@ public:
     /// cancel out.
     bool dispatchBindingKey(int sdlKeycode, bool shift, bool ctrl, bool alt,
                             bool down);
+    bool dispatchBindingMouseButton(int sdlButton, bool shift, bool ctrl,
+                                    bool alt, bool down);
     [[nodiscard]] bool hasActiveBindingKey(int sdlKeycode) const {
         return bindingPresses_.contains(sdlKeycode);
     }
+    /// Forget every press in flight. The releases that would have ended them
+    /// go to whatever has the keyboard and mouse now, so without this a key
+    /// held across an alt-tab is still pressed as far as the tracker knows.
+    void clearBindingPresses() { bindingPresses_.clear(); }
 
     /// The command this key holds, or empty. Whether the client would run it is
     /// a separate question - see clientActsOnBinding - and keeping the two
@@ -280,6 +286,10 @@ private:
     /// in any one silently removed every method that chunk defined - and the
     /// only symptom was a method quietly answering as though unimplemented.
     void bootstrap(const char* code);
+
+    std::string bindingCommandForName(std::string key, bool shift, bool ctrl,
+                                      bool alt);
+    bool dispatchResolvedBinding(int physicalKey, std::string command, bool down);
 
     void callFrameScript(uint32_t wid, const char* script, const char* arg = nullptr);
     /// The same, with a number. A handler that compares its argument against

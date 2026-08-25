@@ -1341,8 +1341,37 @@ void Application::run() {
                 uiManager->processEvent(event);
             }
 
-            // Pass mouse events to camera controller (skip when UI has mouse focus)
-            if (renderer && renderer->getCameraController() && !ImGui::GetIO().WantCaptureMouse) {
+            // What the interface has bound to a mouse button. The binding
+            // panel accepts them and the stock tables carry them, but nothing
+            // dispatched them, so a button bound there did nothing at all.
+            bool mouseBindingTaken = false;
+            if ((event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP) &&
+                addonManager_ && addonsLoaded_) {
+                if (auto* engine = addonManager_->getLuaEngine()) {
+                    const bool down = event.type == SDL_MOUSEBUTTONDOWN;
+                    // A click the interface owns belongs to the frame under
+                    // the cursor, not to a binding - clicking a bag would
+                    // otherwise also fire whatever BUTTON1 is bound to. The
+                    // release is always offered, whatever the cursor is over
+                    // by then: a button pressed on the world and released on a
+                    // frame has to end its press, or the command stays held
+                    // and the character keeps running.
+                    const bool uiOwnsClick = ImGui::GetIO().WantCaptureMouse ||
+                                             engine->mouseOverFrameXml();
+                    if (!down || !uiOwnsClick) {
+                        const SDL_Keymod mods = SDL_GetModState();
+                        mouseBindingTaken = engine->dispatchBindingMouseButton(
+                            event.button.button,
+                            (mods & KMOD_SHIFT) != 0,
+                            (mods & KMOD_CTRL) != 0,
+                            (mods & KMOD_ALT) != 0, down);
+                    }
+                }
+            }
+
+            // Pass mouse events to camera controller (skip when UI or a binding claimed it)
+            if (renderer && renderer->getCameraController() &&
+                !ImGui::GetIO().WantCaptureMouse && !mouseBindingTaken) {
                 if (event.type == SDL_MOUSEMOTION) {
                     renderer->getCameraController()->processMouseMotion(event.motion);
                 }
@@ -1407,7 +1436,17 @@ void Application::run() {
                     const bool playInBackground =
                         addons::storedCVarValue("Sound_EnableSoundWhenGameIsInBG", "0") != "0";
                     audio::AudioEngine::instance().setSuspended(!focused && !playInBackground);
-                    if (!focused) Input::getInstance().clearBindingCommands();
+                    if (!focused) {
+                        Input::getInstance().clearBindingCommands();
+                        // The presses those commands came from, too. The key
+                        // or button comes up somewhere else entirely, so the
+                        // release that would have ended them never arrives.
+                        if (addonManager_) {
+                            if (auto* engine = addonManager_->getLuaEngine()) {
+                                engine->clearBindingPresses();
+                            }
+                        }
+                    }
                 }
             }
             // Typed text, when an addon's edit box is listening for it.
