@@ -7,7 +7,11 @@
 # and a Data/interface that a checkout does not have. Both were run from memory
 # and both were skipped whenever the incantation was not to hand.
 #
-#   tools/validate.sh [build-dir]
+#   tools/validate.sh [build-dir] [--quick]
+#
+# --quick drops the two slow arms: sweep_guard, which is three minutes of the
+# three and a half the suite takes, and the FrameXML checks. It is the pass to
+# run while iterating; the full one is for before a push.
 #
 # WOWEE_DATA_ROOT overrides where the extracted interface is looked for. When
 # there is none, the FrameXML arms report as skipped rather than failing: they
@@ -16,7 +20,16 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${1:-${REPO_ROOT}/build-review}"
+QUICK=0
+ARGS=()
+for arg in "$@"; do
+    case "${arg}" in
+        --quick) QUICK=1 ;;
+        *) ARGS+=("${arg}") ;;
+    esac
+done
+
+BUILD_DIR="${ARGS[0]:-${REPO_ROOT}/build-review}"
 # Absolute, because the frame-emitted check is reached through a symlink two
 # directories down: a relative build directory resolves from there and misses.
 case "${BUILD_DIR}" in
@@ -43,9 +56,18 @@ if ! cmake --build "${BUILD_DIR}" -j "${JOBS}"; then
     exit 1
 fi
 
-step "ctest"
-if ! ctest --test-dir "${BUILD_DIR}" --output-on-failure -j "${JOBS}"; then
-    note_failure "ctest"
+if [ "${QUICK}" -eq 1 ]; then
+    step "ctest (without sweep_guard)"
+    if ! ctest --test-dir "${BUILD_DIR}" --output-on-failure -j "${JOBS}" \
+            -E sweep_guard; then
+        note_failure "ctest"
+    fi
+    skipped+=("sweep_guard and the FrameXML checks (--quick)")
+else
+    step "ctest"
+    if ! ctest --test-dir "${BUILD_DIR}" --output-on-failure -j "${JOBS}"; then
+        note_failure "ctest"
+    fi
 fi
 
 step "whitespace"
@@ -53,7 +75,9 @@ if ! git diff --check; then
     note_failure "git diff --check"
 fi
 
-if [ -d "${INTERFACE}" ]; then
+if [ "${QUICK}" -eq 1 ]; then
+    :
+elif [ -d "${INTERFACE}" ]; then
     for tree in framexml addons; do
         step "framexml_compile_check (${tree})"
         if ! "${BUILD_DIR}/bin/framexml_compile_check" "${INTERFACE}/${tree}" | tail -1; then

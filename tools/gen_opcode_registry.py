@@ -57,6 +57,13 @@ def load_aliases(path: Path, canonical: set[str]) -> dict[str, str]:
 
 def write_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Only when it actually changed. This target runs on every build, and the
+    # headers it writes are included across the packet layer - rewriting them
+    # with identical content still moved their timestamps, so every build was a
+    # rebuild of a third of the client. A no-op build cost 75 seconds for this
+    # reason alone.
+    if path.exists() and path.read_text() == content:
+        return
     path.write_text(content)
 
 
@@ -78,14 +85,12 @@ def main() -> int:
     # {.first = ..., .second = ...}. Nothing here can be fixed by hand -- the
     # file says DO NOT EDIT and means it -- so the suppression belongs in the
     # generator that writes them.
-    name_lines = ["// GENERATED FILE - DO NOT EDIT", "",
-                  "// NOLINTBEGIN(modernize-use-designated-initializers)"]
+    name_lines = ["// GENERATED FILE - DO NOT EDIT", "", "// NOLINTBEGIN(modernize-use-designated-initializers)"]
     name_lines += [f'    {{"{name}", LogicalOpcode::{name}}},' for name in canonical_names]
     name_lines += ["// NOLINTEND(modernize-use-designated-initializers)"]
     names_content = "\n".join(name_lines) + "\n"
 
-    alias_lines = ["// GENERATED FILE - DO NOT EDIT", "",
-                   "// NOLINTBEGIN(modernize-use-designated-initializers)"]
+    alias_lines = ["// GENERATED FILE - DO NOT EDIT", "", "// NOLINTBEGIN(modernize-use-designated-initializers)"]
     alias_lines += [f'    {{"{alias}", "{target}"}},' for alias, target in aliases.items()]
     alias_lines += ["// NOLINTEND(modernize-use-designated-initializers)"]
     aliases_content = "\n".join(alias_lines) + "\n"
@@ -95,8 +100,7 @@ def main() -> int:
     write_file(inc_dir / "opcode_aliases_generated.inc", aliases_content)
 
     print(
-        f"generated: canonical={len(canonical_names)} aliases={len(aliases)} "
-        f"-> include/game/opcode_*_generated.inc"
+        f"generated: canonical={len(canonical_names)} aliases={len(aliases)} -> include/game/opcode_*_generated.inc",
     )
     return 0
 

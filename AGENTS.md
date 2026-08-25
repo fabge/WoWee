@@ -8,7 +8,7 @@ This repository is Fabian's maintained WoWee fork. The fork exists to track upst
 - `origin`: `https://github.com/fabge/WoWee.git` — Fabian's fork and the writable remote
 - `upstream`: `https://github.com/Kelsidavis/WoWee.git` — canonical project
 - `master` is the fork's integration branch. It should contain current upstream plus our validated local fixes.
-- Develop each logical fix on a short-lived topic branch, keep commits focused, then merge it into the fork's `master` after validation.
+- Work directly on `master`. This is a personal fork with one author: a topic branch and a merge commit per fix buy nothing here and cost a branch to name, switch to, merge and push. Keep each commit focused and push it when it is validated.
 - Do not force-push `master`. Prefer merging current `upstream/master` into it so our local patch history remains stable and conflicts are explicit.
 
 A routine upstream refresh is:
@@ -80,19 +80,33 @@ Do not restore the old `Data/fonts` symlink or disable `blizzard_tokenui`; both 
 
 Use a separate ignored build directory such as `build-review` for local work. The macOS development setup uses Homebrew dependencies and CMake as documented in `BUILD_INSTRUCTIONS.md`.
 
-Minimum validation for every code change:
+Minimum validation before pushing a change:
 
 ```bash
 tools/validate.sh
 ```
 
-That builds, runs CTest, checks whitespace, and — on this machine, where the extracted WotLK interface exists — runs both `framexml_compile_check` trees and the frame-emitted check against it, reporting one summary. The individual steps are still worth running directly while iterating:
+That builds, runs CTest, checks whitespace, and — on this machine, where the extracted WotLK interface exists — runs both `framexml_compile_check` trees and the frame-emitted check against it, reporting one summary.
 
-```bash
-cmake --build build-review --parallel "$(sysctl -n hw.logicalcpu)"
-ctest --test-dir build-review --output-on-failure -j "$(sysctl -n hw.logicalcpu)"
-git diff --check
-```
+## What each step costs, and when to pay it
+
+Measured on this machine, 2026-08-25:
+
+| Step | Time |
+| --- | --- |
+| Incremental build after an edit | 4s to ~1 min, depending on the file |
+| `tools/validate.sh --quick` (179 tests, no `sweep_guard`) | ~15s |
+| `sweep_guard` alone | ~3 min |
+| `tools/validate.sh` (everything) | ~4 min |
+| Release configure and build from scratch | ~5 min |
+| `make_app.sh` plus `install_app.sh` | ~2 min |
+
+`sweep_guard` is 95% of the test time on its own. So:
+
+- While iterating, build the target you changed and run the test that covers it, or `tools/validate.sh --quick`. Seconds, and it catches nearly everything.
+- Run the full `tools/validate.sh` once, when the change is finished and about to be pushed. Not after every edit.
+- The release build, the app bundle and the install are for when the change should reach the installed client — when it is asked for, or when a play session needs it. They are not part of validating a change.
+- Do not re-run an expensive step to confirm something an earlier run in the same session already showed.
 
 The current suite has 180 CTest checks. Two FrameXML compilation checks skip in a public checkout because the repository cannot contain Blizzard interface data; `tools/validate.sh` reports the FrameXML arms as skipped there rather than failing. The FrameXML checks must report zero failed compilations, zero unparsed XML files, and zero unbuilt elements. Gameplay, rendering, movement, packet, or FrameXML lifecycle changes also require a manual smoke test against the configured ChromieCraft WotLK server.
 
@@ -105,7 +119,7 @@ Do not dismiss a failing custom sweep as noise. The repository's tools encode ma
 - Add a regression test for every pure function, parser edge case, persistence rule, or platform path rule that can be tested headlessly.
 - Do not patch symptoms in extracted game files, the installed app bundle, or generated build output.
 - Keep local-only diagnostics behind explicit flags and write their output outside the app bundle.
-- Record fixes as conventional commits and push them to `origin` promptly.
+- Record fixes as conventional commits on `master` and push them to `origin` promptly.
 - Upstream pull requests should remain focused. Split unrelated runtime-path, security, UI-contract, and gameplay fixes into separate PRs even if they coexist on the fork's integration branch.
 
 Known runtime issue still under investigation: `QuestPOI.lua` can attempt to hide a missing POI button. Do not add a nil guard to Blizzard's Lua or a speculative C++ workaround. Reproduce and identify why the recorded maximum button index can refer to a missing global frame, then fix that lifecycle mismatch with a regression test.
