@@ -126,3 +126,17 @@ TEST_CASE("a saved binding is checked against the vocabulary", "[bindings][keys]
     CHECK_FALSE(isBindableName("BUTTON32"));
     CHECK_FALSE(isBindableName("BUTTONX"));
 }
+
+// The labels shown on keys the interface names by position. The names are
+// fixed - APOSTROPHE is the key beside L wherever it is - and the label on it
+// is whatever the keyboard prints there, which is a question only the platform
+// can answer. What can be checked anywhere is that nothing here invents a name.
+TEST_CASE("layout labels belong to keys the interface knows", "[bindings][keys]") {
+    for (const auto& [name, label] : layoutKeyLabels()) {
+        CHECK(isBindableName(name));
+        // Letters and digits are their own label and have no KEY_ entry to
+        // override; only the keys named by position appear.
+        CHECK(name.size() > 1);
+        CHECK_FALSE(label.empty());
+    }
+}

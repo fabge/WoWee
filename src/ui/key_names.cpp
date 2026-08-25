@@ -152,6 +152,21 @@ ImGuiKey imGuiKeyFromWowName(const std::string& name) {
     return ImGuiKey_None;
 }
 
+std::vector<std::pair<std::string, std::string>> layoutKeyLabels() {
+    std::vector<std::pair<std::string, std::string>> labels;
+#ifdef __APPLE__
+    for (const auto& entry : keyTable()) {
+        // Only the keys named by position. A letter or a digit is its own
+        // label, and the interface has no KEY_ entry for either.
+        if (entry.name.size() <= 1) continue;
+        std::string label = core::localizedKeyLabel(entry.scancode);
+        if (label.empty() || label == entry.name) continue;
+        labels.emplace_back(entry.name, std::move(label));
+    }
+#endif
+    return labels;
+}
+
 bool isBindableName(const std::string& name) {
     std::string key = name;
     // ALT before CTRL before SHIFT, which is how the binding tables are keyed.

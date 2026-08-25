@@ -112,5 +112,23 @@ std::string localizedKeyName(int sdlScancode) {
     }
 }
 
+std::string localizedKeyLabel(int sdlScancode) {
+    const std::string name = localizedKeyName(sdlScancode);
+    if (name.empty()) return name;
+    @autoreleasepool {
+        NSString* value = [NSString stringWithUTF8String:name.c_str()];
+        if (!value) return name;
+        // The layout's own casing rules, not ASCII's: this is the difference
+        // between A and Ä having an uppercase form at all.
+        NSString* upper = [value uppercaseString];
+        // Unless uppercasing turns one key into two letters. German ß
+        // uppercases to SS, and a key labelled SS is not a key anyone can find
+        // on their keyboard - WoW's own deDE files label it ß.
+        if ([upper length] != [value length]) upper = value;
+        const char* utf8 = [upper UTF8String];
+        return utf8 ? std::string(utf8) : name;
+    }
+}
+
 } // namespace core
 } // namespace wowee

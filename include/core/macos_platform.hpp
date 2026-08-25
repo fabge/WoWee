@@ -30,6 +30,11 @@ void disablePressAndHoldAccents();
 /// than as the ANSI position's Y.
 std::string localizedKeyName(int sdlScancode);
 
+/// The same character as it should be shown on a binding: uppercased the way
+/// the layout's own language uppercases it, so the German key beside L reads Ä
+/// rather than ä. Empty for keys with no printable layout mapping.
+std::string localizedKeyLabel(int sdlScancode);
+
 } // namespace core
 } // namespace wowee
 

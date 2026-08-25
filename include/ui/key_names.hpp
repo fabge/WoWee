@@ -3,6 +3,8 @@
 #include <imgui.h>
 
 #include <string>
+#include <utility>
+#include <vector>
 
 /// The interface's vocabulary for physical inputs, in one place.
 ///
@@ -51,6 +53,19 @@ namespace wowee::ui {
 /// listed and never fire, and the caller is expected to fall back to the
 /// default rather than keep it.
 [[nodiscard]] bool isBindableName(const std::string& name);
+
+/// What the active keyboard layout prints on the keys the interface names by
+/// position, as (binding name, label) pairs.
+///
+/// The names are stable - APOSTROPHE is the key beside L wherever it is - but
+/// the label on it is not, and the interface takes its labels from KEY_* in
+/// GlobalStrings, which is one locale's answer. Reading enUS on a German
+/// keyboard shows an apostrophe for Ä and a semicolon for Ö, which is what the
+/// key would print on the keyboard Blizzard shipped that file for.
+///
+/// Empty where the platform cannot say. Only macOS can here; another platform
+/// wanting this needs its own layout query behind core::localizedKeyLabel.
+[[nodiscard]] std::vector<std::pair<std::string, std::string>> layoutKeyLabels();
 
 /// WoW's mouse button numbering, which is not SDL's: the interface calls the
 /// right button BUTTON2 and the middle one BUTTON3, while SDL orders them the

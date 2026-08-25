@@ -24,6 +24,8 @@
 #include "rendering/footprint_renderer.hpp"
 #include "rendering/loading_screen.hpp"
 #include "addons/addon_manager.hpp"
+#include "addons/lua_engine.hpp"
+#include <imgui.h>
 #include "pipeline/asset_manager.hpp"
 #include "pipeline/dbc_layout.hpp"
 #include "pipeline/m2_loader.hpp"
@@ -1259,6 +1261,22 @@ void WorldLoader::loadOnlineWorldTerrain(uint32_t mapId, float x, float y, float
                         break;
                     }
                 }
+            }
+        }
+        // The screen size, before anything measures against it.
+        //
+        // The widget tree is laid out from the render stage, which runs only
+        // while IN_GAME - and this is the call that enters IN_GAME, so nothing
+        // had laid it out yet. Every GetLeft, GetRight and GetWidth asked
+        // while the interface builds itself therefore answered zero, and the
+        // decisions taken from those answers stuck: FCF_UpdateButtonSide reads
+        // the chat frame's edges to put its buttons on the side nearer the
+        // screen edge, saw zero for both, and put them on the right - where
+        // they stayed until the first drag recomputed it with real geometry.
+        if (auto* engine = addonManager_->getLuaEngine()) {
+            const ImGuiIO& io = ImGui::GetIO();
+            if (io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
+                engine->widgets().layout(io.DisplaySize.x, io.DisplaySize.y);
             }
         }
         addonManager_->loadAllAddons();

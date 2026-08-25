@@ -294,7 +294,17 @@ int main(int argc, char** argv) {
         int faces = 0;
         for (const char* name : {"frizqt__.ttf", "morpheus.ttf", "skurri.ttf",
                                  "arialn.ttf", "friends.ttf"}) {
-            const std::string file = assetPath + "/misc/fonts/" + name;
+            // Where the extractor puts them now, and where it used to. ImGui
+            // asserts and aborts on a font file it cannot open rather than
+            // answering null, so the file is checked before it is offered -
+            // this tool was unusable on a 3.x data directory for that reason.
+            std::string file = assetPath + "/fonts/" + name;
+            for (const std::string& other : {assetPath + "/expansions/wotlk/fonts/" + name,
+                                             assetPath + "/misc/fonts/" + name}) {
+                if (std::filesystem::exists(file)) break;
+                file = other;
+            }
+            if (!std::filesystem::exists(file)) continue;
             if (ImFont* f = io.Fonts->AddFontFromFileTTF(file.c_str(), 16.0f)) {
                 wowee::ui::registerInterfaceFace(name, f);
                 ++faces;
