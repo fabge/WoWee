@@ -17,6 +17,12 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${1:-${REPO_ROOT}/build-review}"
+# Absolute, because the frame-emitted check is reached through a symlink two
+# directories down: a relative build directory resolves from there and misses.
+case "${BUILD_DIR}" in
+    /*) ;;
+    *) BUILD_DIR="${REPO_ROOT}/${BUILD_DIR}" ;;
+esac
 JOBS="$(sysctl -n hw.logicalcpu 2>/dev/null || nproc)"
 DATA_ROOT="${WOWEE_DATA_ROOT:-${HOME}/Library/Application Support/Wowee/Data}"
 INTERFACE="${DATA_ROOT}/expansions/wotlk/interface"
