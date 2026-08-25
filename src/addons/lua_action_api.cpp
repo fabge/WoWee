@@ -1741,7 +1741,7 @@ static int lua_GetBindingKey(lua_State* L) {
     return 2;
 }
 
-// GetBindingAction(key) → command (or nil)
+// GetBindingAction(key) → command, or the empty string when unbound.
 static int lua_GetBindingAction(lua_State* L) {
     seedBindingDefaults();
     const std::string key = luaL_checkstring(L, 1);
@@ -1751,7 +1751,10 @@ static int lua_GetBindingAction(lua_State* L) {
             return 1;
         }
     }
-    lua_pushnil(L);
+    // Blizzard_BindingUI compares this result with "" before handing it to
+    // GetBindingKey. Returning nil makes that comparison true and the next call
+    // raises while trying to read nil as a command.
+    lua_pushliteral(L, "");
     return 1;
 }
 
