@@ -274,8 +274,22 @@ void InventoryHandler::registerOpcodes(DispatchTable& table) {
         pendingLootMoneyNotifyTimer_ = 0.0f;
         announceLootMoney(notifyGuid, amount);
         if (owner_.addonEventCallbackRef()) owner_.addonEventCallbackRef()("PLAYER_MONEY", {});
+        if (notifyGuid == currentLoot_.lootGuid && currentLoot_.gold > 0) {
+            currentLoot_.gold = 0;
+            if (owner_.addonEventCallbackRef()) {
+                owner_.addonEventCallbackRef()("LOOT_SLOT_CLEARED", {"1"});
+            }
+            if (lootWindowOpen_ && currentLoot_.items.empty()) closeLoot();
+        }
     };
-    table[Opcode::SMSG_LOOT_CLEAR_MONEY] = [](network::Packet& /*packet*/) {};
+    table[Opcode::SMSG_LOOT_CLEAR_MONEY] = [this](network::Packet& /*packet*/) {
+        if (currentLoot_.gold == 0) return;
+        currentLoot_.gold = 0;
+        if (owner_.addonEventCallbackRef()) {
+            owner_.addonEventCallbackRef()("LOOT_SLOT_CLEARED", {"1"});
+        }
+        if (lootWindowOpen_ && currentLoot_.items.empty()) closeLoot();
+    };
 
     // ---- Read item (books) (moved from GameHandler) ----
     table[Opcode::SMSG_READ_ITEM_OK] = [](network::Packet& packet) {
@@ -1040,10 +1054,13 @@ void InventoryHandler::registerOpcodes(DispatchTable& table) {
 // Loot
 // ============================================================
 
-void InventoryHandler::lootTarget(uint64_t targetGuid) {
+void InventoryHandler::lootTarget(uint64_t targetGuid, bool autoLootModifierHeld) {
     if (owner_.getState() != WorldState::IN_WORLD || !owner_.getSocket()) return;
     currentLoot_.items.clear();
-    LOG_INFO("Looting target 0x", std::hex, targetGuid, std::dec);
+    requestedLootGuid_ = targetGuid;
+    requestedAutoLoot_ = autoLoot_ != autoLootModifierHeld;
+    LOG_INFO("Looting target 0x", std::hex, targetGuid, std::dec,
+             " auto=", requestedAutoLoot_);
     auto packet = LootPacket::build(targetGuid);
     owner_.getSocket()->send(packet);
 }
@@ -1057,10 +1074,9 @@ void InventoryHandler::lootItem(uint8_t slotIndex, bool confirmed) {
         // answers it with GetLootSlotInfo, which counts the coin as a slot of
         // its own and the items after it.
         const auto& loot = owner_.getCurrentLoot();
-        int display = (loot.gold > 0) ? 1 : 0;
         for (const auto& item : loot.items) {
-            ++display;
             if (item.slotIndex != slotIndex) continue;
+            const int display = loot.displaySlotFor(item.slotIndex);
             const auto* info = owner_.getItemInfo(item.itemId);
             if (info && info->valid && info->bindType == 1) {
                 pendingLootActive_ = true;
@@ -1133,8 +1149,13 @@ void InventoryHandler::handleLootResponse(network::Packet& packet) {
     const bool wotlkLoot = isActiveExpansion("wotlk");
     if (!LootResponseParser::parse(packet, currentLoot_, wotlkLoot)) return;
     const bool hasLoot = !currentLoot_.items.empty() || currentLoot_.gold > 0;
+    const bool autoLootThis = currentLoot_.lootGuid == requestedLootGuid_
+        ? requestedAutoLoot_
+        : autoLoot_;
+    if (currentLoot_.lootGuid == requestedLootGuid_) requestedLootGuid_ = 0;
     LOG_INFO("SMSG_LOOT_RESPONSE: guid=0x", std::hex, currentLoot_.lootGuid, std::dec,
-             " items=", currentLoot_.items.size(), " gold=", currentLoot_.gold);
+             " items=", currentLoot_.items.size(), " gold=", currentLoot_.gold,
+             " auto=", autoLootThis);
     auto& lastInteractedGoGuid = owner_.lastInteractedGoGuidRef();
     const bool isLastInteractedGoLoot =
         lastInteractedGoGuid != 0 && currentLoot_.lootGuid == lastInteractedGoGuid;
@@ -1152,7 +1173,7 @@ void InventoryHandler::handleLootResponse(network::Packet& packet) {
         // closes with CloseLoot(autoLoot == 0) - so an absent argument
         // compares false and tells the server the window opened when it did
         // not.
-        owner_.addonEventCallbackRef()("LOOT_OPENED", {autoLoot_ ? "1" : "0"});
+        owner_.addonEventCallbackRef()("LOOT_OPENED", {autoLootThis ? "1" : "0"});
         owner_.addonEventCallbackRef()("LOOT_READY", {});
     }
     if (currentLoot_.lootGuid == lastInteractedGoGuid) {
@@ -1178,7 +1199,6 @@ void InventoryHandler::handleLootResponse(network::Packet& packet) {
             pendingLootMoneyNotifyTimer_ = suppressFallback ? 0.0f : 0.4f;
             auto pkt = LootMoneyPacket::build();
             owner_.getSocket()->send(pkt);
-            currentLoot_.gold = 0;
         }
     }
 
@@ -1186,7 +1206,7 @@ void InventoryHandler::handleLootResponse(network::Packet& packet) {
     // Autostore their returned items even when general creature auto-loot is off;
     // otherwise right-click opens server loot but never grants the objective item.
     const bool autoStoreGameObjectLoot = isLastInteractedGoLoot;
-    if ((autoLoot_ || autoStoreGameObjectLoot) &&
+    if ((autoLootThis || autoStoreGameObjectLoot) &&
         owner_.getState() == WorldState::IN_WORLD && owner_.getSocket() &&
         !localLoot.itemAutoLootSent) {
         for (const auto& item : currentLoot_.items) {
@@ -1232,8 +1252,11 @@ void InventoryHandler::handleLootRemoved(network::Packet& packet) {
             // updates the open loot window; announcing here duplicated chat and
             // the loot sound for the same item.
             currentLoot_.items.erase(it);
-            if (owner_.addonEventCallbackRef())
-                owner_.addonEventCallbackRef()("LOOT_SLOT_CLEARED", {std::to_string(slotIndex + 1)});
+            if (owner_.addonEventCallbackRef()) {
+                owner_.addonEventCallbackRef()(
+                    "LOOT_SLOT_CLEARED",
+                    {std::to_string(currentLoot_.displaySlotFor(slotIndex))});
+            }
             break;
         }
     }
@@ -4133,6 +4156,18 @@ void InventoryHandler::handleItemQueryResponse(network::Packet& packet) {
             owner_.isQuestRequestItemsOpen() || owner_.isQuestOfferRewardOpen()) {
             if (owner_.addonEventCallbackRef()) {
                 owner_.addonEventCallbackRef()("QUEST_ITEM_UPDATE", {});
+            }
+        }
+
+        // Loot opens before item queries return. The first draw therefore uses
+        // Item #<id> and no icon; LOOT_SLOT_CHANGED is the interface's contract
+        // for rebuilding one row after its data becomes available.
+        if (lootWindowOpen_ && owner_.addonEventCallbackRef()) {
+            for (const auto& item : currentLoot_.items) {
+                if (item.itemId != data.entry) continue;
+                owner_.addonEventCallbackRef()(
+                    "LOOT_SLOT_CHANGED",
+                    {std::to_string(currentLoot_.displaySlotFor(item.slotIndex))});
             }
         }
 

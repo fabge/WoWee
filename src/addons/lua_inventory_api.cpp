@@ -2846,10 +2846,7 @@ static bool lootHasCoin(game::GameHandler* gh) {
 /// the end.
 static const game::LootItem* lootItemAtSlot(game::GameHandler* gh, int slot) {
     if (!gh || !gh->isLootWindowOpen() || slot < 1) return nullptr;
-    const auto& loot = gh->getCurrentLoot();
-    const int itemIndex = lootHasCoin(gh) ? slot - 1 : slot;   // 1-based already
-    if (itemIndex < 1 || itemIndex > static_cast<int>(loot.items.size())) return nullptr;
-    return &loot.items[itemIndex - 1];
+    return gh->getCurrentLoot().itemAtDisplaySlot(slot);
 }
 
 // LootSlotIsCoin(slot) → whether this slot is the money
@@ -2880,8 +2877,16 @@ static int lua_IsFishingLoot(lua_State* L) {
 static int lua_GetNumLootItems(lua_State* L) {
     auto* gh = getGameHandler(L);
     if (!gh || !gh->isLootWindowOpen()) { return luaReturnZero(L); }
-    // Coin counts as a slot, which is what the loot frame iterates over.
-    lua_pushnumber(L, gh->getCurrentLoot().items.size() + (lootHasCoin(gh) ? 1 : 0));
+    // Preserve wire slot positions after one is cleared. Compacting the count
+    // shifts every later button onto a different item while FrameXML still
+    // holds the original slot number.
+    const auto& loot = gh->getCurrentLoot();
+    size_t slots = loot.coinSlotOffset ? 1 : 0;
+    for (const auto& item : loot.items) {
+        slots = std::max(slots, static_cast<size_t>(item.slotIndex) + 1 +
+                               (loot.coinSlotOffset ? 1 : 0));
+    }
+    lua_pushnumber(L, slots);
     return 1;
 }
 
@@ -2910,8 +2915,14 @@ static int lua_GetLootSlotInfo(lua_State* L) {
 
     // texture (icon path from ItemDisplayInfo.dbc)
     std::string icon;
-    if (info && info->displayInfoId != 0) {
-        icon = gh->getItemIconPath(info->displayInfoId);
+    // The loot packet already carries the display id. Item-query metadata may
+    // arrive after LOOT_OPENED, so waiting for it leaves an Item #<id> row with
+    // no picture even though the server supplied enough to draw the icon.
+    const uint32_t displayInfoId = info && info->displayInfoId != 0
+        ? info->displayInfoId
+        : item.displayInfoId;
+    if (displayInfoId != 0) {
+        icon = gh->getItemIconPath(displayInfoId);
     }
     if (!icon.empty()) lua_pushstring(L, icon.c_str());
     else lua_pushnil(L);
@@ -4593,7 +4604,7 @@ void registerInventoryLuaAPI(lua_State* L) {
             uint32_t itemId = r->auctions[index - 1].itemEntry;
             const auto* info = gh->getItemInfo(itemId);
             if (!info) { return luaReturnNil(L); }
-        
+
     const std::string link = game::itemChatLink(itemId, static_cast<uint32_t>(info->quality), info->name);
             lua_pushstring(L, link.c_str());
             return 1;

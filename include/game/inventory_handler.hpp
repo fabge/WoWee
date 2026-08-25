@@ -90,7 +90,9 @@ public:
     void setTradeGold(uint64_t amount);
 
     // ---- Loot ----
-    void lootTarget(uint64_t targetGuid);
+    /// Request loot. Holding the configured auto-loot modifier reverses the
+    /// persistent auto-loot setting for this one corpse, as the original client does.
+    void lootTarget(uint64_t targetGuid, bool autoLootModifierHeld = false);
     /// Take the coin on the corpse. Its own request, with no slot:
     /// money is not one of the numbered loot slots on the wire even
     /// though the interface shows it as one.
@@ -622,6 +624,8 @@ private:
     // ---- Loot state ----
     bool lootWindowOpen_ = false;
     bool autoLoot_ = false;
+    uint64_t requestedLootGuid_ = 0;
+    bool requestedAutoLoot_ = false;
     bool autoSellGrey_ = false;
     bool autoRepair_ = false;
     LootResponseData currentLoot_;
