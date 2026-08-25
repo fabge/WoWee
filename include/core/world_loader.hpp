@@ -36,7 +36,6 @@ public:
                 EntitySpawner* entitySpawner,
                 AppearanceComposer* appearanceComposer,
                 Window* window,
-                game::World* world,
                 addons::AddonManager* addonManager);
     ~WorldLoader();
 
@@ -121,7 +120,14 @@ private:
     EntitySpawner* entitySpawner_;
     AppearanceComposer* appearanceComposer_;
     Window* window_;
-    game::World* world_;
+    /// The world is asked of the application rather than remembered.
+    ///
+    /// It used to be a pointer taken once at construction, and logging out
+    /// resets the application's world - so the next session ran the warmup
+    /// against freed memory, past a null check that a dangling pointer walks
+    /// straight through. Nothing here outlives the application, so asking is
+    /// free and cannot go stale.
+    [[nodiscard]] game::World* world() const;
     addons::AddonManager* addonManager_;
 
     uint32_t loadedMapId_ = 0xFFFFFFFF;  // Map ID of currently loaded terrain (0xFFFFFFFF = none)

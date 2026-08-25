@@ -483,3 +483,44 @@ TEST_CASE("Spell.dbc's timing columns come from the file's shape", "[dbc][spell]
         CHECK(f.categoryRecoveryTime == 0);
     }
 }
+
+// A record narrower than the field count its own header declares.
+//
+// The truncation check passes - the file really does hold recordCount *
+// recordSize bytes - and the accessors bound the field index against
+// fieldCount before indexing at the recordSize stride. So a header claiming
+// 1024 fields in a 4-byte record had getUInt32 reading four kilobytes past a
+// four-byte record, and past the end of the buffer on the last one. Extracted
+// DBCs are local files, but they are still input, and a corrupted one should
+// be refused rather than read from.
+TEST_CASE("DBC records narrower than their field count are refused", "[dbc]") {
+    auto header = [](uint32_t recordCount, uint32_t fieldCount,
+                     uint32_t recordSize, uint32_t stringBlockSize) {
+        std::vector<uint8_t> data = {'W', 'D', 'B', 'C'};
+        for (uint32_t value : {recordCount, fieldCount, recordSize, stringBlockSize}) {
+            for (int shift = 0; shift < 32; shift += 8) {
+                data.push_back(static_cast<uint8_t>((value >> shift) & 0xFF));
+            }
+        }
+        return data;
+    };
+
+    SECTION("one four-byte record claiming 1024 fields") {
+        std::vector<uint8_t> data = header(1, 1024, 4, 0);
+        data.insert(data.end(), 4, 0xAB);   // the single record
+
+        DBCFile dbc;
+        CHECK_FALSE(dbc.load(data));
+        CHECK_FALSE(dbc.isLoaded());
+    }
+
+    SECTION("a record wider than its fields is still fine") {
+        // Padding and unread columns are ordinary; the stride walks over them.
+        std::vector<uint8_t> data = header(1, 2, 12, 0);
+        data.insert(data.end(), 12, 0);
+
+        DBCFile dbc;
+        CHECK(dbc.load(data));
+        CHECK(dbc.getFieldCount() == 2);
+    }
+}

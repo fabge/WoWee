@@ -8099,6 +8099,17 @@ void LuaEngine::fireEvent(const std::string& eventName,
         lua_getfield(L_, -1, eventName.c_str());
         if (lua_istable(L_, -1)) {
             int handlerCount = static_cast<int>(lua_objlen(L_, -1));
+            // Iterate a copy, for the same reason the frame dispatch below
+            // does: a handler may unregister while it runs, UnregisterEvent
+            // shifts the tail down, and the handler that moved into the
+            // vacated index is then stepped over and never hears the event.
+            // The fix was made there and not here.
+            lua_createtable(L_, handlerCount, 0);
+            for (int i = 1; i <= handlerCount; ++i) {
+                lua_rawgeti(L_, -2, i);
+                lua_rawseti(L_, -2, i);
+            }
+            lua_remove(L_, -2);   // drop the live list; the copy stands in
             for (int i = 1; i <= handlerCount; i++) {
                 lua_rawgeti(L_, -1, i);
                 if (!lua_isfunction(L_, -1)) { lua_pop(L_, 1); continue; }

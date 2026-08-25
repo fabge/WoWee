@@ -149,7 +149,6 @@ WorldLoader::WorldLoader(Application& app,
                          EntitySpawner* entitySpawner,
                          AppearanceComposer* appearanceComposer,
                          Window* window,
-                         game::World* world,
                          addons::AddonManager* addonManager)
     : app_(app)
     , renderer_(renderer)
@@ -158,13 +157,14 @@ WorldLoader::WorldLoader(Application& app,
     , entitySpawner_(entitySpawner)
     , appearanceComposer_(appearanceComposer)
     , window_(window)
-    , world_(world)
     , addonManager_(addonManager)
 {}
 
 WorldLoader::~WorldLoader() {
     cancelWorldPreload();
 }
+
+game::World* WorldLoader::world() const { return app_.world.get(); }
 
 const char* WorldLoader::mapDisplayName(uint32_t mapId) {
     // Friendly display names for the loading screen
@@ -1103,7 +1103,7 @@ void WorldLoader::loadOnlineWorldTerrain(uint32_t mapId, float x, float y, float
                 break;
             }
 
-            if (world_) world_->update(1.0f / 60.0f);
+            if (game::World* w = world()) w->update(1.0f / 60.0f);
 
             // Process all spawn/equipment/transport queues during warmup
             entitySpawner_->update();

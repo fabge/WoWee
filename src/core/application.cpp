@@ -1136,7 +1136,7 @@ bool Application::initialize() {
         worldLoader_ = std::make_unique<WorldLoader>(
             *this, renderer.get(), assetManager.get(), gameHandler.get(),
             entitySpawner_.get(), appearanceComposer_.get(), window.get(),
-            world.get(), addonManager_.get());
+            addonManager_.get());
 
         // Re-wire UIServices now that all services (addonManager_, worldLoader_) are available
         if (uiManager) {
@@ -2216,7 +2216,10 @@ void Application::performLogoutToLogin() {
     // --- Reset all EntitySpawner state (mount, creatures, players, GOs, queues, caches) ---
     if (entitySpawner_) entitySpawner_->resetAllState();
 
-    world.reset();
+    // A fresh, empty world for the next session rather than none at all: the
+    // client goes back to the login screen from here and can enter the world
+    // again without passing through initialize().
+    world = std::make_unique<game::World>();
 
     if (renderer) {
         renderer->resetCombatVisualState();

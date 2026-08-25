@@ -94,6 +94,22 @@ bool DBCFile::load(const std::vector<uint8_t>& dbcData) {
 
     // DBC fields are fixed-width uint32 (4 bytes each); record size must match.
     // Mismatches indicate a corrupted header or unsupported DBC variant.
+    //
+    // A record narrower than its own field count is not a warning, it is a read
+    // off the end: the accessors bound the field index against fieldCount and
+    // then index at the recordSize stride, so a header saying 1024 fields in a
+    // 4-byte record has getUInt32 reading 4KB past a record - and past the
+    // buffer entirely on the last one. The truncation check above passes,
+    // because the file really does hold recordCount * recordSize bytes.
+    //
+    // A record *wider* than its fields is ordinary: some tables carry padding
+    // or columns this client does not read, and the stride is what walks over
+    // them. Only the narrow case is refused.
+    if (recordSize < static_cast<uint64_t>(fieldCount) * 4) {
+        LOG_ERROR("DBC record size too small for its field count: recordSize=",
+                  recordSize, " but fieldCount*4=", fieldCount * 4);
+        return false;
+    }
     if (recordSize != fieldCount * 4) {
         LOG_WARNING("DBC record size mismatch: recordSize=", recordSize,
                     " but fieldCount*4=", fieldCount * 4);
