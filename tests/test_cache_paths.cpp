@@ -33,6 +33,19 @@ TEST_CASE("an explicit cache root is returned and created", "[config-paths]") {
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("an untrusted filename cannot leave its directory", "[config-paths]") {
+    const std::filesystem::path root = "/trusted/config";
+
+    CHECK(wowee::core::safeChildPath(root.string(), "Alice.cfg") ==
+          (root / "Alice.cfg").string());
+    CHECK_FALSE(wowee::core::safeChildPath(root.string(), ""));
+    CHECK_FALSE(wowee::core::safeChildPath(root.string(), "."));
+    CHECK_FALSE(wowee::core::safeChildPath(root.string(), ".."));
+    CHECK_FALSE(wowee::core::safeChildPath(root.string(), "../settings.cfg"));
+    CHECK_FALSE(wowee::core::safeChildPath(root.string(), "nested/Alice.cfg"));
+    CHECK_FALSE(wowee::core::safeChildPath(root.string(), "/tmp/Alice.cfg"));
+}
+
 #ifndef _WIN32
 TEST_CASE("a credential file is restricted to its owner", "[config-paths]") {
     const std::filesystem::path path =

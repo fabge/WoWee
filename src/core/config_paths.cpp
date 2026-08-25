@@ -148,6 +148,16 @@ bool restrictFileToOwner(const std::string& path) {
 #endif
 }
 
+std::optional<std::string> safeChildPath(const std::string& directory,
+                                         const std::string& filename) {
+    const fs::path leaf(filename);
+    if (leaf.empty() || leaf.is_absolute() || leaf.has_parent_path() ||
+        leaf == "." || leaf == "..") {
+        return std::nullopt;
+    }
+    return (fs::path(directory) / leaf).string();
+}
+
 void migratePortableConfigIfNeeded() {
     std::error_code ec;
     const std::string exeDir = getExecutableDir();

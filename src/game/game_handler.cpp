@@ -1170,10 +1170,14 @@ void GameHandler::saveCharacterConfig() {
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
 
-    std::string path = dir + "/" + ch->name + ".cfg";
-    std::ofstream out(path);
+    const auto path = core::safeChildPath(dir, ch->name + ".cfg");
+    if (!path) {
+        LOG_WARNING("Refusing unsafe character config filename for '", ch->name, "'");
+        return;
+    }
+    std::ofstream out(*path);
     if (!out.is_open()) {
-        LOG_WARNING("Could not save character config to ", path);
+        LOG_WARNING("Could not save character config to ", *path);
         return;
     }
 
@@ -1254,7 +1258,7 @@ void GameHandler::saveCharacterConfig() {
         out << "collapsed_skill_categories=" << ids << "\n";
     }
 
-    LOG_INFO("Character config saved to ", path);
+    LOG_INFO("Character config saved to ", *path);
 }
 
 void GameHandler::loadCharacterConfig() {
@@ -1266,8 +1270,12 @@ void GameHandler::loadCharacterConfig() {
     trackedQuestIds_.clear();
     mapVisibleQuestIds_.clear();
 
-    std::string path = getCharacterConfigDir() + "/" + ch->name + ".cfg";
-    std::ifstream in(path);
+    const auto path = core::safeChildPath(getCharacterConfigDir(), ch->name + ".cfg");
+    if (!path) {
+        LOG_WARNING("Refusing unsafe character config filename for '", ch->name, "'");
+        return;
+    }
+    std::ifstream in(*path);
     if (!in.is_open()) return;
 
     uint64_t savedGuid = 0;
@@ -1392,7 +1400,7 @@ void GameHandler::loadCharacterConfig() {
             actionBar[i].type = static_cast<ActionBarSlot::Type>(types[i]);
             actionBar[i].id = ids[i];
         }
-        LOG_INFO("Character config loaded from ", path);
+        LOG_INFO("Character config loaded from ", *path);
     }
 }
 

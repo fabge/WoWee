@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 namespace wowee::core {
@@ -27,6 +28,12 @@ std::string getCacheRoot();
 // inherits the profile directory's ACL, so this is a no-op there. Returns false
 // when a POSIX permission update fails.
 bool restrictFileToOwner(const std::string& path);
+
+// Join an untrusted filename to a trusted directory only when it is exactly
+// one relative path component. Returns no path for absolute names, separators,
+// or traversal components.
+std::optional<std::string> safeChildPath(const std::string& directory,
+                                         const std::string& filename);
 
 // One-time seeding of portable config. On the first launch after the user drops
 // a "portable.txt" marker next to the executable (before any config folder
