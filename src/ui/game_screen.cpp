@@ -1158,14 +1158,14 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
     // did walk the character and did fire bindings, and the one question both
     // paths now ask is interfaceTakingTypedInput.
     if (!io.WantTextInput && !interfaceTakingTypedInput() &&
-        input.isKeyJustPressed(SDL_SCANCODE_SLASH)) {
+        input.isBindingCommandJustPressed("OPENCHATSLASH")) {
         gameHandler.runInterfaceCommand("ChatFrame_OpenChat(\"/\")");
     }
     // The same one line as Escape, for the same reason: the chain reads sound
     // and the key does nothing, so what is wanted is which branch ran. The
     // guards are reported too, because being refused before the branch is the
     // likeliest answer and is the one that leaves no other trace.
-    if (KeybindingManager::getInstance().isActionPressed(KeybindingManager::Action::TOGGLE_CHAT, false)) {
+    if (input.isBindingCommandJustPressed("OPENCHAT")) {
         if (io.WantTextInput || interfaceTakingTypedInput() ||
             interfaceConsumedKey(ImGuiKey_Enter)) {
             LOG_WARNING("Chat key: refused - ImGui wants text: ",
@@ -1185,7 +1185,7 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
     // message opened the box again behind it.
     if (!io.WantTextInput &&
         !interfaceConsumedKey(ImGuiKey_Enter) &&
-        KeybindingManager::getInstance().isActionPressed(KeybindingManager::Action::TOGGLE_CHAT, false)) {
+        input.isBindingCommandJustPressed("OPENCHAT")) {
         gameHandler.runInterfaceCommand("ChatFrame_OpenChat(\"\")");
     }
 
@@ -1212,7 +1212,7 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
         // changed the player's target on every press.
         if (!textFocus &&
             !interfaceConsumedKey(ImGuiKey_Tab) &&
-            input.isKeyJustPressed(SDL_SCANCODE_TAB)) {
+            input.isBindingCommandJustPressed("TARGETNEARESTENEMY")) {
             const auto& movement = gameHandler.getMovementInfo();
             gameHandler.tabTarget(movement.x, movement.y, movement.z);
         }
@@ -1498,8 +1498,7 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
                 windowManager_.showTitlesWindow_ = !windowManager_.showTitlesWindow_;
             }
 
-            // Screenshot (PrintScreen key)
-            if (input.isKeyJustPressed(SDL_SCANCODE_PRINTSCREEN)) {
+            if (input.isBindingCommandJustPressed("SCREENSHOT")) {
                 takeScreenshot();
             }
 
@@ -1535,8 +1534,16 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
             }
 
             for (int i = 0; i < game::GameHandler::SLOTS_PER_BAR; ++i) {
-                if (!ctrlDown && input.isKeyJustPressed(actionBarKeys[i])) {
-                    int slotIdx = shiftDown
+                const std::string command = "ACTIONBUTTON" + std::to_string(i + 1);
+                const bool boundPress = input.isBindingCommandJustPressed(command);
+                // Keep the client's historical Shift+number shortcut for the
+                // bottom-left bar when that key is not itself a modified
+                // ACTIONBUTTON binding. Ordinary and rebound action buttons
+                // come from the command resolved by FrameXML.
+                const bool legacyShiftPress = shiftDown &&
+                    input.isKeyJustPressed(actionBarKeys[i]) && !boundPress;
+                if (!ctrlDown && (boundPress || legacyShiftPress)) {
+                    int slotIdx = legacyShiftPress
                         ? ActionBarPanel::actionSlotForPage(ActionBarPanel::kBottomLeftActionPage, i)
                         : ActionBarPanel::actionSlotForPage(actionBarPanel_.getMainActionBarPage(), i);
                     if (bar[slotIdx].type == game::ActionBarSlot::SPELL && bar[slotIdx].isReady()) {

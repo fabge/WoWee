@@ -8,6 +8,36 @@ Input& Input::getInstance() {
     return instance;
 }
 
+void Input::beginFrame() {
+    pressedBindingCommands_.clear();
+}
+
+void Input::setBindingCommandHeld(const std::string& command, bool held) {
+    if (command.empty()) return;
+    if (held) {
+        unsigned& count = heldBindingCommands_[command];
+        if (count++ == 0) pressedBindingCommands_.insert(command);
+    } else {
+        const auto it = heldBindingCommands_.find(command);
+        if (it == heldBindingCommands_.end()) return;
+        if (it->second <= 1) heldBindingCommands_.erase(it);
+        else --it->second;
+    }
+}
+
+bool Input::isBindingCommandHeld(const std::string& command) const {
+    return heldBindingCommands_.contains(command);
+}
+
+bool Input::isBindingCommandJustPressed(const std::string& command) const {
+    return pressedBindingCommands_.contains(command);
+}
+
+void Input::clearBindingCommands() {
+    heldBindingCommands_.clear();
+    pressedBindingCommands_.clear();
+}
+
 void Input::update() {
     // Copy current state to previous
     previousKeyState = currentKeyState;
@@ -38,11 +68,28 @@ void Input::update() {
 
 void Input::setVirtualKey(SDL_Scancode key, bool held) {
     if (key < 0 || key >= NUM_KEYS) return;
+    if (virtualKeyState[key] == held) return;
     virtualKeyState[key] = held;
+    // Touch controls express the same default movement actions as a keyboard,
+    // without producing SDL key events for the binding dispatcher.
+    const char* command = nullptr;
+    switch (key) {
+        case SDL_SCANCODE_W: command = "MOVEFORWARD"; break;
+        case SDL_SCANCODE_S: command = "MOVEBACKWARD"; break;
+        case SDL_SCANCODE_A: command = "TURNLEFT"; break;
+        case SDL_SCANCODE_D: command = "TURNRIGHT"; break;
+        case SDL_SCANCODE_Q: command = "STRAFELEFT"; break;
+        case SDL_SCANCODE_E: command = "STRAFERIGHT"; break;
+        case SDL_SCANCODE_SPACE: command = "JUMP"; break;
+        default: break;
+    }
+    if (command) setBindingCommandHeld(command, held);
 }
 
 void Input::clearVirtualKeys() {
-    virtualKeyState.fill(false);
+    for (int key = 0; key < NUM_KEYS; ++key) {
+        if (virtualKeyState[key]) setVirtualKey(static_cast<SDL_Scancode>(key), false);
+    }
 }
 
 bool Input::isKeyPressed(SDL_Scancode key) const {

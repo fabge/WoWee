@@ -1652,8 +1652,11 @@ void seedBindingDefaults() {
         {"MOVEFORWARD", "W"},   {"MOVEBACKWARD", "S"},
         {"TURNLEFT", "A"},      {"TURNRIGHT", "D"},
         {"STRAFELEFT", "Q"},    {"STRAFERIGHT", "E"},
-        {"JUMP", "SPACE"},      {"TOGGLEAUTORUN", "NUMLOCK"},
+        {"JUMP", "SPACE"},      {"SITORSTAND", "X"},
+        {"TOGGLEAUTORUN", "NUMLOCK"},
         {"TOGGLEGAMEMENU", "ESCAPE"},
+        {"OPENCHAT", "ENTER"},  {"OPENCHATSLASH", "/"},
+        {"TARGETNEARESTENEMY", "TAB"}, {"TOGGLESHEATH", "Z"},
         {"SCREENSHOT", "PRINTSCREEN"},
         {"ACTIONBUTTON1", "1"}, {"ACTIONBUTTON2", "2"},
         {"ACTIONBUTTON3", "3"}, {"ACTIONBUTTON4", "4"},
@@ -1663,6 +1666,11 @@ void seedBindingDefaults() {
         {"ACTIONBUTTON11", "-"},{"ACTIONBUTTON12", "="},
     };
     for (const auto& d : kDefaults) keys[d.command] = {d.key, ""};
+    // Arrow keys are the stock secondary movement bindings.
+    keys["MOVEFORWARD"][1] = "UP";
+    keys["MOVEBACKWARD"][1] = "DOWN";
+    keys["TURNLEFT"][1] = "LEFT";
+    keys["TURNRIGHT"][1] = "RIGHT";
     // These defaults refer to the two physical keys following zero, whose
     // printed characters vary by layout (ß and ´ on German, - and = on US).
     keys["ACTIONBUTTON11"] = {wowKeyFromImGui(ImGuiKey_Minus), ""};
@@ -1718,7 +1726,7 @@ bool clientActsOnBinding(const std::string& command) {
     // nothing, since it looks like the binding never ran.
     static constexpr const char* kClientAnswers[] = {
         "MOVEFORWARD", "MOVEBACKWARD", "TURNLEFT", "TURNRIGHT",
-        "STRAFELEFT", "STRAFERIGHT", "JUMP", "TOGGLEAUTORUN", "TOGGLERUN",
+        "STRAFELEFT", "STRAFERIGHT", "JUMP", "SITORSTAND", "TOGGLEAUTORUN", "TOGGLERUN",
         "TOGGLEGAMEMENU", "OPENCHAT", "OPENCHATSLASH", "TARGETNEARESTENEMY",
         "SCREENSHOT", "TOGGLESHEATH",
         "ACTIONBUTTON1", "ACTIONBUTTON2", "ACTIONBUTTON3", "ACTIONBUTTON4",
@@ -1840,6 +1848,7 @@ static int lua_SaveBindings(lua_State* L) {
         LOG_WARNING("Could not write the key bindings to ", path);
         return 0;
     }
+    out << "# wowee-bindings-v2\n";
     for (const auto& [command, keys] : bindingKeys()) {
         // Both slots on one line, the second empty when there is no second key,
         // so a command that lost one is recorded as having lost it.
@@ -1855,7 +1864,9 @@ static int lua_LoadBindings(lua_State* L) {
     std::ifstream in(bindingsFilePath());
     if (!in) return 0;   // Nothing saved yet is not a failure.
     std::string line;
+    bool currentFormat = false;
     while (std::getline(in, line)) {
+        if (line == "# wowee-bindings-v2") { currentFormat = true; continue; }
         const size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
         const std::string command = line.substr(0, eq);
@@ -1869,6 +1880,16 @@ static int lua_LoadBindings(lua_State* L) {
         // started with - otherwise a rebind survives in the list and nowhere
         // else, and only until the next save overwrites it.
         pushBindingToClient(command, bindingKeys()[command]);
+    }
+    if (!currentFormat) {
+        // The first writer knew only one key per native action and serialized
+        // an empty secondary for every command. Arrow movement still worked
+        // only because it was hardcoded elsewhere. Preserve those stock
+        // secondary bindings while migrating that legacy shape.
+        bindingKeys()["MOVEFORWARD"][1] = "UP";
+        bindingKeys()["MOVEBACKWARD"][1] = "DOWN";
+        bindingKeys()["TURNLEFT"][1] = "LEFT";
+        bindingKeys()["TURNRIGHT"][1] = "RIGHT";
     }
     if (auto* gh = getGameHandler(L)) gh->fireAddonEvent("UPDATE_BINDINGS", {});
     return 0;
@@ -2647,6 +2668,11 @@ void registerActionLuaAPI(lua_State* L) {
         lua_pushcfunction(L, func);
         lua_setglobal(L, name);
     }
+
+    // Bindings are session input, not state owned by the optional binding UI.
+    // That addon previously called LoadBindings only when its panel opened, so
+    // every saved rebind was ignored from login until the player opened it.
+    lua_LoadBindings(L);
 
     // The cursor, for this client's own windows to read. They keep a separate
     // held item of their own, so a drag out of a handed-over bag into a window

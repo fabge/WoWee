@@ -2059,6 +2059,14 @@ wowee_add_test(test_cache_paths
             ${TEST_COMMON_SOURCES}
             ${CMAKE_SOURCE_DIR}/src/core/config_paths.cpp)
 
+# ── test_input_binding_state ────────────────────────────────
+# Native consumers see command-held state and one-frame press edges, including
+# the case where two physical keys are both bound to one command.
+wowee_add_test(test_input_binding_state
+    SOURCES test_input_binding_state.cpp
+            ${CMAKE_SOURCE_DIR}/src/core/input.cpp)
+target_link_libraries(test_input_binding_state PRIVATE SDL2::SDL2)
+
 # ── test_quest_poi_order ────────────────────────────────────
 # FrameXML allocates completed and incomplete map markers as dense ranges and
 # crashes while hiding them if the API interleaves those groups.

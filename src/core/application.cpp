@@ -1301,6 +1301,7 @@ void Application::run() {
         // ever describes the iteration it was set in: the pump sets it and
         // the draw, further down this same iteration, is the only reader.
         ui::clearInterfaceConsumedKeys();
+        Input::getInstance().beginFrame();
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
 #ifdef __ANDROID__
@@ -1406,6 +1407,7 @@ void Application::run() {
                     const bool playInBackground =
                         addons::storedCVarValue("Sound_EnableSoundWhenGameIsInBG", "0") != "0";
                     audio::AudioEngine::instance().setSuspended(!focused && !playInBackground);
+                    if (!focused) Input::getInstance().clearBindingCommands();
                 }
             }
             // Typed text, when an addon's edit box is listening for it.
@@ -3373,7 +3375,8 @@ void Application::updateInGame(float deltaTime, const char*& updateCheckpoint) {
         const bool uiWantsKeyboard = ImGui::GetIO().WantCaptureKeyboard ||
                                      ui::interfaceTakingTypedInput();
         auto& input = Input::getInstance();
-        if (!uiWantsKeyboard && input.isKeyJustPressed(SDL_SCANCODE_Z) && appearanceComposer_) {
+        if (!uiWantsKeyboard && input.isBindingCommandJustPressed("TOGGLESHEATH") &&
+            appearanceComposer_) {
             const bool sheathing = !appearanceComposer_->isWeaponsSheathed();
             if (renderer && renderer->getAnimationController()) {
                 renderer->getAnimationController()->playWeaponSheathAnimation(sheathing);

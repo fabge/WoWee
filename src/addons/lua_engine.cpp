@@ -23,9 +23,11 @@
 #include "addons/toc_parser.hpp"
 #include "core/window.hpp"
 #include <imgui.h>
+#include <SDL2/SDL_keyboard.h>
 #include <fstream>
 #include "core/app_clock.hpp"
 #include "core/config_paths.hpp"
+#include "core/input.hpp"
 #ifdef __APPLE__
 #include "core/macos_platform.hpp"
 #endif
@@ -8933,6 +8935,11 @@ static std::string wowKeyName(int sym) {
 #endif
     if (sym >= 'a' && sym <= 'z') return std::string(1, static_cast<char>(sym - 32));
     if (sym >= '0' && sym <= '9') return std::string(1, static_cast<char>(sym));
+    if (sym == '-' || sym == '=' || sym == '[' || sym == ']' || sym == '\\' ||
+        sym == ';' || sym == '\'' || sym == '`' || sym == ',' || sym == '.' ||
+        sym == '/') {
+        return std::string(1, static_cast<char>(sym));
+    }
     switch (sym) {
         case 27:         return "ESCAPE";
         case ' ':        return "SPACE";
@@ -8945,6 +8952,9 @@ static std::string wowKeyName(int sym) {
         case 0x4000004E: return "PAGEDOWN";
         case 0x4000004C: return "DELETE";
         case 0x40000049: return "INSERT";
+        case SDLK_NUMLOCKCLEAR: return "NUMLOCK";
+        case SDLK_PRINTSCREEN: return "PRINTSCREEN";
+        case SDLK_KP_ENTER: return "ENTER";
         case 0x40000050: return "LEFT";
         case 0x4000004F: return "RIGHT";
         case 0x40000052: return "UP";
@@ -9007,9 +9017,14 @@ bool LuaEngine::dispatchBindingKey(int sdlKeycode, bool shift, bool ctrl,
         command = std::move(*active);
     }
 
-    // Left alone if the client performs it. Not "already handled, so skip the
-    // work" - running it as well would undo it.
-    if (clientActsOnBinding(command)) return false;
+    // Left alone if the client performs it. Its held and press-edge state is
+    // still recorded here, from the same resolved binding FrameXML displays;
+    // camera movement and native action handling consume that state instead of
+    // polling hardcoded keys.
+    if (clientActsOnBinding(command)) {
+        core::Input::getInstance().setBindingCommandHeld(command, down);
+        return false;
+    }
 
     lua_getglobal(L_, "__WoweeBindingScripts");
     if (!lua_istable(L_, -1)) { lua_pop(L_, 1); return false; }
