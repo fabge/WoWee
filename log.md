@@ -180,3 +180,52 @@ upstream has no equivalent and has not touched `camera_controller.cpp`,
 `keybinding_manager.cpp` or `src/core/input.cpp` since our fork point.
 
 Full `tools/validate.sh`: 180/180, both FrameXML arms zero failures.
+
+## 2026-08-26 — a review's P1s, cleared
+
+An external review of the merged tree. Nineteen findings; the seven marked P1
+and five of the P2s were bounded enough to finish, and are below. The rest —
+subsystem library targets, the `GameHandler` hub, the vestigial render graph,
+`registerCoreAPI` — are the Tier 2 items already in `TODO.md`, restated by
+someone who had not read it, which is some evidence they are real.
+
+Two were credential leaks and neither was subtle:
+
+- The 40-byte SRP session key was logged at INFO on every world login, and
+  again at DEBUG inside the auth hash inputs. It is the secret the handshake
+  proves knowledge of and the header cipher is keyed from, and `wowee.log` is
+  the file a bug report attaches. `AGENTS.md` had the rule; the code predated
+  anyone applying it.
+- `login.cfg` was opened directly, so it was truncated before the first byte
+  was written and an interrupted save lost every stored server profile. It is
+  written to a temporary and renamed now. In the same function, a failure to
+  set owner-only permissions logged a warning and then wrote the password
+  hashes anyway; they are omitted instead.
+
+The character name from `SMSG_CHAR_ENUM` went straight into a SavedVariables
+filename. `AGENTS.md` names this rule specifically and `core::safeChildPath`
+had been in the tree since `a96bd0c05` — it had simply never been applied here,
+which is the more useful lesson than the fix.
+
+Leaving the world had two roads and shared none of its teardown. Character
+select ran it inline; `/logout` and a disconnect went to the login screen and
+so never fired `PLAYER_LEAVING_WORLD`, never wrote SavedVariables, and left the
+next login on a Lua state built for the previous character. Now
+`leaveWorldSession()`, called from both.
+
+Three malformed-asset guards were each a hardening pass that stopped one call
+site short of its twin — the WMO group chunk loop against the root loop
+widened above it, the WMO batch ranges against the identical M2 clamp added
+after a real device loss, the M2 embedded-skin path against the external skin
+path in the same file. All three were "reported, not verified" in `TODO.md` and
+all three verified. The M2 clamp is one shared helper now rather than a
+convention to remember.
+
+Smaller, same day: `SIGINT`/`SIGTERM` shut down rather than `_Exit`, so a
+Ctrl-C keeps its settings; portable config never resolves inside the signed app
+bundle; `readSizedString` is `[[nodiscard]]` and its three deaf call sites now
+return; and the load-on-demand addons, which were invisible to both persistence
+paths, keep their enablement and their SavedVariables — and a failed one no
+longer reports success to every caller after the first.
+
+Full `tools/validate.sh`: 180/180, both FrameXML arms zero failures.

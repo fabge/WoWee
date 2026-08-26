@@ -19,78 +19,32 @@ validation policy, including which checks are cheap and which are not.
 Bounded, each with a stated failure mode. A regression test is expected with
 each fix; every one of these is testable headlessly.
 
-### A server-supplied character name reaches a filesystem path
-`src/addons/addon_manager.cpp:470` ← set from `src/core/world_loader.cpp:1255`
+Eight items that stood here on 2026-08-25 were fixed on 2026-08-26 and moved to
+`log.md`. What is left is what was not bounded enough to finish in that pass.
 
-The name from `SMSG_CHAR_ENUM` is concatenated straight into the SavedVariables
-path with no validation, and there is no path-component validator anywhere in
-the repo. `AGENTS.md` states this rule explicitly; it is unhonored. Reject
-separators, `..`, and empty before `setCharacterName`. **~1 hour.**
+### SavedVariables are written beside the addon's own source
+`src/addons/addon_manager.cpp:464`
 
-### Logging out skips its own session teardown
-`src/core/application.cpp:1883` vs `:2258`
+`getSavedVariablesPath` returns `addon.basePath + "/" + name + ".lua.saved"`, so
+mutable per-session state is written into the addon directory. For a bundled
+addon on macOS that directory is `Wowee.app/Contents/Resources/addons`, inside
+the code-signed seal, which `AGENTS.md` forbids writing to; for an addon living
+under extracted game data it writes into proprietary input. It works today only
+because those writes happen to be permitted.
 
-All per-session cleanup — `PLAYER_LEAVING_WORLD`, `saveAllSavedVariables()`,
-clearing `addonsLoaded_` — lives in the transition to character select. The
-disconnect path transitions to the login screen instead, so SavedVariables are
-never written and the next session runs on a Lua state built for the previous
-character. Extract a `leaveWorldSession()` and call it from both. **~2 hours.**
+The fix is not just a path change: existing `.lua.saved` files have to be found
+in the old location and moved, or every player silently loses their addon
+settings once. Route through `core::getConfigRoot()` with a per-addon
+subdirectory, migrating on first read. **~3 hours, migration included.**
 
-### Three parser guards that exist and are ignored
-`src/network/packet.cpp:120` → `packet_parsers_classic.cpp:999`, `:1033`,
-`world_packets_social.cpp:116`
+### The crash handler writes to a fixed `/tmp` path
+`src/main.cpp:69`
 
-`readSizedString` returns a bool and restores the read position on failure; all
-three call sites discard it, so on a truncated packet the following
-`readUInt64()` consumes the length field as GUID bytes. Memory-safe, but it
-reconstructs the fabricated-name symptom the guard was written to prevent. Mark
-it `[[nodiscard]]` and the compiler finds them. **~1 hour.**
-
-### WMO batch ranges reach the GPU unvalidated
-`src/pipeline/wmo_loader.cpp:686` → `src/rendering/wmo_renderer.cpp:770`
-
-Index ranges parsed from MOBA go to `vkCmdDrawIndexed` with no check against
-the group's index count. `src/rendering/m2_renderer.cpp:1783` has exactly this
-guard, added after a documented device loss — same input class, same
-consequence, no guard. Mirror the M2 clamp. **~2 hours.**
-*Reported, not verified.*
-
-### The WMO group chunk loop can wrap and spin
-`src/pipeline/wmo_loader.cpp:438`
-
-`uint32_t chunkEnd = offset + chunkSize;` wraps, passes the `> size` check, and
-`offset = chunkEnd` then moves backwards — an unbounded loop on a malformed
-group file. The root chunk loop at `:93` was widened to 64-bit with a comment
-saying why; the group loop 340 lines later was not. **~1 hour.**
-*Reported, not verified.*
-
-### The M2 embedded-skin path is missing the clamp its sibling has
-`src/pipeline/m2_loader.cpp:1827` vs `:1955`
-
-`loadSkin` clamps out-of-range batches; the vanilla/TBC embedded-skin path
-builds batches identically with no clamp, and `character_renderer.cpp:3064`
-draws them raw. Lift the existing clamp into a shared helper. **~1 hour.**
-*Reported, not verified.*
-
-### Signals bypass shutdown, and two paths write where they must not
-`src/main.cpp:167`, `src/main.cpp:69`, `src/core/config_paths.cpp:97`
-
-`SIGTERM`/`SIGINT` call `std::_Exit(1)`, so every Ctrl-C or OS quit drops
-settings, SavedVariables and the WMO floor cache — set `shouldClose` instead,
-keeping `_Exit` for a second signal. The crash log appends to a fixed
-`/tmp/wowee_debug.log`. Portable config resolves to `<exeDir>/config`, which on
-macOS is inside the signed seal — reuse `runningFromAppBundle()` from
-`src/core/logger.cpp:60`. **~2 hours for all three.**
-
-### `login.cfg` is rewritten in place
-`src/ui/auth_screen.cpp:1084`
-
-Permissions are set correctly before any hash byte is written, and the hash
-appears in no log. But the rewrite is not atomic, so an interrupted save
-truncates every stored server profile. Write a temp file, chmod it, rename.
+`/tmp/wowee_debug.log` is shared by every user on the machine and by every
+concurrent client. It is opened with `fopen` from inside a signal handler,
+which is already not async-signal-safe, so this wants resolving to a per-user
+path captured once at startup rather than being built in the handler.
 **~1 hour.**
-
----
 
 ## Tier 2 — structural
 
@@ -134,12 +88,19 @@ each top-level frame in a `pcall` (the `__w` temporaries table is an upvalue and
 survives) turns "the rest of the file is gone" into one named failure.
 **~2 hours.**
 
-### A partially-loaded addon is marked loaded and left in limbo
+### A partially-loaded addon still gets no initialisation event
 `src/addons/addon_manager.cpp:1330`, `:1399`
 
-It gets neither `ADDON_LOADED` nor `frameXmlNoteAddOnLoaded`, so its frames are
-on screen, never initialised, never retried, and the takeover safety net still
-reads it as not loaded. Fire both even on partial load. **~1 hour.**
+Half of this was fixed on 2026-08-26: a failed load-on-demand addon is tracked
+in `lodFailed_` and no longer reports success to every caller after the first.
+What remains is the addon itself — it gets neither `ADDON_LOADED` nor
+`frameXmlNoteAddOnLoaded`, so its frames are on screen, never initialised, and
+the takeover safety net still reads it as not loaded.
+
+Firing both on a partial load is one line and probably wrong: `ADDON_LOADED`
+tells FrameXML the addon is ready, and for a half-run addon it is not. Decide
+whether the honest answer is to fire them anyway, or to tear the partial frames
+back down. **~2 hours, and it needs the decision first.**
 
 ### `GameHandler` is a real god object, and the fix is already there
 `include/game/game_handler.hpp`, `include/game/game_interfaces.hpp`
