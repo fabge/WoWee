@@ -162,3 +162,21 @@ Everything else went to `TODO.md`.
 
 Open strategic question recorded there too: 23 local fixes, zero upstream PRs,
 in the files upstream rewrites most.
+
+## 2026-08-26 — upstream refresh
+
+Merged `upstream/master` (10 commits) with no conflicts. Even in the five files
+both sides had touched the hunks were nowhere near each other, which is luck
+rather than design: upstream committed 365 changes to `src/addons/lua_engine.cpp`
+in the preceding thirty days, so a clean merge is a snapshot and not a property.
+
+One of the ten is worth naming, because it is the other half of a bug we fixed
+the same day. Upstream's `37dcad079` normalizes the wheel delta to ±1, since
+`hybridscrollframe.lua` tests `delta == 1` and a brisk trackpad flick reports 2
+or 3; ours made scroll frames take the wheel at all. Both were needed and they
+compose. The next collision may not be so kind, which is the concrete argument
+for the upstream PRs in `TODO.md` — the key-name vocabulary especially, since
+upstream has no equivalent and has not touched `camera_controller.cpp`,
+`keybinding_manager.cpp` or `src/core/input.cpp` since our fork point.
+
+Full `tools/validate.sh`: 180/180, both FrameXML arms zero failures.
