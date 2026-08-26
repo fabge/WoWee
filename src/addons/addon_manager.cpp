@@ -456,7 +456,17 @@ void AddonManager::saveEnabledState() const {
     }
     // Persist an explicit line only for addons we actually know about, so stale
     // entries for removed addons don't accumulate.
+    //
+    // Both lists, because setAddonEnabled is reached from the addon list for
+    // either kind and a load-on-demand addon is the more likely of the two to
+    // be switched off - Blizzard_CombatLog and Blizzard_BattlefieldMinimap are
+    // in that list. Writing only addons_ meant the switch took effect for the
+    // session and was gone at the next start, with the addon enabled again and
+    // nothing to say why.
     for (const auto& addon : addons_) {
+        out << addon.addonName << "=" << (isAddonEnabled(addon.addonName) ? "1" : "0") << "\n";
+    }
+    for (const auto& addon : lodAddons_) {
         out << addon.addonName << "=" << (isAddonEnabled(addon.addonName) ? "1" : "0") << "\n";
     }
 }
@@ -465,9 +475,48 @@ std::string AddonManager::getSavedVariablesPath(const TocFile& addon) const {
     return addon.basePath + "/" + addon.addonName + ".lua.saved";
 }
 
+// A character name is chosen on the server and delivered in SMSG_CHAR_ENUM, so
+// it is a named value received from a server: untrusted, and headed for a
+// writable filesystem path. A name carrying a separator or a traversal
+// component would place SavedVariables outside the addon directory entirely.
+//
+// The name is checked once here, at the boundary where it enters the client,
+// rather than at each of the places it is later pasted into a filename. A name
+// that fails is dropped rather than sanitized: a rewritten name would silently
+// share one file between two different characters, and a server sending one is
+// not making a typo.
+void AddonManager::setCharacterName(const std::string& name) {
+    if (name.empty()) {
+        characterName_.clear();
+        return;
+    }
+
+    const bool unsafe =
+        !core::safeChildPath(".", name).has_value() ||
+        name.find_first_of("/\\") != std::string::npos ||
+        std::any_of(name.begin(), name.end(), [](unsigned char ch) { return ch < 0x20; });
+
+    if (unsafe) {
+        LOG_WARNING("AddonManager: refusing a character name that is not a single safe path "
+                    "component; per-character SavedVariables are disabled this session");
+        characterName_.clear();
+        return;
+    }
+
+    characterName_ = name;
+}
+
 std::string AddonManager::getSavedVariablesPerCharacterPath(const TocFile& addon) const {
     if (characterName_.empty()) return "";
-    return addon.basePath + "/" + addon.addonName + "." + characterName_ + ".lua.saved";
+
+    // Composed and re-checked as a whole: setCharacterName is the guard, and
+    // this is the assertion that the guard held for the name actually in hand.
+    const std::string leaf = addon.addonName + "." + characterName_ + ".lua.saved";
+    if (auto path = core::safeChildPath(addon.basePath, leaf)) return *path;
+
+    LOG_WARNING("AddonManager: per-character SavedVariables path for ", addon.addonName,
+                " is not confined to its addon directory; skipping it");
+    return "";
 }
 
 // The client's settings, as panels in FrameXML's Interface Options.
@@ -1388,6 +1437,15 @@ bool AddonManager::isAddOnLoadedByName(const std::string& name) const {
 
 bool AddonManager::loadAddOnByName(const std::string& name, std::string& reason) {
     const std::string key = lowered(name);
+
+    // An addon that already failed keeps failing, with the same reason it gave
+    // the first time. It stays in lodLoaded_ so its files are never run twice,
+    // and that used to be enough to make every call after the first report
+    // success - so FrameXML opened a panel whose frames had never finished
+    // building and had never seen ADDON_LOADED, and the failure was visible
+    // exactly once, in a log.
+    if (lodFailed_.count(key)) { reason = "CORRUPT"; return false; }
+
     // Already loaded is success, not an error: FrameXML calls LoadAddOn every
     // time a panel is opened and only checks the first return.
     if (lodLoaded_.count(key)) { reason.clear(); return true; }
@@ -1433,7 +1491,10 @@ bool AddonManager::loadAddOnByName(const std::string& name, std::string& reason)
         // Left in the loaded set deliberately. A half-run addon has already
         // built frames and set globals, and running its files a second time
         // would build them again - the duplicate-frame problem the scan goes
-        // out of its way to avoid.
+        // out of its way to avoid. Recorded as failed alongside it, so that
+        // staying in the loaded set blocks the re-run without also becoming a
+        // success for every caller after this one.
+        lodFailed_.insert(key);
         return false;
     }
     // What it draws is on screen from here, which for some of them is a second
@@ -1467,7 +1528,7 @@ void AddonManager::update(float deltaTime) {
 }
 
 void AddonManager::saveAllSavedVariables() {
-    for (const auto& addon : addons_) {
+    const auto saveOne = [this](const TocFile& addon) {
         auto savedVars = addon.getSavedVariables();
         if (!savedVars.empty()) {
             std::string svPath = getSavedVariablesPath(addon);
@@ -1480,6 +1541,22 @@ void AddonManager::saveAllSavedVariables() {
                 luaEngine_.saveSavedVariables(svpcPath, savedVarsPC);
             }
         }
+    };
+
+    for (const auto& addon : addons_) saveOne(addon);
+
+    // The load-on-demand addons that actually loaded this session. They declare
+    // SavedVariables like any other - Blizzard_TimeManager keeps the alarm,
+    // Blizzard_CombatLog keeps its filters - and iterating only addons_ meant
+    // none of it was ever written: the settings came back to their defaults
+    // every session, from a UI that had reported saving them.
+    //
+    // Only the loaded ones: an addon that never loaded has no state in the Lua
+    // engine, and asking for it would write an empty table over the file the
+    // last session that did load it left behind.
+    for (const auto& addon : lodAddons_) {
+        if (lodLoaded_.count(addon.addonName) == 0) continue;
+        saveOne(addon);
     }
 }
 

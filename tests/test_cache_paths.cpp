@@ -50,6 +50,25 @@ TEST_CASE("an untrusted filename cannot leave its directory", "[config-paths]") 
 #endif
 }
 
+// A character name is not a whole filename: it is pasted into the middle of one
+// ("Blizzard_TimeManager.<name>.lua.saved"), so the traversal it can express is
+// not "../x" on its own but a name that breaks the composed leaf into a path.
+// The composed form is what has to be checked, which is what AddonManager does.
+TEST_CASE("a server character name cannot escape its addon directory", "[config-paths]") {
+    const std::string dir = "/trusted/addons/Blizzard_TimeManager";
+    const auto leafFor = [](const std::string& character) {
+        return "Blizzard_TimeManager." + character + ".lua.saved";
+    };
+
+    CHECK(wowee::core::safeChildPath(dir, leafFor("Alice")) ==
+          (std::filesystem::path(dir) / "Blizzard_TimeManager.Alice.lua.saved").string());
+
+    // Each of these is a name a server is free to send in SMSG_CHAR_ENUM.
+    CHECK_FALSE(wowee::core::safeChildPath(dir, leafFor("../../../../etc/cron.d/wowee")));
+    CHECK_FALSE(wowee::core::safeChildPath(dir, leafFor("a/b")));
+    CHECK_FALSE(wowee::core::safeChildPath(dir, leafFor("/absolute")));
+}
+
 #ifndef _WIN32
 TEST_CASE("a credential file is restricted to its owner", "[config-paths]") {
     const std::filesystem::path path =

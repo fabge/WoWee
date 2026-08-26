@@ -70,7 +70,11 @@ public:
     [[nodiscard]] bool addonsLoaded() const { return addonsLoaded_; }
 
     void saveAllSavedVariables();
-    void setCharacterName(const std::string& name) { characterName_ = name; }
+    // The character name arrives from the server and is used to build a
+    // SavedVariables filename, so it is validated as one safe path component
+    // here rather than trusted. A name that is not one is refused and
+    // per-character SavedVariables are disabled for the session.
+    void setCharacterName(const std::string& name);
 
     /// Re-initialize the Lua VM and reload all addons (used by /reload).
     bool reload();
@@ -81,6 +85,12 @@ private:
     /// Declared LoadOnDemand: known, listed, and not run until asked for.
     std::vector<TocFile> lodAddons_;
     std::set<std::string> lodLoaded_;
+
+    // Names that were attempted and failed. Separate from lodLoaded_ because
+    // that set answers two different questions - "has this already run, so do
+    // not run it again" and "did this succeed" - and a failed load needs the
+    // first to be yes while the second stays no.
+    std::set<std::string> lodFailed_;
     game::GameHandler* gameHandler_ = nullptr;
     LuaServices luaServices_;
     std::string addonsPath_;
