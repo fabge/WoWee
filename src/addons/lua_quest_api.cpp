@@ -978,9 +978,32 @@ static int lua_GetQuestLogLeaderBoard(lua_State* L) {
             if (it != q.killCounts.end()) current = it->second.first;
             uint32_t required = q.killObjectives[i].required;
             bool finished = (current >= required);
-            // Build display text like "Kobold Vermin slain: 3/8"
-            std::string text = (q.killObjectives[i].npcOrGoId < 0 ? "Object" : "Creature")
-                + std::string(" slain: ") + std::to_string(current) + "/" + std::to_string(required);
+
+            // "Bristleback Quilboar slain: 3/8", the way a stock client says it.
+            //
+            // This used to be the literal word "Creature", which made a quest
+            // with three kill objectives - and Mulgore has several - read as
+            // three identical lines. A negative id is a game object.
+            //
+            // The name comes from the query caches, which are filled for
+            // whatever has been seen in the world. A quest objective routinely
+            // names something that has not been, so a miss asks for it and
+            // falls back to the generic word until the answer arrives; the
+            // objective is rebuilt on the next QUEST_LOG_UPDATE.
+            const bool isObject = q.killObjectives[i].npcOrGoId < 0;
+            const uint32_t entry = key;
+            std::string subject;
+            if (isObject) {
+                if (const auto* info = gh->getCachedGameObjectInfo(entry)) subject = info->name;
+                if (subject.empty()) gh->queryGameObjectInfo(entry, 0);
+            } else {
+                subject = gh->getCachedCreatureName(entry);
+                if (subject.empty()) gh->queryCreatureInfo(entry, 0);
+            }
+            if (subject.empty()) subject = isObject ? "Object" : "Creature";
+
+            std::string text = subject + " slain: " + std::to_string(current) + "/"
+                + std::to_string(required);
             lua_pushstring(L, text.c_str());
             lua_pushstring(L, q.killObjectives[i].npcOrGoId < 0 ? "object" : "monster");
             lua_pushboolean(L, finished ? 1 : 0);
