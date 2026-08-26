@@ -229,3 +229,35 @@ paths, keep their enablement and their SavedVariables — and a failed one no
 longer reports success to every caller after the first.
 
 Full `tools/validate.sh`: 180/180, both FrameXML arms zero failures.
+
+## 2026-08-26 — two quest bugs from a play session
+
+Reported as "I cannot complete the quest even though I have the fur", with the
+reward panel open and Complete Quest doing nothing.
+
+The log said the button worked: `OnClick ran`, four times, no Lua error. The
+handler is Blizzard's `QuestRewardCompleteButton_OnClick`, which tests
+`itemChoice` itself and, when no reward has been picked, calls
+`QuestChooseRewardError()` *instead of* `GetQuestReward`. Ours was a no-op stub
+whose comment reasoned that the message belongs to the server — it does not,
+the server is never told anything on that path. So the button genuinely did
+nothing at all: no message, no sound, no request. The quest was one unmade
+click away from turning in and the client had no way to say so. It raises
+`UI_ERROR_MESSAGE` with `ERR_QUEST_MUST_CHOOSE` now.
+
+The second one was in the same screenshot and is the more interesting bug: the
+quest log read `Bundle of Furs: 0/1` on a quest it was simultaneously marking
+`(Complete)`. `reconcileItemObjectivesFromInventory` is the only thing that
+fills `itemCounts` from the bag, and it skipped quests already complete. The
+server marks a collect quest complete from its update fields the moment the
+item is looted, so the skip engaged before the count was ever taken, and every
+collect quest spent its whole life displaying zero.
+
+Neither has a regression test, and the reason is worth recording rather than
+glossing: `QuestHandler` cannot be linked into a test without dragging in
+`GameHandler` and 59 translation units. The five existing `test_quest_*` targets
+all cover header-only pure functions. That is `TODO.md`'s library-targets item
+producing a real cost on a real day.
+
+Also noted for `TODO.md`, visible in the same screenshot: kill objectives render
+as the literal "Creature slain" with no creature name.

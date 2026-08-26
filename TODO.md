@@ -46,6 +46,16 @@ which is already not async-signal-safe, so this wants resolving to a per-user
 path captured once at startup rather than being built in the handler.
 **~1 hour.**
 
+### Quest objective lines name no creature
+`src/addons/lua_quest_api.cpp:982`
+
+`GetQuestLogLeaderBoard` builds kill objectives as the literal `"Creature
+slain: 0/10"` — a stock client says `"Bristleback Quilboar slain: 0/10"`. The
+objective is unreadable when a quest has three of them, which is exactly when
+it matters. The name needs a creature-name cache keyed on the objective's
+`npcOrGoId`; the item half of the same function already does the equivalent
+lookup through `getItemInfo`. **~3 hours, most of it the cache.**
+
 ## Tier 2 — structural
 
 None of these is urgent. Each taxes every future change in its area.
@@ -69,6 +79,13 @@ subsystem; it must re-enumerate the `.cpp` files it needs, which is why
 `tests/CMakeLists.txt` is 2,125 lines for 82 executables, and why `src/audio/`
 (5.3k lines) and `src/addons/lua_engine.cpp` (10,783 lines) have no test at
 all. This is the single biggest drag on adding tests anywhere. **Multi-day.**
+
+Concretely, on 2026-08-26: the fix to
+`QuestHandler::reconcileItemObjectivesFromInventory` shipped without a
+regression test because covering it means linking `quest_handler.cpp`,
+`game_handler.cpp` and the 59 translation units behind them. The five existing
+`test_quest_*` targets all test header-only pure functions, which is the shape
+of test this build graph permits and the reason the handler logic has none.
 
 ### One test seam for the interface layer
 `src/addons/lua_unit_api.cpp`
