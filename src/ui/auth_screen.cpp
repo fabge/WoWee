@@ -1074,15 +1074,30 @@ void AuthScreen::saveLoginInfo(bool includePasswordHash) {
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
 
-    std::ofstream out(path);
+    // Written to a temporary beside the real file and renamed over it, because
+    // this file holds every server profile the player has: opening login.cfg
+    // directly truncates all of them, and a crash or a full disk between that
+    // truncation and the last write leaves the player with none.
+    const std::string tempPath = path + ".tmp";
+
+    std::ofstream out(tempPath, std::ios::trunc);
     if (!out.is_open()) {
         LOG_WARNING("Could not save login info to ", path);
         return;
     }
+
     // password_hash is sufficient to authenticate without the password, so it
-    // is a credential rather than harmless remembered UI state.
-    if (!core::restrictFileToOwner(path)) {
-        LOG_WARNING("Could not restrict login info to the current user: ", path);
+    // is a credential rather than harmless remembered UI state. Permissions go
+    // on before any hash byte is written, and if they cannot be established the
+    // hashes are dropped rather than written world-readable: a forgotten
+    // password is an inconvenience, a leaked one is not. Everything else in the
+    // file is ordinary preference and is still worth keeping.
+    bool writeHashes = true;
+    if (!core::restrictFileToOwner(tempPath)) {
+        LOG_WARNING("Could not restrict login info to the current user, so saved passwords "
+                    "are being omitted from ",
+                    path);
+        writeHashes = false;
     }
 
     out << "version=3\n";
@@ -1091,7 +1106,7 @@ void AuthScreen::saveLoginInfo(bool includePasswordHash) {
     for (const auto& s : servers_) {
         out << "\n[server " << makeServerKey(s.hostname, s.port) << "]\n";
         out << "username=" << s.username << "\n";
-        if (!s.passwordHash.empty()) {
+        if (writeHashes && !s.passwordHash.empty()) {
             out << "password_hash=" << s.passwordHash << "\n";
         }
         if (!s.expansionId.empty()) {
@@ -1100,6 +1115,31 @@ void AuthScreen::saveLoginInfo(bool includePasswordHash) {
         if (!s.assetProfileId.empty()) {
             out << "assets=" << s.assetProfileId << "\n";
         }
+    }
+
+    out.flush();
+    const bool wrote = out.good();
+    out.close();
+
+    if (!wrote) {
+        LOG_WARNING("Could not write login info, keeping the previous ", path);
+        std::filesystem::remove(tempPath, ec);
+        return;
+    }
+
+    std::filesystem::rename(tempPath, path, ec);
+    if (ec) {
+        LOG_WARNING("Could not replace ", path, ": ", ec.message());
+        std::error_code removeEc;
+        std::filesystem::remove(tempPath, removeEc);
+        return;
+    }
+
+    // The rename carries the temporary's permissions, but a filesystem that
+    // ignored them on the temporary will ignore them here too - so this is
+    // checked, not assumed, and only reports what actually happened.
+    if (writeHashes && !core::restrictFileToOwner(path)) {
+        LOG_WARNING("Saved login info is not owner-only: ", path);
     }
 
     LOG_INFO("Login info saved to ", path);
