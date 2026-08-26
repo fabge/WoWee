@@ -2,6 +2,7 @@
 // Extracted from Application as part of god-class decomposition (Section 3.3)
 
 #include "rendering/animation/melee_anim_chains.hpp"
+#include "core/config_paths.hpp"
 #include "core/world_loader.hpp"
 #include "core/application.hpp"
 #include "core/world_entry_callback_handler.hpp"
@@ -1373,14 +1374,14 @@ void WorldLoader::cancelWorldPreload() {
 
 void WorldLoader::saveLastWorldInfo(uint32_t mapId, const std::string& mapName,
                                      float serverX, float serverY) {
-#ifdef _WIN32
-    const char* base = std::getenv("APPDATA");
-    std::string dir = base ? std::string(base) + "\\wowee" : ".";
-#else
-    const char* home = std::getenv("HOME");
-    std::string dir = home ? std::string(home) + "/.wowee" : ".";
-#endif
-    std::filesystem::create_directories(dir);
+    // Through getConfigRoot, which is the one thing that knows where user state
+    // goes. Reading HOME directly disagreed with it in three places that
+    // matter: WOWEE_CONFIG_ROOT was ignored, so a harness wrote into the
+    // player's real config; Android has no HOME and fell back to "."; and "."
+    // inside a macOS bundle is Contents/Resources, under the code-signed seal.
+    const std::string dir = core::getConfigRoot();
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
     std::ofstream f(dir + "/last_world.cfg");
     if (f) {
         f << mapId << "\n" << mapName << "\n" << serverX << "\n" << serverY << "\n";
@@ -1388,13 +1389,9 @@ void WorldLoader::saveLastWorldInfo(uint32_t mapId, const std::string& mapName,
 }
 
 WorldLoader::LastWorldInfo WorldLoader::loadLastWorldInfo() const {
-#ifdef _WIN32
-    const char* base = std::getenv("APPDATA");
-    std::string dir = base ? std::string(base) + "\\wowee" : ".";
-#else
-    const char* home = std::getenv("HOME");
-    std::string dir = home ? std::string(home) + "/.wowee" : ".";
-#endif
+    // The same root the save above uses; they disagreed whenever HOME and
+    // WOWEE_CONFIG_ROOT did, which silently disabled the early world preload.
+    const std::string dir = core::getConfigRoot();
     LastWorldInfo info;
     std::ifstream f(dir + "/last_world.cfg");
     if (!f) return info;

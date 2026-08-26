@@ -1,4 +1,5 @@
 #include "ui/game_screen.hpp"
+#include "core/config_paths.hpp"
 #include "addons/lua_api_registrations.hpp"
 #include "ui/ui_texture_load.hpp"
 #include "ui/ui_upload_budget.hpp"
@@ -1661,11 +1662,13 @@ void GameScreen::takeScreenshot() {
     auto* renderer = services_.renderer;
     if (!renderer) return;
 
-    // Build path: ~/.wowee/screenshots/WoWee_YYYYMMDD_HHMMSS.png
-    const char* home = std::getenv("HOME");
-    if (!home) home = std::getenv("USERPROFILE");
-    if (!home) home = "/tmp";
-    std::string dir = std::string(home) + "/.wowee/screenshots";
+    // Under the configured user root, not HOME.
+    //
+    // HOME is absent on Android and unrelated to where this client keeps its
+    // state whenever WOWEE_CONFIG_ROOT is set, and the "/tmp" fallback is not
+    // writable everywhere it was being used. getConfigRoot is the platform
+    // path API and already answers all three cases.
+    std::string dir = core::getConfigRoot() + "/screenshots";
 
     auto now = std::chrono::system_clock::now();
     auto tt  = std::chrono::system_clock::to_time_t(now);

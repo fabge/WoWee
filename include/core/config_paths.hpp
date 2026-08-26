@@ -30,6 +30,15 @@ std::string getCacheRoot();
 // decisions are made against.
 bool runningFromMacAppBundle();
 
+// Where a flag-gated diagnostic file goes: <cache root>/diagnostics/<name>.
+//
+// These used to be opened by bare relative name, which resolves against the
+// working directory - and a bundled macOS build sets that to
+// Contents/Resources, inside the code-signed seal. Turning on a debug flag
+// there either failed silently or modified the signed bundle. The directory is
+// created before the path is returned; `name` must be one path component.
+std::string diagnosticFilePath(const std::string& name);
+
 // Restrict a credential-bearing file to its owner on POSIX. Windows user data
 // inherits the profile directory's ACL, so this is a no-op there. Returns false
 // when a POSIX permission update fails.

@@ -10589,12 +10589,42 @@ bool LuaEngine::saveSavedVariables(const std::string& path, const std::vector<st
         std::filesystem::create_directories(path.substr(0, lastSlash), ec);
     }
 
-    std::ofstream f(path);
-    if (!f.is_open()) {
-        LOG_WARNING("LuaEngine: cannot write saved variables to '", path, "'");
+    // Written to a temporary and renamed over the destination.
+    //
+    // Opening the real file truncates it before the first byte is written, so a
+    // kill during logout - or a full disk - left an empty or half-written Lua
+    // file where the addon's settings used to be, and the next launch parsed
+    // that instead. The whole point of this file is that it survives the
+    // session; losing it to the write that was meant to preserve it is the one
+    // outcome worth engineering against.
+    const std::string tempPath = path + ".tmp";
+    std::error_code ec;
+
+    {
+        std::ofstream f(tempPath, std::ios::trunc);
+        if (!f.is_open()) {
+            LOG_WARNING("LuaEngine: cannot write saved variables to '", path, "'");
+            return false;
+        }
+        f << output;
+        f.flush();
+        if (!f.good()) {
+            LOG_WARNING("LuaEngine: failed writing saved variables for '", path,
+                        "'; keeping the previous file");
+            f.close();
+            std::filesystem::remove(tempPath, ec);
+            return false;
+        }
+    }
+
+    std::filesystem::rename(tempPath, path, ec);
+    if (ec) {
+        LOG_WARNING("LuaEngine: could not replace '", path, "': ", ec.message());
+        std::error_code removeEc;
+        std::filesystem::remove(tempPath, removeEc);
         return false;
     }
-    f << output;
+
     LOG_INFO("LuaEngine: saved variables to '", path, "' (", output.size(), " bytes)");
     return true;
 }

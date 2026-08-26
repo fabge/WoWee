@@ -155,6 +155,17 @@ std::string getCacheRoot() {
     return root.string();
 }
 
+std::string diagnosticFilePath(const std::string& name) {
+    const fs::path dir = fs::path(getCacheRoot()) / "diagnostics";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+
+    // Validated rather than trusted, so a caller cannot place a diagnostic
+    // outside the cache root by passing a name with separators in it.
+    if (auto path = safeChildPath(dir.string(), name)) return *path;
+    return (dir / "diagnostic.log").string();
+}
+
 bool restrictFileToOwner(const std::string& path) {
 #ifdef _WIN32
     (void)path;

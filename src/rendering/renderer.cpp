@@ -1,4 +1,5 @@
 #include "rendering/renderer.hpp"
+#include "core/config_paths.hpp"
 
 #include <fstream>
 #include <iterator>
@@ -2373,7 +2374,8 @@ void Renderer::updateGrassPopulation() {
         static bool dumped = false;
         if (!dumped && !blades.empty()) {
             dumped = true;
-            std::ofstream out("grass_population.csv");
+            const std::string csvPath = core::diagnosticFilePath("grass_population.csv");
+            std::ofstream out(csvPath);
             out << "# player," << center.x << "," << center.y << "," << center.z << "\n";
             for (const auto& b : blades) {
                 out << b.x << "," << b.y << "," << b.z << "," << b.height << "\n";
