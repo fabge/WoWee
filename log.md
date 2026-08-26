@@ -641,3 +641,31 @@ why the libraries are declared as a cycle. The `sweep_guard` comment in
 95% of the suite; corrected, with the two ways to avoid paying it.
 
 183 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
+
+## 2026-08-26 — upstream merge, and the cost of the split
+
+Four upstream commits, one conflict, and it was the one predicted at the start
+of the day: `src/addons/lua_engine.cpp`. Upstream edited two things in it; we
+had moved 4,586 lines of it into `lua_widget_api.cpp` that morning, so git saw
+the whole widget block as ours-deleted / theirs-modified.
+
+Resolved by taking our side of the block - the code lives in the new file - and
+then landing upstream's change where it now is. Only one of their two hunks
+needed relocating: the random-suffix stat naming (`itemStatName` ->
+`itemModStatName`, which answers nothing for the five primary stats every animal
+suffix rolls) is inside the tooltip builder that moved, while the cursor
+world-drop fix stayed in `lua_engine.cpp` and merged on its own.
+
+Before committing the resolution, upstream's version of the conflicted block was
+compared line-multiset against our `lua_widget_api.cpp`: twenty lines differed,
+of which twelve were their intended change and the rest were section separators
+and a doc comment that did not travel. That check is the reason to trust the
+resolution - "took ours" on a 2,673-line conflict is otherwise indistinguishable
+from dropping an upstream fix on the floor.
+
+This is the convergent-evolution cost the fork was told to expect, priced: one
+conflict, one relocated hunk, one verification. It will recur every time
+upstream touches the widget half of `lua_engine.cpp`, and it is the argument for
+the Tier 3 pull requests rather than against the split.
+
+184 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
