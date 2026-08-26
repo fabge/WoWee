@@ -512,6 +512,13 @@ jobs:
       shell: msys2 {0}
       run: cmake --build build --parallel $(nproc)
 
+    # WOWEE_BUILD_TESTS defaults to ON, so these jobs were already paying to
+    # build every test target and then never running one - a Windows-only
+    # failure produced a green workflow and a published ZIP.
+    - name: Test
+      shell: msys2 {0}
+      run: ctest --test-dir build --output-on-failure -j $(nproc)
+
     - name: Bundle DLLs
       shell: msys2 {0}
       run: |
@@ -624,6 +631,13 @@ jobs:
     - name: Build
       shell: msys2 {0}
       run: cmake --build build --parallel $(nproc)
+
+    # WOWEE_BUILD_TESTS defaults to ON, so these jobs were already paying to
+    # build every test target and then never running one - a Windows-only
+    # failure produced a green workflow and a published ZIP.
+    - name: Test
+      shell: msys2 {0}
+      run: ctest --test-dir build --output-on-failure -j $(nproc)
 
     - name: Bundle DLLs
       shell: msys2 {0}
