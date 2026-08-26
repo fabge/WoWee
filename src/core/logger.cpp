@@ -75,6 +75,17 @@ bool runningFromAppBundle() {
 
 }  // namespace
 
+std::string logDirectory() {
+#ifdef __APPLE__
+    // Contents/Resources is deliberately the working directory of a bundled
+    // build so all relative assets resolve. It is also inside the signed seal:
+    // successfully writing a log there invalidates the notarized bundle after
+    // its first launch. A checkout keeps the convenient local logs/ directory.
+    if (runningFromAppBundle()) return perUserLogDir().string();
+#endif
+    return "logs";
+}
+
 void Logger::ensureFile() {
     if (fileReady) return;
     fileReady = true;
@@ -114,14 +125,7 @@ void Logger::ensureFile() {
         else if (std::ranges::equal(v, "fatal"sv)) setLogLevel(LogLevel::FATAL);
     }
     std::error_code ec;
-    std::filesystem::path logDir = "logs";
-#ifdef __APPLE__
-    // Contents/Resources is deliberately the working directory of a bundled
-    // build so all relative assets resolve. It is also inside the signed seal:
-    // successfully writing a log there invalidates the notarized bundle after
-    // its first launch. A checkout keeps the convenient local logs/ directory.
-    if (runningFromAppBundle()) logDir = perUserLogDir();
-#endif
+    const std::filesystem::path logDir = logDirectory();
     std::filesystem::create_directories(logDir, ec);
     // WOWEE_LOG_FILE names the file, so a tool run beside the client does not
     // destroy the log the client wrote.

@@ -20,6 +20,7 @@
 // mouse ungrab below is genuinely Linux-specific.
 #if defined(__linux__) || defined(__APPLE__)
 #include <unistd.h>
+#include <fcntl.h>
 #include <libgen.h>
 #include <cstdio>
 #include <cstring>
@@ -54,6 +55,36 @@ static void releaseMouseGrab() {}
 #endif
 
 #ifdef WOWEE_HAS_BACKTRACE
+// Where a crash backtrace is appended, resolved once at start-up.
+//
+// This was the fixed path /tmp/wowee_debug.log: shared by every user on the
+// machine and by every concurrent client, in a directory anyone can write to,
+// and nowhere near the log a bug report actually comes with. It sits beside
+// wowee.log now.
+//
+// A fixed buffer filled before any signal can arrive, because the handler may
+// not allocate, may not call getenv, and may not build a std::string.
+static char g_crashLogPath[1024] = {0};
+
+static void resolveCrashLogPath() {
+    const std::string dir = wowee::core::logDirectory();
+    const std::string path = dir + "/wowee_crash.log";
+    if (path.size() >= sizeof(g_crashLogPath)) return;  // leave it empty; stderr still gets it
+    std::memcpy(g_crashLogPath, path.c_str(), path.size() + 1);
+}
+
+// write(2) rather than fprintf, which is not async-signal-safe. Return value
+// deliberately ignored: this is the crash path and there is nothing to do
+// about a short write except lose the rest of it.
+static void writeAll(int fd, const char* text, size_t length) {
+    while (length > 0) {
+        const ssize_t written = write(fd, text, length);
+        if (written <= 0) return;
+        text += written;
+        length -= static_cast<size_t>(written);
+    }
+}
+
 static void crashHandlerSigaction(int sig, siginfo_t* info, void* /*ucontext*/) {
     releaseMouseGrab();
     void* frames[64];
@@ -62,16 +93,27 @@ static void crashHandlerSigaction(int sig, siginfo_t* info, void* /*ucontext*/) 
                           (sig == SIGABRT) ? "SIGABRT" :
                           (sig == SIGFPE)  ? "SIGFPE"  : "UNKNOWN";
     void* faultAddr = info ? info->si_addr : nullptr;
-    fprintf(stderr, "\n=== CRASH: signal %s (%d) faultAddr=%p ===\n",
-            sigName, sig, faultAddr);
+    // snprintf is not on the async-signal-safe list either, but it is what
+    // there is for formatting a pointer, it touches no shared state here, and
+    // the alternative is a crash report with no fault address in it.
+    char header[256];
+    const int headerLength = snprintf(header, sizeof(header),
+                                      "\n=== CRASH: signal %s (%d) faultAddr=%p ===\n",
+                                      sigName, sig, faultAddr);
+    const size_t headerSize = (headerLength > 0) ? static_cast<size_t>(headerLength) : 0;
+
+    writeAll(STDERR_FILENO, header, headerSize);
     backtrace_symbols_fd(frames, n, STDERR_FILENO);
-    FILE* f = fopen("/tmp/wowee_debug.log", "a");
-    if (f) {
-        fprintf(f, "\n=== CRASH: signal %s (%d) faultAddr=%p ===\n",
-                sigName, sig, faultAddr);
-        fflush(f);
-        backtrace_symbols_fd(frames, n, fileno(f));
-        fclose(f);
+
+    if (g_crashLogPath[0] != '\0') {
+        // 0600: a crash log carries stack contents and file paths, and the
+        // directory it now lives in is the user's own.
+        const int fd = open(g_crashLogPath, O_WRONLY | O_CREAT | O_APPEND, 0600);
+        if (fd >= 0) {
+            writeAll(fd, header, headerSize);
+            backtrace_symbols_fd(frames, n, fd);
+            close(fd);
+        }
     }
     // Re-raise with default handler
     struct sigaction sa;
@@ -153,6 +195,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     g_emergencyDisplay = XOpenDisplay(nullptr);
 #endif
 #ifdef WOWEE_HAS_BACKTRACE
+    // Before the handlers are installed, so the path is in hand by the time one
+    // can fire.
+    resolveCrashLogPath();
+
     // Use sigaction for SIGSEGV/SIGABRT/SIGFPE to get si_addr (faulting address)
     {
         struct sigaction sa;

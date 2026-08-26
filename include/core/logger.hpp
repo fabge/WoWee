@@ -32,6 +32,15 @@ enum class LogLevel {
 // define `ERROR` as a macro.
 inline constexpr LogLevel kLogLevelError = LogLevel::ERROR;
 
+// The directory the log file is written to: `logs` beside the working
+// directory for a checkout, and the per-user log directory for a macOS app
+// bundle, whose working directory is inside the code-signed seal.
+//
+// Exposed because the crash handler needs the same answer and must have it
+// before it is needed: resolving a path involves allocation and getenv, and a
+// signal handler may do neither.
+std::string logDirectory();
+
 class Logger {
 public:
     static Logger& getInstance();
