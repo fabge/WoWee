@@ -407,6 +407,9 @@ public:
     // Floor cache persistence (zone-specific files)
     void setMapName(const std::string& name) { mapName_ = name; }
     const std::string& getMapName() const { return mapName_; }
+    // The floor cache file for the current map, or empty when the map's name
+    // from Map.dbc does not make a single safe file name.
+    [[nodiscard]] std::string floorCachePath() const;
     bool saveFloorCache() const;  // Saves to cache/wmo_floor_<mapName>.bin
     bool loadFloorCache();        // Loads from cache/wmo_floor_<mapName>.bin
     size_t getFloorCacheSize() const { return precomputedFloorGrid.size(); }

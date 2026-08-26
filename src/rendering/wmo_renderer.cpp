@@ -1372,15 +1372,31 @@ void WMORenderer::resetQueryStats() {
     // Note: precomputedFloorGrid is persistent and not cleared per-frame
 }
 
+// The floor cache file for the current map, or empty if the map's name cannot
+// safely become one.
+//
+// mapName_ comes from Map.dbc, which is extracted game data and therefore
+// untrusted input under AGENTS.md - a name carrying separators or enough ..
+// components would put this writable file anywhere on disk. Validated as a
+// single path component rather than sanitised, because a rewritten name would
+// silently share one cache between two maps.
+std::string WMORenderer::floorCachePath() const {
+    if (mapName_.empty()) return "";
+    const std::string leaf = "wmo_floor_" + mapName_ + ".bin";
+    if (auto path = core::safeChildPath(core::getCacheRoot(), leaf)) return *path;
+
+    core::Logger::getInstance().warning(
+        "Map name does not make a single safe file name; no floor cache for it");
+    return "";
+}
+
 bool WMORenderer::saveFloorCache() const {
-    if (mapName_.empty()) {
-        core::Logger::getInstance().warning("Cannot save floor cache: no map name set");
+    const std::string filepath = floorCachePath();
+    if (filepath.empty()) {
+        core::Logger::getInstance().warning("Cannot save floor cache: no usable map name");
         return false;
     }
-
-    const std::filesystem::path path = std::filesystem::path(core::getCacheRoot()) /
-                                       ("wmo_floor_" + mapName_ + ".bin");
-    const std::string filepath = path.string();
+    const std::filesystem::path path(filepath);
 
     // Create directory if needed
     std::filesystem::path absPath = std::filesystem::absolute(path);
@@ -1420,13 +1436,11 @@ bool WMORenderer::saveFloorCache() const {
 }
 
 bool WMORenderer::loadFloorCache() {
-    if (mapName_.empty()) {
-        core::Logger::getInstance().warning("Cannot load floor cache: no map name set");
+    const std::string filepath = floorCachePath();
+    if (filepath.empty()) {
+        core::Logger::getInstance().warning("Cannot load floor cache: no usable map name");
         return false;
     }
-
-    const std::string filepath = (std::filesystem::path(core::getCacheRoot()) /
-                                  ("wmo_floor_" + mapName_ + ".bin")).string();
 
     std::ifstream file(filepath, std::ios::binary);
     if (!file) {
@@ -1442,20 +1456,48 @@ bool WMORenderer::loadFloorCache() {
     file.read(reinterpret_cast<char*>(&version), sizeof(version));
     file.read(reinterpret_cast<char*>(&count), sizeof(count));
 
-    if (magic != 0x574D4F46 || version != 1) {
+    if (!file || magic != 0x574D4F46 || version != 1) {
         core::Logger::getInstance().warning("Invalid floor cache file format: ", filepath);
+        return false;
+    }
+
+    // The count is checked against the file rather than trusted.
+    //
+    // This is our own cache, but it is a file on disk that can be truncated by
+    // a full volume or a kill during the write, and the magic and version
+    // survive that intact. An unchecked 64-bit count then reserved for however
+    // many entries it claimed - and the read loop below did not test whether
+    // the reads succeeded, so a truncated file inserted an uninitialised key
+    // and height once per remaining iteration.
+    constexpr size_t kEntryBytes = sizeof(uint64_t) + sizeof(float);
+    std::error_code sizeEc;
+    const auto fileBytes = std::filesystem::file_size(filepath, sizeEc);
+    const uint64_t headerBytes = sizeof(magic) + sizeof(version) + sizeof(count);
+    const uint64_t maxEntries =
+        (!sizeEc && fileBytes > headerBytes) ? (fileBytes - headerBytes) / kEntryBytes : 0;
+
+    if (count > maxEntries) {
+        core::Logger::getInstance().warning(
+            "Floor cache claims ", count, " entries but holds room for ", maxEntries,
+            "; discarding it: ", filepath);
         return false;
     }
 
     // Read entries
     precomputedFloorGrid.clear();
-    precomputedFloorGrid.reserve(count);
+    precomputedFloorGrid.reserve(static_cast<size_t>(count));
 
     for (uint64_t i = 0; i < count; i++) {
-        uint64_t key;
-        float height;
+        uint64_t key = 0;
+        float height = 0.0f;
         file.read(reinterpret_cast<char*>(&key), sizeof(key));
         file.read(reinterpret_cast<char*>(&height), sizeof(height));
+        if (!file) {
+            core::Logger::getInstance().warning(
+                "Floor cache ended after ", i, " of ", count, " entries; discarding it");
+            precomputedFloorGrid.clear();
+            return false;
+        }
         precomputedFloorGrid[key] = height;
     }
 

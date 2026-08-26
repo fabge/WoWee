@@ -638,6 +638,33 @@ bool WMOLoader::loadGroup(const std::vector<uint8_t>& groupData,
                         group.liquid.basePosition.z = read<float>(groupData, parseOffset);
                         group.liquid.materialId = read<uint16_t>(groupData, parseOffset);
 
+                        // The grid dimensions are four uint32s straight out of
+                        // the file, and the fallback branches below resize to
+                        // their product whether or not the bytes are there -
+                        // that is the whole point of a fallback. So a group
+                        // claiming 0xFFFFFFFF by 0xFFFFFFFF asks for an
+                        // allocation of 1.8e19 elements and the client dies on
+                        // bad_alloc before anything checks a byte count.
+                        //
+                        // A real MLIQ grid is small: it covers one WMO group,
+                        // and Blizzard's own are tens of vertices per axis.
+                        // Anything past this is not a variant of the format,
+                        // it is not the format, so the liquid is dropped rather
+                        // than clamped into something half-real.
+                        constexpr uint32_t kMaxLiquidVertsPerAxis = 1024;
+                        if (group.liquid.xVerts > kMaxLiquidVertsPerAxis ||
+                            group.liquid.yVerts > kMaxLiquidVertsPerAxis ||
+                            group.liquid.xTiles > kMaxLiquidVertsPerAxis ||
+                            group.liquid.yTiles > kMaxLiquidVertsPerAxis) {
+                            core::Logger::getInstance().warning(
+                                "WMO liquid grid is ", group.liquid.xVerts, "x",
+                                group.liquid.yVerts, " vertices and ", group.liquid.xTiles, "x",
+                                group.liquid.yTiles, " tiles - beyond the format; liquid dropped");
+                            group.liquid = WMOLiquid{};  // hasLiquid() is false once the dims are zero
+                            mogpOffset = subChunkEnd;
+                            continue;
+                        }
+
                         // Keep parser resilient across minor format variants:
                         // prefer explicit per-vertex floats, otherwise fall back to flat.
                         const size_t vertexCount =
