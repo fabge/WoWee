@@ -261,3 +261,48 @@ producing a real cost on a real day.
 
 Also noted for `TODO.md`, visible in the same screenshot: kill objectives render
 as the literal "Creature slain" with no creature name.
+
+## 2026-08-26 — working through TODO
+
+Tier 1 is now empty.
+
+**Crash log.** The backtrace was appended to a fixed `/tmp/wowee_debug.log` —
+world-writable, shared by every user and every concurrent client, and nowhere
+near the log a bug report actually arrives with. It sits beside `wowee.log`
+now, at mode 0600, with the path resolved once at start-up into a fixed buffer
+and written through `open`/`write`: the handler may not allocate, call `getenv`
+or use `fprintf`, none of which the old one respected.
+
+**SavedVariables** were written to the addon's own directory, which for a
+bundled addon is inside the macOS code-signed seal and for an addon under
+extracted game data is proprietary input. They live under the config root now,
+and a file left behind by an older build is moved on the way to being read —
+without that every player silently loses their addon settings exactly once.
+
+**The interface layer reaches CTest.** `test_lua_unit_api` is the first test to
+link a `lua_*_api.cpp` file. The estimate that preceded it was wrong in a way
+worth keeping: every binding does guard its handler pointer, so nothing is
+*called* — but the linker wants the symbols regardless, 41 of them, 32 being
+`GameHandler` methods. Each is a stub in the test. They fail loudly rather than
+silently, and one file needing 32 methods of `GameHandler` states the
+god-object problem as a number instead of an opinion.
+
+**A frame that fails to build no longer takes the rest of its file.** The
+emitter produces one chunk per XML file and ran it whole, so an error building
+the fourth frame lost the fifth through the fortieth — the half-built interface
+`AGENTS.md` warns about, with nothing to say where it stopped. Each top-level
+frame is wrapped in its own `pcall`, reported through `geterrorhandler()`. Safe
+because every frame lives in `__w[n]`, a table reached as an upvalue from
+inside the closure; there are no top-level locals to lose. The local-limit test
+asserted a literal count of one `local` and failed on the new one — rewritten
+to assert what it was protecting, that locals do not grow with widget count.
+
+**The world header cipher** was chosen inside `WorldSocket::initEncryption`
+from hard-coded build numbers, the one place the data-driven expansion model
+leaked into `src/network/`. It is a profile field now, stated explicitly in all
+four shipped profiles, with the old build boundaries as the fallback. Turtle is
+the case that made a test necessary: realm build 7272, world build 5875, and it
+is the world connection being encrypted.
+
+Also from the play session: kill objectives name their creature instead of
+reading "Creature slain".
