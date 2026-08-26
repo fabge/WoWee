@@ -499,7 +499,7 @@ bool parseCharEnumPreWotlk(network::Packet& packet, CharEnumResponse& response,
     LOG_INFO(tag, " Parsing SMSG_CHAR_ENUM: ", static_cast<int>(count), " characters");
 
     response.characters.clear();
-    response.characters.reserve(count);
+    response.characters.reserve(packet.boundedCount(count));
 
     // guid(8) + name(1) + race(1) + class(1) + gender(1) + appearance(4)
     // + facialFeatures(1) + level(1) + zone(4) + map(4) + pos(12) + guild(4)
@@ -572,7 +572,7 @@ bool CharEnumParser::parse(network::Packet& packet, CharEnumResponse& response) 
     LOG_INFO("Parsing SMSG_CHAR_ENUM: ", static_cast<int>(count), " characters");
 
     response.characters.clear();
-    response.characters.reserve(count);
+    response.characters.reserve(packet.boundedCount(count));
 
     for (uint8_t i = 0; i < count; ++i) {
         Character character;
@@ -820,7 +820,7 @@ bool MotdParser::parse(network::Packet& packet, MotdData& data) {
     LOG_INFO("Parsed SMSG_MOTD: ", lineCount, " line(s)");
 
     data.lines.clear();
-    data.lines.reserve(lineCount);
+    data.lines.reserve(packet.boundedCount(lineCount));
 
     for (uint32_t i = 0; i < lineCount; ++i) {
         // Validate at least 1 byte available for the string
@@ -1436,7 +1436,7 @@ bool UpdateObjectParser::parse(network::Packet& packet, UpdateObjectData& data) 
                 return false;
             }
 
-            data.outOfRangeGuids.reserve(count);
+            data.outOfRangeGuids.reserve(packet.boundedCount(count));
             for (uint32_t i = 0; i < count; ++i) {
                 uint64_t guid = packet.readPackedGuid();
                 data.outOfRangeGuids.push_back(guid);

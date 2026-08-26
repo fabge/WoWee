@@ -630,7 +630,7 @@ bool LootResponseParser::parse(network::Packet& packet, LootResponseData& data, 
         return true;
     };
 
-    data.items.reserve(itemCount);
+    data.items.reserve(packet.boundedCount(itemCount));
     if (!parseLootItemList(itemCount, false)) {
         LOG_WARNING("LootResponseParser: truncated regular item list");
         return false;
@@ -832,7 +832,7 @@ bool GossipMessageParser::parse(network::Packet& packet, GossipMessageData& data
     }
 
     data.options.clear();
-    data.options.reserve(optionCount);
+    data.options.reserve(packet.boundedCount(optionCount));
     for (uint32_t i = 0; i < optionCount; ++i) {
         // Each option: id(4) + icon(1) + isCoded(1) + boxMoney(4) + text(var) + boxText(var)
         // Minimum: 10 bytes + 2 empty strings (2 null terminators) = 12 bytes
@@ -865,7 +865,7 @@ bool GossipMessageParser::parse(network::Packet& packet, GossipMessageData& data
     }
 
     data.quests.clear();
-    data.quests.reserve(questCount);
+    data.quests.reserve(packet.boundedCount(questCount));
     for (uint32_t i = 0; i < questCount; ++i) {
         // Each quest: questId(4) + questIcon(4) + questLevel(4) + questFlags(4) + isRepeatable(1) + title(var)
         // Minimum: 17 bytes + empty string (1 null terminator) = 18 bytes
@@ -1167,7 +1167,7 @@ bool QuestOfferRewardParser::parse(network::Packet& packet, QuestOfferRewardData
         uint32_t choiceCount = packet.readUInt32();
         if (choiceCount > 6) return out;
         uint32_t choiceSlots = fixedArrays ? 6u : choiceCount;
-        out.choiceRewards.reserve(choiceCount);
+        out.choiceRewards.reserve(packet.boundedCount(choiceCount));
         uint32_t nonZeroChoice = 0;
         for (uint32_t i = 0; i < choiceSlots; ++i) {
             if (!packet.hasRemaining(12)) return out;
@@ -1186,7 +1186,7 @@ bool QuestOfferRewardParser::parse(network::Packet& packet, QuestOfferRewardData
         uint32_t rewardCount = packet.readUInt32();
         if (rewardCount > 4) return out;
         uint32_t rewardSlots = fixedArrays ? 4u : rewardCount;
-        out.fixedRewards.reserve(rewardCount);
+        out.fixedRewards.reserve(packet.boundedCount(rewardCount));
         uint32_t nonZeroFixed = 0;
         for (uint32_t i = 0; i < rewardSlots; ++i) {
             if (!packet.hasRemaining(12)) return out;
@@ -1513,7 +1513,7 @@ bool ListInventoryParser::parse(network::Packet& packet, ListInventoryData& data
         hasExtendedCost = true;
     }
 
-    data.items.reserve(itemCount);
+    data.items.reserve(packet.boundedCount(itemCount));
     for (uint8_t i = 0; i < itemCount; ++i) {
         const size_t perItemBytes = hasExtendedCost ? bytesPerItemWithExt : bytesPerItemNoExt;
         if (!packet.hasRemaining(perItemBytes)) {
@@ -1557,7 +1557,7 @@ bool TrainerListParser::parse(network::Packet& packet, TrainerListData& data, bo
         return false;
     }
 
-    data.spells.reserve(spellCount);
+    data.spells.reserve(packet.boundedCount(spellCount));
     for (uint32_t i = 0; i < spellCount; ++i) {
         // Validate minimum entry size before reading
         const size_t minEntrySize = isClassic ? 34 : 38;

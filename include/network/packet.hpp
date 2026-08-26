@@ -58,6 +58,24 @@ public:
     // (can happen via setReadPos with an unchecked offset).
     [[nodiscard]] size_t getRemainingSize() const { return (readPos <= data.size()) ? (data.size() - readPos) : 0; }
     [[nodiscard]] bool hasRemaining(size_t need) const { return readPos <= data.size() && need <= (data.size() - readPos); }
+
+    /// A server-supplied element count, clamped to what this packet could
+    /// actually still contain.
+    ///
+    /// For reserving before a parse loop. The loops themselves are already
+    /// written to stop when the bytes run out, so the count never decided how
+    /// much was *read* - but it did decide how much was *allocated*, and a
+    /// count of 0xFFFFFFFF in a twelve-byte packet asked for an allocation of
+    /// several gigabytes and took the client down with bad_alloc. A malformed
+    /// packet must cost a rejected packet, not the process.
+    ///
+    /// `entryBytes` is the smallest number of bytes one element can occupy.
+    /// One is the honest default for a variable-length entry and is still a
+    /// hard bound, because nothing can appear more often than once per byte.
+    [[nodiscard]] size_t boundedCount(uint64_t count, size_t entryBytes = 1) const {
+        const size_t capacity = getRemainingSize() / (entryBytes ? entryBytes : 1);
+        return (count < capacity) ? static_cast<size_t>(count) : capacity;
+    }
     [[nodiscard]] bool hasFullPackedGuid() const {
         if (readPos >= data.size()) return false;
         uint8_t mask = data[readPos];

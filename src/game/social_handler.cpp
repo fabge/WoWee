@@ -3409,8 +3409,11 @@ void SocialHandler::handleRaidInstanceInfo(network::Packet& packet) {
     if (!packet.hasRemaining(4)) return;
     uint32_t count = packet.readUInt32();
     instanceLockouts_.clear();
-    instanceLockouts_.reserve(count);
     const size_t kEntrySize = useTbcFormat ? 13 : 18;
+    // Bounded before reserving: the loop below already stops when the bytes run
+    // out, but the reserve happened first and a count of 0xFFFFFFFF in a
+    // twelve-byte packet asked the allocator for gigabytes.
+    instanceLockouts_.reserve(packet.boundedCount(count, kEntrySize));
     for (uint32_t i = 0; i < count; ++i) {
         if (packet.getRemainingSize() < kEntrySize) break;
         InstanceLockout lo;

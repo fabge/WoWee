@@ -268,7 +268,7 @@ bool PacketParsers::parseMailList(network::Packet& packet, std::vector<MailMessa
              " payloadBytes=", payloadSizeTotal);
 
     inbox.clear();
-    inbox.reserve(shownCount);
+    inbox.reserve(packet.boundedCount(shownCount));
 
     // Each entry: uint16 size + msgId(4) + type(1) + sender(min 4) + 7 fixed
     // uint32/float(28) + subject NUL(1) + body NUL(1) + attachCount(1) = 42 bytes.
@@ -316,7 +316,7 @@ bool PacketParsers::parseMailList(network::Packet& packet, std::vector<MailMessa
         msg.body = packet.readString();
 
         uint8_t attachCount = packet.readUInt8();
-        msg.attachments.reserve(attachCount);
+        msg.attachments.reserve(packet.boundedCount(attachCount));
         bool truncatedAttachment = false;
         for (uint8_t j = 0; j < attachCount; ++j) {
             if (!packet.hasRemaining(kAttachmentBytes)) {
@@ -736,7 +736,7 @@ bool AuctionListResultParser::parse(network::Packet& packet, AuctionListResult& 
     }
 
     data.auctions.clear();
-    data.auctions.reserve(count);
+    data.auctions.reserve(packet.boundedCount(count));
 
     const size_t minPerEntry = vanillaLayout
         ? 64

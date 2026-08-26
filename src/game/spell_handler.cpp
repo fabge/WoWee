@@ -4535,7 +4535,7 @@ void SpellHandler::handleSpellDispelLog(network::Packet& packet) {
     // multi-aura packets down to the first entry only.
     const size_t dispelEntrySize = dispelUsesFullGuid ? 8u : 5u;
     std::vector<uint32_t> dispelledIds;
-    dispelledIds.reserve(count);
+    dispelledIds.reserve(packet.boundedCount(count, dispelEntrySize));
     for (uint32_t i = 0; i < count && packet.hasRemaining(dispelEntrySize); ++i) {
         uint32_t dispelledId = packet.readUInt32();
         if (dispelUsesFullGuid) {
@@ -4626,7 +4626,7 @@ void SpellHandler::handleSpellStealLog(network::Packet& packet) {
     // Preserve every stolen aura in the combat log instead of only the first.
     const size_t stealEntrySize = stealUsesFullGuid ? 8u : 5u;
     std::vector<uint32_t> stolenIds;
-    stolenIds.reserve(stealCount);
+    stolenIds.reserve(packet.boundedCount(stealCount, stealEntrySize));
     for (uint32_t i = 0; i < stealCount && packet.hasRemaining(stealEntrySize); ++i) {
         uint32_t stolenId = packet.readUInt32();
         if (stealUsesFullGuid) {

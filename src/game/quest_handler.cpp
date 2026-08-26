@@ -2428,7 +2428,13 @@ void QuestHandler::handleQuestPoiQueryResponse(network::Packet& packet) {
             packet.readUInt32();  // unk2
             const uint32_t pointCount = packet.readUInt32();
             if (pointCount == 0) continue;
-            if (packet.getRemainingSize() < pointCount * 8) return;
+            // Divided rather than multiplied: pointCount is a uint32 read from
+            // the packet and `pointCount * 8` is 32-bit arithmetic, so a count
+            // at or above 0x20000000 wraps to a small number, passes this check,
+            // and the loop below then performs hundreds of millions of reads
+            // past the end of the packet - on the main thread, which is a frozen
+            // client rather than a rejected packet.
+            if (pointCount > packet.getRemainingSize() / 8) return;
             float sumX = 0.0f, sumY = 0.0f;
             for (uint32_t pt = 0; pt < pointCount; ++pt) {
                 const int32_t px = static_cast<int32_t>(packet.readUInt32());
