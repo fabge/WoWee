@@ -71,6 +71,25 @@ The two single-symbol ones are the interesting pair, and neither is a move:
 `Input::getInstance` is the same singleton shape as `Application::instance`.
 **~half a day for the three singletons, and it is a design change each time.**
 
+### The static-library cycle prints a linker warning on every link
+`CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block
+
+Apple's ld says `ignoring duplicate libraries: libwowee_addons.a, ...` on every
+target that links a subsystem, because CMake repeats the connected component of
+a static-library cycle on the link line. Cosmetic, Apple-only, and not an error
+- but it is noise in every build log, and this repository does not leave
+warnings standing.
+
+Linking the client against `wowee_core` alone silenced it once; adding
+`wowee_base` and `wowee_takeover` to each subsystem's PUBLIC link brought it
+back, and the test targets that link `wowee_game` or `wowee_addons` show it too.
+
+The real fix is the cycles above: with a DAG, CMake does not repeat anything.
+`-Wl,-no_warn_duplicate_libraries` is not accepted by the toolchain here, and
+`$<LINK_GROUP:RESCAN,...>` needs `cmake_minimum_required` raised from 3.15 to
+3.24, which is a compatibility decision for five CI platforms rather than a
+tidy-up. **Do not paper over it; it goes away when the cycles do.**
+
 ### 147 translation units the client links for nothing
 `CMakeLists.txt` — `WOWEE_SRC_PIPELINE`
 
