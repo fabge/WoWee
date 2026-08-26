@@ -86,3 +86,31 @@ TEST_CASE("a dollar that means nothing in particular is kept", "[text][tokens]")
     CHECK(game::resolveTextTokens("It costs $5 and change.", s) == "It costs $5 and change.");
     CHECK(game::resolveTextTokens("Ends with a $", s) == "Ends with a $");
 }
+
+// The quest log used to push its description and objectives raw while the
+// offer panel resolved them, so the same quest read "$n" in one place and the
+// player's name in the other. Screenshot on 2026-08-26: "Rites of the
+// Earthmother" showing "...are noble traits, $n." and "a $c of greatness".
+//
+// This pins the text a quest log panel is built from, which is the string the
+// binding hands over. The binding itself needs a GameHandler and a Lua state;
+// what can go wrong without either is the substitution, and that is here.
+TEST_CASE("quest body text resolves the same tokens the offer panel does",
+          "[text][quest]") {
+    game::TextSubject s;
+    s.name = "Kaelen";
+    s.className = "Shaman";
+    s.raceName = "Tauren";
+    s.gender = game::Gender::MALE;
+
+    const std::string body =
+        "Your willingness to perform a humble task for the tauren of Narache "
+        "and your eagerness to learn are noble traits, $n. I believe one day "
+        "you will be heralded in Thunder Bluff as a $c of greatness.";
+
+    const std::string out = game::resolveTextTokens(body, s);
+    CHECK(out.find("$n") == std::string::npos);
+    CHECK(out.find("$c") == std::string::npos);
+    CHECK(out.find("noble traits, Kaelen.") != std::string::npos);
+    CHECK(out.find("as a Shaman of greatness") != std::string::npos);
+}

@@ -154,6 +154,28 @@ const game::GameHandler::QuestLogEntry* questAtRow(game::GameHandler* gh, int in
     return rows[index - 1].quest;
 }
 
+
+int pushQuestText(lua_State* L, const std::string* s) {
+    if (!s || s->empty()) { lua_pushstring(L, ""); return 1; }
+    // Resolve WoW's in-text tokens against the player before the interface
+    // sees the string.
+    //
+    // These come off the wire as literals - $n for the player's name, $c for
+    // class, $r for race, $g male:female; for a gender-split phrase - and the
+    // parser only ever turned $b into a line break, because it has no player
+    // to resolve the rest against. So a quest that greeted "$n" showed the two
+    // characters, and "$glad:lass;" showed its own markup. The binding is the
+    // first point that has the player: replaceGenderPlaceholders is the same
+    // resolver chat and this client's own dialog already run.
+    if (auto* gh = getGameHandler(L)) {
+        const std::string resolved = ui::chat_utils::replaceGenderPlaceholders(*s, *gh);
+        lua_pushstring(L, resolved.c_str());
+    } else {
+        lua_pushstring(L, s->c_str());
+    }
+    return 1;
+}
+
 } // namespace
 
 // The same mapping, reachable from the other binding files. Declared in
@@ -594,8 +616,13 @@ static int lua_GetQuestLogQuestText(lua_State* L) {
     // "not stored" was true only of the store - the bytes were in hand and
     // discarded, and the quest log drew a blank panel above every objective
     // list because of it.
-    lua_pushstring(L, q.description.c_str());  // description
-    lua_pushstring(L, q.objectives.c_str());   // objectives
+    // Both through pushQuestText, which resolves WoW's in-text tokens against
+    // the player. GetQuestText and GetObjectiveText - the offer panel - have
+    // done this since the tokens were implemented; the quest *log* pushed the
+    // raw strings, so the same quest read "$n" and "a $c of greatness" in the
+    // log and correctly in the panel that offered it.
+    pushQuestText(L, &q.description);  // description
+    pushQuestText(L, &q.objectives);   // objectives
     return 2;
 }
 
@@ -2654,26 +2681,6 @@ QuestSource currentQuestSource(game::GameHandler* gh) {
 /// width, and a row drawn for an empty one is a blank button the player can
 /// click.
 
-int pushQuestText(lua_State* L, const std::string* s) {
-    if (!s || s->empty()) { lua_pushstring(L, ""); return 1; }
-    // Resolve WoW's in-text tokens against the player before the interface
-    // sees the string.
-    //
-    // These come off the wire as literals - $n for the player's name, $c for
-    // class, $r for race, $g male:female; for a gender-split phrase - and the
-    // parser only ever turned $b into a line break, because it has no player
-    // to resolve the rest against. So a quest that greeted "$n" showed the two
-    // characters, and "$glad:lass;" showed its own markup. The binding is the
-    // first point that has the player: replaceGenderPlaceholders is the same
-    // resolver chat and this client's own dialog already run.
-    if (auto* gh = getGameHandler(L)) {
-        const std::string resolved = ui::chat_utils::replaceGenderPlaceholders(*s, *gh);
-        lua_pushstring(L, resolved.c_str());
-    } else {
-        lua_pushstring(L, s->c_str());
-    }
-    return 1;
-}
 
 }  // namespace
 
