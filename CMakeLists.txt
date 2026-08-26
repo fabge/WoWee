@@ -614,10 +614,7 @@ set(WOWEE_SRC_CORE
     src/core/ui_screen_callback_handler.cpp
     src/core/window.cpp
     src/core/input.cpp
-    src/core/logger.cpp
-    src/core/memory_monitor.cpp
     src/core/app_clock.cpp
-    src/core/config_paths.cpp
 )
 
 set(WOWEE_SRC_NETWORK
@@ -659,6 +656,7 @@ set(WOWEE_SRC_AUDIO
 set(WOWEE_SRC_PIPELINE
     src/pipeline/blp_loader.cpp
     src/pipeline/dbc_loader.cpp
+    src/pipeline/stb_image_impl.cpp
     src/pipeline/asset_manager.cpp
     src/pipeline/asset_manifest.cpp
     src/pipeline/loose_file_reader.cpp
@@ -1241,6 +1239,26 @@ endif()
 # reaches that consumer.
 add_library(wowee_common INTERFACE)
 
+# ---- wowee_base: the utilities everything is allowed to use ----
+#
+# The logger, the writable-path rules and the memory monitor. They are not part
+# of any subsystem: measured on 2026-08-26, three of the back-edges that made
+# the subsystem graph cyclic were nothing but `core::Logger` - src/auth,
+# src/audio and src/pipeline each reached into core for it and for nothing else
+# of consequence. A utility every layer uses is not a dependency on the
+# composition root; it is the bottom of the graph, and it belongs there.
+#
+# Depends on nothing of ours. Keep it that way: anything added here becomes
+# reachable from every subsystem at once, which is the property that makes the
+# rest of the graph describable.
+add_library(wowee_base STATIC
+    src/core/logger.cpp
+    src/core/memory_monitor.cpp
+    src/core/config_paths.cpp
+)
+target_link_libraries(wowee_base PUBLIC wowee_common)
+set_target_properties(wowee_base PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # ---- Subsystem libraries ----
 #
 # The client is these plus src/main.cpp. Each is a STATIC library so a test can
@@ -1257,7 +1275,7 @@ add_library(wowee_common INTERFACE)
 foreach(_sub math core network auth audio pipeline rendering game ui addons)
     string(TOUPPER "${_sub}" _SUB)
     add_library(wowee_${_sub} STATIC ${WOWEE_SRC_${_SUB}})
-    target_link_libraries(wowee_${_sub} PUBLIC wowee_common)
+    target_link_libraries(wowee_${_sub} PUBLIC wowee_common wowee_base)
     set_target_properties(wowee_${_sub} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endforeach()
 

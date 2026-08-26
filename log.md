@@ -556,3 +556,43 @@ character is almost certainly wrong, but it wants reproducing before a
 behaviour change rides along inside a refactor.
 
 182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
+
+## 2026-08-26 — wowee_base, and the cycle count
+
+Eighteen cycles between the subsystem libraries, now thirteen, from two changes
+that were both a file being in the wrong place rather than a call being wrong.
+
+`src/auth`, `src/audio` and `src/pipeline` each reached into `core` for
+`core::Logger` and for nothing else of consequence - three back-edges of three,
+three and five symbols, of which the logger was all but two. A utility every
+layer uses is not a dependency on the composition root; it is the bottom of the
+graph. `wowee_base` is the logger, the memory monitor and the writable-path
+rules, it depends on nothing of ours, and it has zero out-edges - which is the
+property worth keeping, because anything added there becomes reachable from
+every subsystem at once.
+
+`stb_image`'s implementation was in `src/rendering/loading_screen.cpp`, which
+was simply the first file that needed a PNG decoded. `src/pipeline/asset_manager`
+calls `stbi_load` too, so the decoder's only definition sat in a library above
+the one using it, and that was the entire `pipeline -> rendering` back-edge:
+two symbols against fifty-nine the other way. It has its own translation unit in
+`src/pipeline` now, where the format parsers are.
+
+`pipeline` is acyclic outright as a result. The remaining thirteen are in
+`TODO.md` ranked by their weakest side, which is the order to take them in.
+
+Two were measured and deliberately left, because neither is the move it looks
+like. `storedCVarValue` would kill two cycles by itself, but it checks an
+in-memory CVar store before falling back to the file and that store lives with
+the Lua CVar API - the file half belongs in `wowee_base`, the store half does
+not, and the two answers have to be shown to agree before splitting them, since
+`game` and `rendering` call it before the interface exists. `framexml_takeover`
+would kill two more and moves easily - 727 lines whose only dependency is the
+logger - but it is interface policy rather than a base utility, so where it goes
+is a design decision and not a `git mv`.
+
+Getting to zero is not the goal in itself: it is what lets the libraries be
+declared with their real edges instead of as a complete graph, and that is what
+lets a test link a genuine subset.
+
+182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.

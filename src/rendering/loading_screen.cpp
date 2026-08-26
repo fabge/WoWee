@@ -10,7 +10,7 @@
 #include <chrono>
 #include <cstdio>
 
-#define STB_IMAGE_IMPLEMENTATION
+// The implementation is compiled once, in src/pipeline/stb_image_impl.cpp.
 #include "stb_image.h"
 
 namespace wowee {

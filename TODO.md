@@ -47,33 +47,52 @@ None of these is urgent. Each taxes every future change in its area.
 ### Breaking the cycles between the subsystem libraries
 `CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block
 
-The library targets exist as of 2026-08-26 and the two items that stood here
-before them — "no library targets, so subsystems cannot be tested" and
-"deleting the link stubs in `test_lua_unit_api.cpp`" — are done and in
-`log.md`. What is left is the reason they have to be declared as a cycle.
+**18 cycles on 2026-08-26, 13 now.** `wowee_base` took the logger, the memory
+monitor and the writable-path rules out of `core`, which is all that
+`src/auth`, `src/audio` and `src/pipeline` were reaching into `core` for; and
+`stb_image`'s implementation moved from `src/rendering/loading_screen.cpp` to
+`src/pipeline/stb_image_impl.cpp`, where the format parsers are. `pipeline` is
+now acyclic outright, and `wowee_base` has zero out-edges.
 
-Every subsystem pair references both ways, so all ten are linked to all ten and
-CMake repeats the connected component on the link line. That is correct and it
-builds, but it means linking one subsystem offers the linker all of them, and a
-new call from any subsystem into any other is invisible rather than a build
-error. Measured 2026-08-26, and the asymmetry says where to start:
+The point of getting to zero is that the libraries can then be declared with
+their real edges instead of as a complete graph, and a test can link a genuine
+subset. Ranked by the weakest side, which is what to fix next:
 
-| edge | forward | back |
+| cycle | weak side | what it is |
 | --- | --- | --- |
-| `addons` → `game` | 502 | 1 |
-| `ui` → `game` | 211 | 3 |
-| `rendering` → `pipeline` | 59 | 2 |
-| `core` → `ui` | 67 | 30 |
-| `core` ↔ `rendering` | 165 | 17 |
+| `game` → `addons` | **1** | `addons::storedCVarValue` |
+| `rendering` → `addons` | **1** | the same symbol |
+| `game` → `core` | 2 | |
+| `rendering` → `ui` | 2 | `frameXmlOwnsMouse`, `interfaceTakingTypedInput` |
+| `addons` → `core` | 3 | |
+| `game` → `ui` | 3 | `frameXmlOwns`, `frameXmlNoteWorldEntry`, `frameXmlRequestCheck` |
+| `network` → `game` | 3 | `OpcodeTable`, `getActiveOpcodeTable` |
+| `audio` → `game` | 4 | `ZoneManager` |
+| `rendering` → `core` | 7 | |
+| `network` → `auth` | 8 | genuinely mutual |
+| `rendering` → `game` | 8 | |
+| `ui` → `addons` | 10 | |
+| `core` → `ui` | 25 | |
 
-The three back-edges of 1, 2 and 3 symbols are almost certainly accidental and
-worth deleting on their own merits; that alone turns three cycles into
-dependencies and lets those libraries be declared honestly. `core ↔ rendering`
-is real and is the same god-object problem as `GameHandler` below.
+Two are worth doing next and are bigger than they look:
 
-Do not replace the cycle with a hand-written edge list until the back-edges are
-gone: the measurement above is macOS-only, a missing edge is a link failure on
-GNU ld, and CI builds five platforms. **~half a day for the small back-edges.**
+**`storedCVarValue`** kills two cycles by itself, but it is not a move: the
+function checks an in-memory CVar store before falling back to the file, and
+the store lives with the Lua CVar API. The file-reading half belongs beside
+`config_paths` in `wowee_base` and the store half stays in `addons` - but the
+two answers have to be shown to agree first, since `game` and `rendering` call
+it before the interface exists and the store is empty then.
+
+**`framexml_takeover`** kills two more. It is 727 self-contained lines whose
+only dependency is the logger, so it moves easily - the question is where. It
+is not a base utility, it is the policy deciding which interface owns an
+element, consulted by `ui`, `game` and `rendering` alike. Probably its own
+small library rather than something bolted onto `wowee_base`, whose value is
+that it depends on nothing.
+
+Do not replace the complete graph with a hand-written edge list until these are
+gone: the measurement is macOS-only, a missing edge is a link failure on GNU
+ld, and CI builds five platforms. **~half a day for the two above.**
 
 ### 147 translation units the client links for nothing
 `CMakeLists.txt` — `WOWEE_SRC_PIPELINE`
