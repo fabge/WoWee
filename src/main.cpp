@@ -163,8 +163,20 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
         sigaction(SIGABRT, &sa, nullptr);
         sigaction(SIGFPE,  &sa, nullptr);
     }
-    std::signal(SIGTERM, [](int) { std::_Exit(1); });
-    std::signal(SIGINT,  [](int) { std::_Exit(1); });
+    // The first Ctrl-C or OS quit asks the main loop to close, so the shutdown
+    // path runs and settings, SavedVariables and the floor cache are written.
+    // Calling _Exit from here, which is what this used to do, dropped all of
+    // them on every termination that was not a window close.
+    //
+    // The second one is taken as "I meant it" and exits immediately, so a
+    // client wedged somewhere the main loop cannot reach is still killable
+    // without SIGKILL.
+    const auto requestClose = [](int sig) {
+        if (wowee::core::g_terminationRequested != 0) std::_Exit(1);
+        wowee::core::g_terminationRequested = sig;
+    };
+    std::signal(SIGTERM, requestClose);
+    std::signal(SIGINT,  requestClose);
 #elif defined(__ANDROID__)
     // Android already has a crash reporter, and it is a far better one than
     // this: debuggerd writes a symbolised tombstone and the abort message to
