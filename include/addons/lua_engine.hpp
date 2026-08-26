@@ -405,7 +405,20 @@ private:
 
 
 
+    /// Builds the client's own Lua surface. The parts below, in order.
+    ///
+    /// Was a single 2,712-line function. The order between two of the parts is
+    /// load-bearing - see registerFrameGlobals - and the call list is now where
+    /// that is stated.
     void registerCoreAPI();
+    void registerBaseGlobals();
+    void registerWidgetMethods();
+    void registerWidgetStubLua();
+    void registerFrameGlobals();
+    void registerAddonCompatLua();
+    void registerWidgetSupportLua();
+    void registerUiCompatLua();
+    void registerAddonUtilityLua();
     void registerEventAPI();
 
 private:

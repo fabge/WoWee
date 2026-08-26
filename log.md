@@ -400,3 +400,39 @@ change adds a satisfier without blinding it. `sweep_guard`'s pinned pattern
 followed the wording; the ceiling stays at 0.
 
 182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
+
+## 2026-08-26 — registerCoreAPI, split
+
+2,712 lines in one function, now a ten-line dispatcher over eight named
+members: base globals, the widget metatable, the widget stub Lua, the frame
+globals, addon compatibility, widget support Lua, UI compatibility, and the
+addon utility library. Each carries a comment saying what it is for; the order
+between them is load-bearing in two places and the call list is now where that
+is said, rather than position in a wall of text.
+
+Two things had to move to file scope to make the seam real: the `frameMethods`
+table and the `applyFrameMethods` lambda beside it. They are used at two points
+either side of a large Lua block - the C methods are put back over it because
+that block gives unimplemented methods a no-op and would otherwise silently
+replace a working binding - and that only worked while both halves lived in the
+same function. The three `lua_EditBox_*` forward declarations moved with them,
+and had to go *outside* the anonymous namespace: inside it they were three new
+functions with internal linkage and no bodies, which the compiler said plainly.
+
+Verified as pure movement rather than by the suite alone: the old function body
+and the new ones were compared line-multiset against each other, and the only
+differences are the lambda becoming a function taking `lua_State*`, the array
+losing its `static`, and the new comments and signatures. No Lua source line and
+no binding registration differs.
+
+The two largest parts are still 811 and 941 lines, but both are single
+`bootstrap()` calls holding Lua source. Splitting those further would be cutting
+a string literal, not a function.
+
+`lua_widget_api.cpp` is still the missing file, and TODO now says why it costs
+more than this entry used to claim: 131 of the 207 widget bindings have internal
+linkage and are interleaved with non-widget ones in 16 runs, so the definitions
+have to move with the registration. Only five helpers are shared, which is the
+part that is better than expected.
+
+182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.

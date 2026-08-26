@@ -103,13 +103,33 @@ back-reference, so the dependency graph is bidirectional. The narrow interfaces
 that would cut it exist and are unused. Convert `SpellHandler` first as a proof.
 **~1 day for the first one.**
 
-### `registerCoreAPI()` is 2,712 lines in one function
-`src/addons/lua_engine.cpp:5222`–`7934`
+### `lua_widget_api.cpp` is still the missing file
+`src/addons/lua_engine.cpp`
 
-The `lua_*_api.cpp` split took the game-data domains and stopped; the widget /
-region / frame method surface — the largest and most contract-sensitive part —
-never moved. Split by table, mechanically, no behaviour change. A
-`lua_widget_api.cpp` is the missing file. **~half a day.**
+Half done on 2026-08-26. `registerCoreAPI()` was 2,712 lines in one function
+and is now a ten-line dispatcher over eight named members, verified as pure
+movement by diffing the old body against the new ones. `registerWidgetMethods`
+and `registerWidgetStubLua` are the seam a `lua_widget_api.cpp` would cut along.
+
+What is left is the file, and it is bigger than the "mechanically, no behaviour
+change, ~half a day" this entry used to claim. Measured 2026-08-26:
+
+- The registration block names **207** widget binding functions.
+- **131 of them have internal linkage**, inside the anonymous namespace at
+  `lua_engine.cpp:345`–`3723`. Moving only the registration leaves them
+  invisible to the new translation unit, so the definitions have to move too.
+- Those 131 definitions are **interleaved with non-widget ones in 16 separate
+  runs**, and each carries the doc comment above it that has to travel with it.
+- The good news: only **five** helpers are shared with non-widget code —
+  `widgetIdOf`, `widgetOf`, `applyFontObject`, `callScriptOnTable` and
+  `fireTooltipSetItem` — so a shared header is small. Thirteen more helpers are
+  used by widget code alone and move with it.
+
+So: ~3,000 lines across 16 runs plus a small shared header, not a table move.
+The validation for it is strong — `framexml_compile_check` runs the emitter
+over 140 real interface files and a lost widget method shows up there — but
+budget a day, and do it in one commit so it can be reverted whole.
+**~1 day.**
 
 ### The render graph exists but is vestigial
 `src/rendering/renderer.cpp:900`, `:3866`

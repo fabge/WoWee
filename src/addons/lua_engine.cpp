@@ -5219,7 +5219,299 @@ void LuaEngine::setLuaServices(const LuaServices& services) {
 }
 
 
+// The frame method table, at file scope so registerFrameGlobals can put these
+// back over the Lua block that runs between the two. It was a function-local
+// static and a lambda beside it, which worked only while both halves lived in
+// the same 2,712-line function.
+// Defined with the other edit-box bindings further down; declared here because
+// the table below refers to them first. Outside the anonymous namespace, which
+// is where their definitions are - inside it these would be three different
+// functions with internal linkage and no bodies.
+int lua_EditBox_SetFocus(lua_State* L);
+int lua_EditBox_ClearFocus(lua_State* L);
+int lua_EditBox_HasFocus(lua_State* L);
+
+namespace {
+
+const struct luaL_Reg frameMethods[] = {
+    {"RegisterEvent",   lua_Frame_RegisterEvent},
+    {"IsEventRegistered", lua_Frame_IsEventRegistered},
+    {"UnregisterEvent", lua_Frame_UnregisterEvent},
+    {"UnregisterAllEvents", lua_Frame_UnregisterAllEvents},
+    {"SetScript",       lua_Frame_SetScript},
+    {"GetScript",       lua_Frame_GetScript},
+    {"GetName",         lua_Frame_GetName},
+    {"Show",            lua_Region_Show},
+    {"Hide",            lua_Region_Hide},
+    {"IsShown",         lua_Region_IsShown},
+    {"IsVisible",       lua_Region_IsVisible},
+    // Geometry goes through the widget tree. The older table-field
+    // versions kept the numbers where only Lua could see them, which is
+    // why a frame could be sized and positioned and still never appear.
+    {"SetPoint",        lua_Region_SetPoint},
+    // A frame method too, and not only a region one: <StatusBar
+    // drawLayer="BORDER"> is emitted as a call on the bar, and a bar is a
+    // frame. Absent here it fell to the no-op fallback, so all twenty of
+    // the bars that declare a layer were silently ignored - the trace
+    // under WOWEE_WIDGET_TRACE=1 is what named them.
+    {"SetDrawLayer",    lua_Region_SetDrawLayer},
+    {"ClearAllPoints",  lua_Region_ClearAllPoints},
+    {"SetAllPoints",    lua_Region_SetAllPoints},
+    {"SetSize",         lua_Region_SetSize},
+    {"SetWidth",        lua_Region_SetWidth},
+    {"SetHeight",       lua_Region_SetHeight},
+    // Frames, not regions: only a frame is dragged or moved. These live in
+    // this table rather than the shared region one because that one is
+    // installed on textures and font strings alone - putting them there
+    // gave the methods to everything except the things that use them.
+    {"SetMovable",      lua_Frame_SetMovable},
+    {"SetRotation",     lua_Model_SetFacing},
+    {"SetFacing",       lua_Model_SetFacing},
+    {"GetFacing",       lua_Model_GetFacing},
+    {"IsMovable",       lua_Frame_IsMovable},
+    {"RegisterForDrag", lua_Frame_RegisterForDrag},
+    {"StartMoving",     lua_Frame_StartMoving},
+    {"StopMovingOrSizing", lua_Frame_StopMovingOrSizing},
+    {"StartSizing",     lua_Frame_StartSizing},
+    {"SetResizable",    lua_Frame_SetResizable},
+    {"IsResizable",     lua_Frame_IsResizable},
+    {"SetMinResize",    lua_Frame_SetMinResize},
+    {"SetMaxResize",    lua_Frame_SetMaxResize},
+    {"GetWidth",        lua_Region_GetWidth},
+    {"SetScale",        lua_Region_SetScale},
+    {"GetScale",        lua_Region_GetScale},
+    {"GetEffectiveScale", lua_Region_GetEffectiveScale},
+    {"GetTextWidth",    lua_Region_GetTextWidth},
+    {"GetStringWidth",  lua_Region_GetTextWidth},
+    {"GetTextHeight",   lua_Region_GetTextHeight},
+    {"GetStringHeight", lua_Region_GetTextHeight},
+    {"GetFieldSize",    lua_Region_GetFieldSize},
+    {"GetVertexColor",  lua_Region_GetVertexColor},
+    {"GetInputLanguage", lua_EditBox_GetInputLanguage},
+    {"SetColorRGB",     lua_ColorSelect_SetColorRGB},
+    {"GetColorRGB",     lua_ColorSelect_GetColorRGB},
+    {"GetFontObject",   lua_FontString_GetFontObject},
+    {"SetMinimumWidth", lua_Frame_SetMinimumWidth},
+    {"GetMinimumWidth", lua_Frame_GetMinimumWidth},
+    {"GetHeight",       lua_Region_GetHeight},
+    {"GetLeft",         lua_Region_GetLeft},
+    {"GetRight",        lua_Region_GetRight},
+    {"GetBottom",       lua_Region_GetBottom},
+    {"GetTop",          lua_Region_GetTop},
+    {"GetRect",         lua_Region_GetRect},
+    {"IsMouseOver",     lua_Region_IsMouseOver},
+    {"GetFrameLevel",   lua_Frame_GetFrameLevel},
+    {"GetNumPoints",    lua_Region_GetNumPoints},
+    {"AddMessage",      lua_MessageFrame_AddMessage},
+    {"AddLine",         lua_Tooltip_AddLine},
+    {"SetOwner",        lua_Tooltip_SetOwner},
+    {"SetAction",       lua_Tooltip_SetAction},
+    {"SetInventoryItem", lua_Tooltip_SetInventoryItem},
+    {"SetBagItem",      lua_Tooltip_SetBagItem},
+    {"SetQuestLogSpecialItem", lua_Tooltip_SetQuestLogSpecialItem},
+    {"SetSocketGem",          lua_Tooltip_SetSocketGem},
+    {"SetExistingSocketGem",  lua_Tooltip_SetExistingSocketGem},
+    {"SetSocketedItem",       lua_Tooltip_SetSocketedItem},
+    {"SetCurrencyToken", lua_Tooltip_SetCurrencyToken},
+    // Nothing is pinned under the bags - that is a saved choice this
+    // client does not keep - so this answers false rather than
+    // describing an arbitrary row.
+    {"SetBackpackToken", lua_Tooltip_ReturnFalse},
+    {"SetGuildBankItem", lua_Tooltip_SetGuildBankItem},
+    {"SetSpellByID",    lua_Tooltip_SetSpellByID},
+    {"SetQuestLogRewardSpell", lua_Tooltip_SetQuestLogRewardSpell},
+    {"SetEquipmentSet",        lua_Tooltip_SetEquipmentSet},
+    {"SetLFGCompletionReward", lua_Tooltip_SetLFGCompletionReward},
+    {"SetGlyph",               lua_Tooltip_SetGlyph},
+    {"SetHyperlink",    lua_Tooltip_SetHyperlink},
+    // On frames as well as on font strings, where these were already
+    // registered. A chat frame is asked for its own font - not a label's -
+    // by FCF_SetChatWindowFontSize, which reads the face and flags off the
+    // frame, puts the chosen size between them and sets it back. With the
+    // pair answering only on font strings, that read fell through to the
+    // no-op, the size went nowhere, and the font-size menu did nothing.
+    // A message frame draws its lines at the widget's own fontHeight, so
+    // setting it is all that was missing.
+    {"GetFont",         lua_FontString_GetFont},
+    {"SetFont",         lua_FontString_SetFont},
+    {"SetTalent",       lua_Tooltip_SetTalent},
+    {"SetAuctionItem",  lua_Tooltip_SetAuctionItem},
+    {"_WoweeAppendItemEnchants", lua_Tooltip_AppendItemEnchants},
+    {"SetTradeSkillItem", lua_Tooltip_SetTradeSkillItem},
+    {"SetUnit",         lua_Tooltip_SetUnit},
+    {"IsUnit",          lua_Tooltip_IsUnit},
+    {"AddDoubleLine",   lua_Tooltip_AddDoubleLine},
+    {"ClearLines",      lua_Tooltip_ClearLines},
+    {"SetFrameStack",   lua_Tooltip_SetFrameStack},
+    {"AppendText",      lua_Tooltip_AppendText},
+    {"NumLines",        lua_Tooltip_NumLines},
+    {"Clear",           lua_MessageFrame_Clear},
+    {"GetNumMessages",  lua_MessageFrame_GetNumMessages},
+    {"GetMessageInfo",  lua_MessageFrame_GetMessageInfo},
+    {"RemoveMessagesByAccessID", lua_MessageFrame_RemoveMessagesByAccessID},
+    {"SetMaxLines",     lua_MessageFrame_SetMaxLines},
+    {"SetWordWrap",     lua_FontString_SetWordWrap},
+    {"CanWordWrap",     lua_FontString_CanWordWrap},
+    {"SetNonSpaceWrap", lua_FontString_SetNonSpaceWrap},
+    {"SetReverse",      lua_Cooldown_SetReverse},
+    {"SetDrawEdge",     lua_Cooldown_SetDrawEdge},
+    {"SetTimeVisible",  lua_MessageFrame_SetTimeVisible},
+    {"GetTimeVisible",  lua_MessageFrame_GetTimeVisible},
+    {"SetFadeDuration", lua_MessageFrame_SetFadeDuration},
+    {"SetInsertMode",   lua_MessageFrame_SetInsertMode},
+    {"ScrollUp",        lua_MessageFrame_ScrollUp},
+    {"ScrollDown",      lua_MessageFrame_ScrollDown},
+    {"ScrollToBottom",  lua_MessageFrame_ScrollToBottom},
+    {"Enable",          lua_Button_Enable},
+    {"SetChecked",      lua_CheckButton_SetChecked},
+    {"SetButtonState",  lua_Button_SetButtonState},
+    {"GetButtonState",  lua_Button_GetButtonState},
+    {"LockHighlight",   lua_Button_LockHighlight},
+    {"UnlockHighlight", lua_Button_UnlockHighlight},
+    {"GetChecked",      lua_CheckButton_GetChecked},
+    {"Disable",         lua_Button_Disable},
+    {"IsEnabled",       lua_Button_IsEnabled},
+    {"SetScrollChild",  lua_ScrollFrame_SetScrollChild},
+    {"SetVerticalScroll",   lua_ScrollFrame_SetVerticalScroll},
+    {"SetHorizontalScroll", lua_ScrollFrame_SetHorizontalScroll},
+    {"GetVerticalScroll",   lua_ScrollFrame_GetVerticalScroll},
+    {"GetHorizontalScroll", lua_ScrollFrame_GetHorizontalScroll},
+    {"GetVerticalScrollRange",   lua_ScrollFrame_GetVerticalScrollRange},
+    {"GetHorizontalScrollRange", lua_ScrollFrame_GetHorizontalScrollRange},
+    {"GetObjectType",   lua_Region_GetObjectType},
+    {"IsObjectType",    lua_Region_IsObjectType},
+    {"GetPoint",        lua_Region_GetPoint},
+    {"SetZoom",         lua_Minimap_SetZoom},
+    {"GetZoom",         lua_Minimap_GetZoom},
+    {"GetZoomLevels",   lua_Minimap_GetZoomLevels},
+    {"PingLocation",    lua_Minimap_PingLocation},
+    {"GetCenter",       lua_Region_GetCenter},
+    {"SetAlpha",        lua_Region_SetAlpha},
+    {"GetAlpha",        lua_Region_GetAlpha},
+    {"EnableMouse",     lua_Frame_EnableMouse},
+    {"SetHyperlinksEnabled", lua_Frame_SetHyperlinksEnabled},
+    {"SetMotionScriptsWhileDisabled", lua_Frame_SetMotionScriptsWhileDisabled},
+    {"GetMotionScriptsWhileDisabled", lua_Frame_GetMotionScriptsWhileDisabled},
+    {"IsMouseEnabled",  lua_Frame_IsMouseEnabled},
+    {"SetNormalFontObject",   lua_Frame_SetNormalFontObject},
+    {"SetTextColor",          lua_FontString_SetTextColor},
+    {"SetTextFontObject",     lua_Frame_SetNormalFontObject},
+    {"SetHighlightFontObject", lua_Frame_SetHighlightFontObject},
+    {"SetDisabledFontObject",  lua_Frame_SetDisabledFontObject},
+    {"SetDisabledTextColor",   lua_Frame_SetDisabledTextColor},
+    {"SetHighlightTextColor",  lua_Frame_SetHighlightTextColor},
+    {"SetPushedTextOffset",   lua_Frame_SetPushedTextOffset},
+    {"GetPushedTextOffset",   lua_Frame_GetPushedTextOffset},
+    {"SetHitRectInsets",      lua_Frame_SetHitRectInsets},
+    {"GetHitRectInsets",      lua_Frame_GetHitRectInsets},
+    {"SetUserPlaced",         lua_Frame_SetUserPlaced},
+    {"IsUserPlaced",          lua_Frame_IsUserPlaced},
+    {"EnableKeyboard",        lua_Frame_EnableKeyboard},
+    {"IsKeyboardEnabled",     lua_Frame_IsKeyboardEnabled},
+    {"SetPropagateKeyboardInput", lua_Frame_SetPropagateKeyboardInput},
+    {"SetToplevel",           lua_Frame_SetToplevel},
+    {"IsToplevel",            lua_Frame_IsToplevel},
+    {"Raise",                 lua_Frame_Raise},
+    {"Lower",                 lua_Frame_Lower},
+    {"SetClampedToScreen",    lua_Frame_SetClampedToScreen},
+    {"SetClampRectInsets",    lua_Frame_SetClampRectInsets},
+    {"IsClampedToScreen",     lua_Frame_IsClampedToScreen},
+    {"SetBackdrop",           lua_Frame_SetBackdrop},
+    {"SetBackdropColor",      lua_Frame_SetBackdropColor},
+    {"SetBackdropBorderColor",lua_Frame_SetBackdropBorderColor},
+    {"SetMinMaxValues",       lua_StatusBar_SetMinMaxValues},
+    {"GetMinMaxValues",       lua_StatusBar_GetMinMaxValues},
+    {"SetValue",              lua_StatusBar_SetValue},
+    {"GetValue",              lua_StatusBar_GetValue},
+    {"SetStatusBarTexture",   lua_StatusBar_SetStatusBarTexture},
+    {"SetStatusBarColor",     lua_StatusBar_SetStatusBarColor},
+    {"SetOrientation",        lua_StatusBar_SetOrientation},
+    {"SetValueStep",          lua_Slider_SetValueStep},
+    {"GetValueStep",          lua_Slider_GetValueStep},
+    {"SetThumbTexture",       lua_Slider_SetThumbTexture},
+    {"SetColorWheelTexture",      lua_ColorSelect_SetWheelTexture},
+    {"SetColorWheelThumbTexture", lua_ColorSelect_SetWheelThumbTexture},
+    {"SetColorValueTexture",      lua_ColorSelect_SetValueTexture},
+    {"SetColorValueThumbTexture", lua_ColorSelect_SetValueThumbTexture},
+    {"SetCooldown",           lua_Cooldown_SetCooldown},
+    {"GetNumber",             lua_EditBox_GetNumber},
+    {"SetNumber",             lua_EditBox_SetNumber},
+    {"AddHistoryLine",        lua_EditBox_AddHistoryLine},
+    {"SetHistoryLines",       lua_EditBox_SetHistoryLines},
+    {"ClearHistory",          lua_EditBox_ClearHistory},
+    {"SetCountInvisibleLetters", lua_EditBox_SetCountInvisibleLetters},
+    {"GetCountInvisibleLetters", lua_EditBox_GetCountInvisibleLetters},
+    {"GetHistoryLines",       lua_EditBox_GetHistoryLines},
+    {"SetIgnoreArrows",       lua_EditBox_SetIgnoreArrows},
+    {"Insert",                lua_EditBox_Insert},
+    {"SetMaxLetters",         lua_EditBox_SetMaxLetters},        // The limit here is applied against the text's size in bytes, which is
+    // what SetMaxBytes asks for; SetMaxLetters is the same field because
+    // this counts the same way for both. Reporting it back matters more
+    // than the distinction: an edit box that answers nothing for its limit
+    // is one FrameXML will not stop typing into.
+    {"SetMaxBytes",          lua_EditBox_SetMaxLetters},
+    {"SetTextInsets",        lua_EditBox_SetTextInsets},
+    {"SetPadding",           lua_MessageFrame_SetPadding},
+    {"GetPadding",           lua_MessageFrame_GetPadding},
+    {"GetTextInsets",        lua_EditBox_GetTextInsets},
+    {"SetNumeric",            lua_EditBox_SetNumeric},
+    {"SetMultiLine",          lua_EditBox_SetMultiLine},
+    {"SetAutoFocus",          lua_EditBox_SetAutoFocus},
+    {"SetCursorPosition",     lua_EditBox_SetCursorPosition},
+    {"HighlightText",         lua_EditBox_HighlightText},
+    {"GetCursorPosition",     lua_EditBox_GetCursorPosition},
+    {"GetNumLetters",         lua_EditBox_GetNumLetters},
+    {"GetUTF8CursorPosition", lua_EditBox_GetUTF8CursorPosition},
+    {"SetFocus",              lua_EditBox_SetFocus},
+    {"ClearFocus",            lua_EditBox_ClearFocus},
+    {"HasFocus",              lua_EditBox_HasFocus},
+    {"GetCooldownTimes",      lua_Cooldown_GetCooldownTimes},
+    {"SetFrameStrata",  lua_Frame_SetFrameStrata},
+    {"GetFrameStrata",  lua_Frame_GetFrameStrata},
+    {"SetFrameLevel",   lua_Frame_SetFrameLevel},
+    {"SetParent",       lua_Region_SetParent},
+    {"GetParent",       lua_Region_GetParent},
+    {"GetChildren",     lua_Frame_GetChildren},
+    {"CreateTexture",   lua_Frame_CreateTexture},
+    {"CreateFontString", lua_Frame_CreateFontString},
+    {nullptr, nullptr}
+};
+
+void applyFrameMethods(lua_State* L) {
+    lua_getglobal(L, "__WoweeFrameMT");
+    for (const luaL_Reg* r = frameMethods; r->name; r++) {
+        lua_pushcfunction(L, r->func);
+        lua_setfield(L, -2, r->name);
+    }
+    lua_pop(L, 1);
+}
+
+}  // namespace
+
+// The client's own Lua surface, in the order it has to be built.
+//
+// This was one 2,712-line function. The order between the parts is load-bearing
+// in two places and is now stated by the call list rather than by position in a
+// wall of text: the widget metatable exists before the Lua that writes onto it,
+// and the C methods go back on afterwards.
 void LuaEngine::registerCoreAPI() {
+    registerBaseGlobals();
+    registerWidgetMethods();
+    registerWidgetStubLua();
+    registerFrameGlobals();
+    registerAddonCompatLua();
+    registerWidgetSupportLua();
+    registerUiCompatLua();
+    registerAddonUtilityLua();
+}
+
+/// print, the __Wowee* seams, the WoW-flavoured standard library, and the
+/// per-domain registration calls.
+///
+/// WoW's Lua predates 5.1's module tables and exposes most of math and
+/// string as bare globals, and its trigonometric globals work in degrees.
+/// FrameXML is written against that, not against stock 5.1.
+void LuaEngine::registerBaseGlobals() {
     // Override print() to go to chat
     lua_pushcfunction(L_, lua_wow_print);
     lua_setglobal(L_, "print");
@@ -5399,276 +5691,34 @@ void LuaEngine::registerCoreAPI() {
     // SlashCmdList table - addons register slash commands here
     lua_newtable(L_);
     lua_setglobal(L_, "SlashCmdList");
+}
 
+/// The frame metatable and the C methods on it.
+///
+/// One unit because it is one stack frame: the metatable is created here,
+/// stays on the stack while every method is written onto it, and leaves it
+/// only at the closing lua_setglobal. Everything after this reaches the
+/// same table through the __WoweeFrameMT global instead.
+void LuaEngine::registerWidgetMethods() {
     // Frame metatable with methods
     lua_newtable(L_);  // metatable
     lua_pushvalue(L_, -1);
     lua_setfield(L_, -2, "__index"); // metatable.__index = metatable
-
-    // Defined with the other edit-box bindings further down; declared here
-    // because the table below refers to them first.
-    int lua_EditBox_SetFocus(lua_State* L);
-    int lua_EditBox_ClearFocus(lua_State* L);
-    int lua_EditBox_HasFocus(lua_State* L);
-
-    static const struct luaL_Reg frameMethods[] = {
-        {"RegisterEvent",   lua_Frame_RegisterEvent},
-        {"IsEventRegistered", lua_Frame_IsEventRegistered},
-        {"UnregisterEvent", lua_Frame_UnregisterEvent},
-        {"UnregisterAllEvents", lua_Frame_UnregisterAllEvents},
-        {"SetScript",       lua_Frame_SetScript},
-        {"GetScript",       lua_Frame_GetScript},
-        {"GetName",         lua_Frame_GetName},
-        {"Show",            lua_Region_Show},
-        {"Hide",            lua_Region_Hide},
-        {"IsShown",         lua_Region_IsShown},
-        {"IsVisible",       lua_Region_IsVisible},
-        // Geometry goes through the widget tree. The older table-field
-        // versions kept the numbers where only Lua could see them, which is
-        // why a frame could be sized and positioned and still never appear.
-        {"SetPoint",        lua_Region_SetPoint},
-        // A frame method too, and not only a region one: <StatusBar
-        // drawLayer="BORDER"> is emitted as a call on the bar, and a bar is a
-        // frame. Absent here it fell to the no-op fallback, so all twenty of
-        // the bars that declare a layer were silently ignored - the trace
-        // under WOWEE_WIDGET_TRACE=1 is what named them.
-        {"SetDrawLayer",    lua_Region_SetDrawLayer},
-        {"ClearAllPoints",  lua_Region_ClearAllPoints},
-        {"SetAllPoints",    lua_Region_SetAllPoints},
-        {"SetSize",         lua_Region_SetSize},
-        {"SetWidth",        lua_Region_SetWidth},
-        {"SetHeight",       lua_Region_SetHeight},
-        // Frames, not regions: only a frame is dragged or moved. These live in
-        // this table rather than the shared region one because that one is
-        // installed on textures and font strings alone - putting them there
-        // gave the methods to everything except the things that use them.
-        {"SetMovable",      lua_Frame_SetMovable},
-        {"SetRotation",     lua_Model_SetFacing},
-        {"SetFacing",       lua_Model_SetFacing},
-        {"GetFacing",       lua_Model_GetFacing},
-        {"IsMovable",       lua_Frame_IsMovable},
-        {"RegisterForDrag", lua_Frame_RegisterForDrag},
-        {"StartMoving",     lua_Frame_StartMoving},
-        {"StopMovingOrSizing", lua_Frame_StopMovingOrSizing},
-        {"StartSizing",     lua_Frame_StartSizing},
-        {"SetResizable",    lua_Frame_SetResizable},
-        {"IsResizable",     lua_Frame_IsResizable},
-        {"SetMinResize",    lua_Frame_SetMinResize},
-        {"SetMaxResize",    lua_Frame_SetMaxResize},
-        {"GetWidth",        lua_Region_GetWidth},
-        {"SetScale",        lua_Region_SetScale},
-        {"GetScale",        lua_Region_GetScale},
-        {"GetEffectiveScale", lua_Region_GetEffectiveScale},
-        {"GetTextWidth",    lua_Region_GetTextWidth},
-        {"GetStringWidth",  lua_Region_GetTextWidth},
-        {"GetTextHeight",   lua_Region_GetTextHeight},
-        {"GetStringHeight", lua_Region_GetTextHeight},
-        {"GetFieldSize",    lua_Region_GetFieldSize},
-        {"GetVertexColor",  lua_Region_GetVertexColor},
-        {"GetInputLanguage", lua_EditBox_GetInputLanguage},
-        {"SetColorRGB",     lua_ColorSelect_SetColorRGB},
-        {"GetColorRGB",     lua_ColorSelect_GetColorRGB},
-        {"GetFontObject",   lua_FontString_GetFontObject},
-        {"SetMinimumWidth", lua_Frame_SetMinimumWidth},
-        {"GetMinimumWidth", lua_Frame_GetMinimumWidth},
-        {"GetHeight",       lua_Region_GetHeight},
-        {"GetLeft",         lua_Region_GetLeft},
-        {"GetRight",        lua_Region_GetRight},
-        {"GetBottom",       lua_Region_GetBottom},
-        {"GetTop",          lua_Region_GetTop},
-        {"GetRect",         lua_Region_GetRect},
-        {"IsMouseOver",     lua_Region_IsMouseOver},
-        {"GetFrameLevel",   lua_Frame_GetFrameLevel},
-        {"GetNumPoints",    lua_Region_GetNumPoints},
-        {"AddMessage",      lua_MessageFrame_AddMessage},
-        {"AddLine",         lua_Tooltip_AddLine},
-        {"SetOwner",        lua_Tooltip_SetOwner},
-        {"SetAction",       lua_Tooltip_SetAction},
-        {"SetInventoryItem", lua_Tooltip_SetInventoryItem},
-        {"SetBagItem",      lua_Tooltip_SetBagItem},
-        {"SetQuestLogSpecialItem", lua_Tooltip_SetQuestLogSpecialItem},
-        {"SetSocketGem",          lua_Tooltip_SetSocketGem},
-        {"SetExistingSocketGem",  lua_Tooltip_SetExistingSocketGem},
-        {"SetSocketedItem",       lua_Tooltip_SetSocketedItem},
-        {"SetCurrencyToken", lua_Tooltip_SetCurrencyToken},
-        // Nothing is pinned under the bags - that is a saved choice this
-        // client does not keep - so this answers false rather than
-        // describing an arbitrary row.
-        {"SetBackpackToken", lua_Tooltip_ReturnFalse},
-        {"SetGuildBankItem", lua_Tooltip_SetGuildBankItem},
-        {"SetSpellByID",    lua_Tooltip_SetSpellByID},
-        {"SetQuestLogRewardSpell", lua_Tooltip_SetQuestLogRewardSpell},
-        {"SetEquipmentSet",        lua_Tooltip_SetEquipmentSet},
-        {"SetLFGCompletionReward", lua_Tooltip_SetLFGCompletionReward},
-        {"SetGlyph",               lua_Tooltip_SetGlyph},
-        {"SetHyperlink",    lua_Tooltip_SetHyperlink},
-        // On frames as well as on font strings, where these were already
-        // registered. A chat frame is asked for its own font - not a label's -
-        // by FCF_SetChatWindowFontSize, which reads the face and flags off the
-        // frame, puts the chosen size between them and sets it back. With the
-        // pair answering only on font strings, that read fell through to the
-        // no-op, the size went nowhere, and the font-size menu did nothing.
-        // A message frame draws its lines at the widget's own fontHeight, so
-        // setting it is all that was missing.
-        {"GetFont",         lua_FontString_GetFont},
-        {"SetFont",         lua_FontString_SetFont},
-        {"SetTalent",       lua_Tooltip_SetTalent},
-        {"SetAuctionItem",  lua_Tooltip_SetAuctionItem},
-        {"_WoweeAppendItemEnchants", lua_Tooltip_AppendItemEnchants},
-        {"SetTradeSkillItem", lua_Tooltip_SetTradeSkillItem},
-        {"SetUnit",         lua_Tooltip_SetUnit},
-        {"IsUnit",          lua_Tooltip_IsUnit},
-        {"AddDoubleLine",   lua_Tooltip_AddDoubleLine},
-        {"ClearLines",      lua_Tooltip_ClearLines},
-        {"SetFrameStack",   lua_Tooltip_SetFrameStack},
-        {"AppendText",      lua_Tooltip_AppendText},
-        {"NumLines",        lua_Tooltip_NumLines},
-        {"Clear",           lua_MessageFrame_Clear},
-        {"GetNumMessages",  lua_MessageFrame_GetNumMessages},
-        {"GetMessageInfo",  lua_MessageFrame_GetMessageInfo},
-        {"RemoveMessagesByAccessID", lua_MessageFrame_RemoveMessagesByAccessID},
-        {"SetMaxLines",     lua_MessageFrame_SetMaxLines},
-        {"SetWordWrap",     lua_FontString_SetWordWrap},
-        {"CanWordWrap",     lua_FontString_CanWordWrap},
-        {"SetNonSpaceWrap", lua_FontString_SetNonSpaceWrap},
-        {"SetReverse",      lua_Cooldown_SetReverse},
-        {"SetDrawEdge",     lua_Cooldown_SetDrawEdge},
-        {"SetTimeVisible",  lua_MessageFrame_SetTimeVisible},
-        {"GetTimeVisible",  lua_MessageFrame_GetTimeVisible},
-        {"SetFadeDuration", lua_MessageFrame_SetFadeDuration},
-        {"SetInsertMode",   lua_MessageFrame_SetInsertMode},
-        {"ScrollUp",        lua_MessageFrame_ScrollUp},
-        {"ScrollDown",      lua_MessageFrame_ScrollDown},
-        {"ScrollToBottom",  lua_MessageFrame_ScrollToBottom},
-        {"Enable",          lua_Button_Enable},
-        {"SetChecked",      lua_CheckButton_SetChecked},
-        {"SetButtonState",  lua_Button_SetButtonState},
-        {"GetButtonState",  lua_Button_GetButtonState},
-        {"LockHighlight",   lua_Button_LockHighlight},
-        {"UnlockHighlight", lua_Button_UnlockHighlight},
-        {"GetChecked",      lua_CheckButton_GetChecked},
-        {"Disable",         lua_Button_Disable},
-        {"IsEnabled",       lua_Button_IsEnabled},
-        {"SetScrollChild",  lua_ScrollFrame_SetScrollChild},
-        {"SetVerticalScroll",   lua_ScrollFrame_SetVerticalScroll},
-        {"SetHorizontalScroll", lua_ScrollFrame_SetHorizontalScroll},
-        {"GetVerticalScroll",   lua_ScrollFrame_GetVerticalScroll},
-        {"GetHorizontalScroll", lua_ScrollFrame_GetHorizontalScroll},
-        {"GetVerticalScrollRange",   lua_ScrollFrame_GetVerticalScrollRange},
-        {"GetHorizontalScrollRange", lua_ScrollFrame_GetHorizontalScrollRange},
-        {"GetObjectType",   lua_Region_GetObjectType},
-        {"IsObjectType",    lua_Region_IsObjectType},
-        {"GetPoint",        lua_Region_GetPoint},
-        {"SetZoom",         lua_Minimap_SetZoom},
-        {"GetZoom",         lua_Minimap_GetZoom},
-        {"GetZoomLevels",   lua_Minimap_GetZoomLevels},
-        {"PingLocation",    lua_Minimap_PingLocation},
-        {"GetCenter",       lua_Region_GetCenter},
-        {"SetAlpha",        lua_Region_SetAlpha},
-        {"GetAlpha",        lua_Region_GetAlpha},
-        {"EnableMouse",     lua_Frame_EnableMouse},
-        {"SetHyperlinksEnabled", lua_Frame_SetHyperlinksEnabled},
-        {"SetMotionScriptsWhileDisabled", lua_Frame_SetMotionScriptsWhileDisabled},
-        {"GetMotionScriptsWhileDisabled", lua_Frame_GetMotionScriptsWhileDisabled},
-        {"IsMouseEnabled",  lua_Frame_IsMouseEnabled},
-        {"SetNormalFontObject",   lua_Frame_SetNormalFontObject},
-        {"SetTextColor",          lua_FontString_SetTextColor},
-        {"SetTextFontObject",     lua_Frame_SetNormalFontObject},
-        {"SetHighlightFontObject", lua_Frame_SetHighlightFontObject},
-        {"SetDisabledFontObject",  lua_Frame_SetDisabledFontObject},
-        {"SetDisabledTextColor",   lua_Frame_SetDisabledTextColor},
-        {"SetHighlightTextColor",  lua_Frame_SetHighlightTextColor},
-        {"SetPushedTextOffset",   lua_Frame_SetPushedTextOffset},
-        {"GetPushedTextOffset",   lua_Frame_GetPushedTextOffset},
-        {"SetHitRectInsets",      lua_Frame_SetHitRectInsets},
-        {"GetHitRectInsets",      lua_Frame_GetHitRectInsets},
-        {"SetUserPlaced",         lua_Frame_SetUserPlaced},
-        {"IsUserPlaced",          lua_Frame_IsUserPlaced},
-        {"EnableKeyboard",        lua_Frame_EnableKeyboard},
-        {"IsKeyboardEnabled",     lua_Frame_IsKeyboardEnabled},
-        {"SetPropagateKeyboardInput", lua_Frame_SetPropagateKeyboardInput},
-        {"SetToplevel",           lua_Frame_SetToplevel},
-        {"IsToplevel",            lua_Frame_IsToplevel},
-        {"Raise",                 lua_Frame_Raise},
-        {"Lower",                 lua_Frame_Lower},
-        {"SetClampedToScreen",    lua_Frame_SetClampedToScreen},
-        {"SetClampRectInsets",    lua_Frame_SetClampRectInsets},
-        {"IsClampedToScreen",     lua_Frame_IsClampedToScreen},
-        {"SetBackdrop",           lua_Frame_SetBackdrop},
-        {"SetBackdropColor",      lua_Frame_SetBackdropColor},
-        {"SetBackdropBorderColor",lua_Frame_SetBackdropBorderColor},
-        {"SetMinMaxValues",       lua_StatusBar_SetMinMaxValues},
-        {"GetMinMaxValues",       lua_StatusBar_GetMinMaxValues},
-        {"SetValue",              lua_StatusBar_SetValue},
-        {"GetValue",              lua_StatusBar_GetValue},
-        {"SetStatusBarTexture",   lua_StatusBar_SetStatusBarTexture},
-        {"SetStatusBarColor",     lua_StatusBar_SetStatusBarColor},
-        {"SetOrientation",        lua_StatusBar_SetOrientation},
-        {"SetValueStep",          lua_Slider_SetValueStep},
-        {"GetValueStep",          lua_Slider_GetValueStep},
-        {"SetThumbTexture",       lua_Slider_SetThumbTexture},
-        {"SetColorWheelTexture",      lua_ColorSelect_SetWheelTexture},
-        {"SetColorWheelThumbTexture", lua_ColorSelect_SetWheelThumbTexture},
-        {"SetColorValueTexture",      lua_ColorSelect_SetValueTexture},
-        {"SetColorValueThumbTexture", lua_ColorSelect_SetValueThumbTexture},
-        {"SetCooldown",           lua_Cooldown_SetCooldown},
-        {"GetNumber",             lua_EditBox_GetNumber},
-        {"SetNumber",             lua_EditBox_SetNumber},
-        {"AddHistoryLine",        lua_EditBox_AddHistoryLine},
-        {"SetHistoryLines",       lua_EditBox_SetHistoryLines},
-        {"ClearHistory",          lua_EditBox_ClearHistory},
-        {"SetCountInvisibleLetters", lua_EditBox_SetCountInvisibleLetters},
-        {"GetCountInvisibleLetters", lua_EditBox_GetCountInvisibleLetters},
-        {"GetHistoryLines",       lua_EditBox_GetHistoryLines},
-        {"SetIgnoreArrows",       lua_EditBox_SetIgnoreArrows},
-        {"Insert",                lua_EditBox_Insert},
-        {"SetMaxLetters",         lua_EditBox_SetMaxLetters},        // The limit here is applied against the text's size in bytes, which is
-        // what SetMaxBytes asks for; SetMaxLetters is the same field because
-        // this counts the same way for both. Reporting it back matters more
-        // than the distinction: an edit box that answers nothing for its limit
-        // is one FrameXML will not stop typing into.
-        {"SetMaxBytes",          lua_EditBox_SetMaxLetters},
-        {"SetTextInsets",        lua_EditBox_SetTextInsets},
-        {"SetPadding",           lua_MessageFrame_SetPadding},
-        {"GetPadding",           lua_MessageFrame_GetPadding},
-        {"GetTextInsets",        lua_EditBox_GetTextInsets},
-        {"SetNumeric",            lua_EditBox_SetNumeric},
-        {"SetMultiLine",          lua_EditBox_SetMultiLine},
-        {"SetAutoFocus",          lua_EditBox_SetAutoFocus},
-        {"SetCursorPosition",     lua_EditBox_SetCursorPosition},
-        {"HighlightText",         lua_EditBox_HighlightText},
-        {"GetCursorPosition",     lua_EditBox_GetCursorPosition},
-        {"GetNumLetters",         lua_EditBox_GetNumLetters},
-        {"GetUTF8CursorPosition", lua_EditBox_GetUTF8CursorPosition},
-        {"SetFocus",              lua_EditBox_SetFocus},
-        {"ClearFocus",            lua_EditBox_ClearFocus},
-        {"HasFocus",              lua_EditBox_HasFocus},
-        {"GetCooldownTimes",      lua_Cooldown_GetCooldownTimes},
-        {"SetFrameStrata",  lua_Frame_SetFrameStrata},
-        {"GetFrameStrata",  lua_Frame_GetFrameStrata},
-        {"SetFrameLevel",   lua_Frame_SetFrameLevel},
-        {"SetParent",       lua_Region_SetParent},
-        {"GetParent",       lua_Region_GetParent},
-        {"GetChildren",     lua_Frame_GetChildren},
-        {"CreateTexture",   lua_Frame_CreateTexture},
-        {"CreateFontString", lua_Frame_CreateFontString},
-        {nullptr, nullptr}
-    };
-    auto applyFrameMethods = [&]() {
-        lua_getglobal(L_, "__WoweeFrameMT");
-        for (const luaL_Reg* r = frameMethods; r->name; r++) {
-            lua_pushcfunction(L_, r->func);
-            lua_setfield(L_, -2, r->name);
-        }
-        lua_pop(L_, 1);
-    };
 
     for (const luaL_Reg* r = frameMethods; r->name; r++) {
         lua_pushcfunction(L_, r->func);
         lua_setfield(L_, -2, r->name);
     }
     lua_setglobal(L_, "__WoweeFrameMT");
+}
 
+/// The Lua half of the widget surface: no-op methods, the animation system,
+/// button art, and the catch-all that answers an unimplemented method.
+///
+/// Written in Lua rather than C because it is bookkeeping - an animation
+/// group is a list and a timer - and because one loop there covers every
+/// button slot without another entry in the C method table.
+void LuaEngine::registerWidgetStubLua() {
     // Commonly called frame methods that are no-ops for now, so an addon
     // calling one gets silence rather than an error.
     //
@@ -6478,7 +6528,15 @@ void LuaEngine::registerCoreAPI() {
         // above.
         "mt.__index = mt\n"
     );
+}
 
+/// CreateFrame, the screen and cursor globals, and the tables the frame
+/// dispatch reads.
+///
+/// Opens by re-applying the C methods over the Lua block above: that block
+/// exists to give unimplemented methods a harmless no-op and it runs later,
+/// so any name it shares with a real binding would silently replace it.
+void LuaEngine::registerFrameGlobals() {
     // The fallback is installed at the very end of initialize(), not here.
     // Everything below is still bootstrap Lua, and much of it opens with the
     // "LibStub = LibStub or {}" idiom - which reads nil only while _G answers
@@ -6493,7 +6551,7 @@ void LuaEngine::registerCoreAPI() {
     // took the mouse at all; SetBackdrop and its two colour setters were about
     // to go the same way. Ordering the two makes the class of mistake
     // impossible rather than something to keep noticing.
-    applyFrameMethods();
+    applyFrameMethods(L_);
 
     // CreateFrame function
     lua_pushcfunction(L_, lua_EditBox_SetText);
@@ -6550,7 +6608,14 @@ void LuaEngine::registerCoreAPI() {
     // cover every slot from one loop.
     lua_pushcfunction(L_, lua_Texture_SetButtonArt);
     lua_setglobal(L_, "__WoweeSetButtonArt");
+}
 
+/// What addons expect to find already loaded: XML templates, C_Timer,
+/// DEFAULT_CHAT_FRAME, LibStub and CallbackHandler-1.0.
+///
+/// These are the standard implementations addons embed and expect globally,
+/// not this client's own.
+void LuaEngine::registerAddonCompatLua() {
     // Where XML templates land. A virtual frame compiles to a function that
     // replays itself onto a real frame, and inherits= calls it; both halves are
     // emitted by the FrameXML loader and meet here.
@@ -6710,6 +6775,15 @@ void LuaEngine::registerCoreAPI() {
         "end\n"
     );
 
+}
+
+/// The no-op stubs, the tooltip builders, and the money and coin formatters.
+///
+/// Ordering matters against registerWidgetMethods: anything bound in C there
+/// must not appear here, because this runs afterwards and would overwrite a
+/// working method with a no-op that still answers - the failure EnableMouse
+/// hit, where no frame took the mouse however plainly the call read.
+void LuaEngine::registerWidgetSupportLua() {
     // Noop stubs for commonly called functions that don't need implementation
     bootstrap(
         // Empty a table in place, keeping the table itself. WoW's, not Lua's -
@@ -7649,6 +7723,16 @@ void LuaEngine::registerCoreAPI() {
         "GetCoinText = GetCoinTextureString\n"
     );
 
+}
+
+/// RAID_CLASS_COLORS, the dropdown framework, UISpecialFrames, and the
+/// C_ChatInfo table.
+///
+/// RAID_CLASS_COLORS is filled from the same table this client colours a
+/// name with rather than written out a second time in Lua: two copies that
+/// agree are one class recolour away from a party list and a chat line
+/// disagreeing about the same player.
+void LuaEngine::registerUiCompatLua() {
     // RAID_CLASS_COLORS, filled from the same table this client colours a name
     // with rather than written out a second time in Lua. The two copies did
     // agree, which is the only reason it was never a bug; a class recoloured on
@@ -7796,6 +7880,13 @@ void LuaEngine::registerCoreAPI() {
         "C_ChatInfo.SendAddonMessage = SendAddonMessage\n"
     );
 
+}
+
+/// Action bar constants, the tContains/tInvert family, and the bit library.
+///
+/// Named by WoW rather than by Lua - tContains is not table.contains - so
+/// they are what an addon written against the real client will call.
+void LuaEngine::registerAddonUtilityLua() {
     // Action bar constants and functions used by action bar addons
     bootstrap(
         "NUM_ACTIONBAR_BUTTONS = 12\n"
