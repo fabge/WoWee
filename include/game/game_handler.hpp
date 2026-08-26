@@ -1,5 +1,7 @@
 #pragma once
 
+#include "network/header_crypt.hpp"
+
 #include "game/quest_giver_status.hpp"
 #include "game/calendar_data.hpp"
 #include "game/game_interfaces.hpp"
@@ -174,6 +176,11 @@ public:
     UpdateFieldTable& getUpdateFieldTable() { return updateFieldTable_; }
     PacketParsers* getPacketParsers() { return packetParsers_.get(); }
     void setPacketParsers(std::unique_ptr<PacketParsers> parsers);
+
+    // The world header cipher this expansion uses, set from the profile
+    // alongside the opcode and update-field tables. Defaults to WotLK's RC4,
+    // which is what the socket assumed before this came from the profile.
+    void setHeaderCrypt(network::HeaderCrypt crypt) { headerCrypt_ = crypt; }
 
     /**
      * Connect to world server
@@ -4069,6 +4076,9 @@ private:
     // Opcode dispatch table - built once in registerOpcodeHandlers(), called by handlePacket()
     using PacketHandler = std::function<void(network::Packet&)>;
     std::unordered_map<LogicalOpcode, PacketHandler> dispatchTable_;
+
+    network::HeaderCrypt headerCrypt_ =
+        network::HeaderCrypt::WotlkRc4;
 
     // Opcode translation table (expansion-specific wire ↔ logical mapping)
     OpcodeTable opcodeTable_;

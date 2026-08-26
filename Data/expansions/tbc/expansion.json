@@ -3,6 +3,7 @@
   "name": "The Burning Crusade",
   "shortName": "TBC",
   "version": { "major": 2, "minor": 4, "patch": 3 },
+  "headerCrypt": "tbc-hmac-xor",
   "build": 8606,
   "protocolVersion": 5,
   "maxLevel": 70,

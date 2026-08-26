@@ -3,6 +3,7 @@
   "name": "Classic",
   "shortName": "Classic",
   "version": { "major": 1, "minor": 12, "patch": 1 },
+  "headerCrypt": "vanilla-xor",
   "build": 5875,
   "protocolVersion": 8,
   "maxLevel": 60,

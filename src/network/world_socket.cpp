@@ -814,20 +814,24 @@ void WorldSocket::dispatchQueuedPackets() {
     }
 }
 
-void WorldSocket::initEncryption(const std::vector<uint8_t>& sessionKey, uint32_t build) {
+void WorldSocket::initEncryption(const std::vector<uint8_t>& sessionKey, HeaderCrypt crypt) {
     std::lock_guard<std::mutex> lock(ioMutex_);
     if (sessionKey.size() != 40) {
         LOG_ERROR("Invalid session key size: ", sessionKey.size(), " (expected 40)");
         return;
     }
 
-    const bool useRawVanillaCrypt = (build <= 5875);
-    const bool useCmangosTbcCrypt = (build > 5875 && build <= 8606);
+    // Handed in rather than worked out here. This used to test hard-coded build
+    // numbers, which made src/network/ the one place that knew what expansions
+    // exist - so adding one meant editing the socket, in a client whose whole
+    // point is that expansion differences are data.
+    const bool useRawVanillaCrypt = (crypt == HeaderCrypt::VanillaXor);
+    const bool useCmangosTbcCrypt = (crypt == HeaderCrypt::TbcHmacXor);
     useVanillaCrypt = useRawVanillaCrypt || useCmangosTbcCrypt;
 
     LOG_INFO(">>> ENABLING ENCRYPTION (",
              useRawVanillaCrypt ? "vanilla XOR" : (useCmangosTbcCrypt ? "CMaNGOS TBC HMAC-XOR" : "WotLK RC4"),
-             ") build=", build, " <<<");
+             ") <<<");
 
     if (useRawVanillaCrypt) {
         vanillaCrypt.init(sessionKey);

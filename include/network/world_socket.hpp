@@ -1,5 +1,7 @@
 #pragma once
 
+#include "network/header_crypt.hpp"
+
 #include "network/socket.hpp"
 #include "network/packet.hpp"
 #include "network/net_platform.hpp"
@@ -72,7 +74,7 @@ public:
      * @param sessionKey 40-byte session key from auth server
      * @param build Client build number (determines cipher family)
      */
-    void initEncryption(const std::vector<uint8_t>& sessionKey, uint32_t build = 12340);
+    void initEncryption(const std::vector<uint8_t>& sessionKey, HeaderCrypt crypt);
 
     void tracePacketsFor(std::chrono::milliseconds duration, const std::string& reason);
 

@@ -2087,6 +2087,21 @@ void Application::loadExpansionTables(const game::ExpansionProfile& profile) {
 
     gameHandler->setPacketParsers(game::createPacketParsers(profile.id));
 
+    // The world header cipher travels with the expansion like everything else
+    // above it. src/network/ used to decide this from hard-coded build numbers.
+    switch (profile.resolvedHeaderCrypt()) {
+        case game::ExpansionProfile::HeaderCrypt::VanillaXor:
+            gameHandler->setHeaderCrypt(network::HeaderCrypt::VanillaXor);
+            break;
+        case game::ExpansionProfile::HeaderCrypt::TbcHmacXor:
+            gameHandler->setHeaderCrypt(network::HeaderCrypt::TbcHmacXor);
+            break;
+        case game::ExpansionProfile::HeaderCrypt::FromBuild:
+        case game::ExpansionProfile::HeaderCrypt::WotlkRc4:
+            gameHandler->setHeaderCrypt(network::HeaderCrypt::WotlkRc4);
+            break;
+    }
+
     if (dbcLayout_) {
         const std::string dbcLayoutsPath = definitions + "/dbc_layouts.json";
         if (!dbcLayout_->loadFromJson(dbcLayoutsPath)) {

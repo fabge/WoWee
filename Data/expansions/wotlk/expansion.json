@@ -3,6 +3,7 @@
   "name": "Wrath of the Lich King",
   "shortName": "WotLK",
   "version": { "major": 3, "minor": 3, "patch": 5 },
+  "headerCrypt": "wotlk-rc4",
   "build": 12340,
   "protocolVersion": 8,
   "maxLevel": 80,

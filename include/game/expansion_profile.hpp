@@ -35,6 +35,24 @@ struct ExpansionProfile {
     std::vector<uint32_t> races;
     std::vector<uint32_t> classes;
 
+    /// Which header cipher the world connection uses.
+    ///
+    /// A property of the expansion, not of the network layer: world_socket.cpp
+    /// used to pick this from hard-coded build numbers, which was the one place
+    /// the otherwise data-driven expansion model leaked into src/network/ and
+    /// meant adding an expansion meant editing the socket. Written in the
+    /// profile as "vanilla-xor", "tbc-hmac-xor" or "wotlk-rc4".
+    ///
+    /// Left empty by a profile that does not say, in which case the build
+    /// number decides exactly as it did before - every shipped profile predates
+    /// this field.
+    enum class HeaderCrypt { FromBuild, VanillaXor, TbcHmacXor, WotlkRc4 };
+    HeaderCrypt headerCrypt = HeaderCrypt::FromBuild;
+
+    /// The header cipher this profile actually uses, resolving FromBuild
+    /// against the world build the way the socket always has.
+    [[nodiscard]] HeaderCrypt resolvedHeaderCrypt() const;
+
     /// The RSA public key this realm signs its Warden module with, 256 bytes.
     ///
     /// Empty means Blizzard's own, which is what a server running a genuine

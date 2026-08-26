@@ -271,7 +271,7 @@ void GameHandler::sendAuthSession() {
     // AzerothCore enables encryption before sending AUTH_RESPONSE,
     // so we need to be ready to decrypt the response
     LOG_INFO("Enabling encryption immediately after AUTH_SESSION");
-    socket->initEncryption(sessionKey, build);
+    socket->initEncryption(sessionKey, headerCrypt_);
 
     setState(WorldState::AUTH_SENT);
     LOG_INFO("CMSG_AUTH_SESSION sent, encryption enabled, waiting for AUTH_RESPONSE...");

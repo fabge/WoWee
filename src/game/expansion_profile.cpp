@@ -92,6 +92,17 @@ std::vector<uint32_t> jsonUintArray(const std::string& json, const std::string& 
 namespace wowee {
 namespace game {
 
+ExpansionProfile::HeaderCrypt ExpansionProfile::resolvedHeaderCrypt() const {
+    if (headerCrypt != HeaderCrypt::FromBuild) return headerCrypt;
+
+    // The build boundaries the socket used before this was a profile field:
+    // 5875 is 1.12.1, 8606 is 2.4.3.
+    const uint32_t effective = worldBuild ? worldBuild : build;
+    if (effective <= 5875) return HeaderCrypt::VanillaXor;
+    if (effective <= 8606) return HeaderCrypt::TbcHmacXor;
+    return HeaderCrypt::WotlkRc4;
+}
+
 std::string ExpansionProfile::versionString() const {
     std::ostringstream ss;
     ss << static_cast<int>(majorVersion) << "." << static_cast<int>(minorVersion) << "." << static_cast<int>(patchVersion);
@@ -242,6 +253,20 @@ bool ExpansionRegistry::loadProfile(const std::string& jsonPath, const std::stri
         p.timezone = static_cast<uint32_t>(jsonInt(json, "timezone", static_cast<int>(p.timezone)));
     }
     p.maxLevel = static_cast<uint32_t>(jsonInt(json, "maxLevel", 60));
+
+    if (const std::string era = jsonValue(json, "headerCrypt"); !era.empty()) {
+        if (era == "vanilla-xor")        p.headerCrypt = ExpansionProfile::HeaderCrypt::VanillaXor;
+        else if (era == "tbc-hmac-xor")  p.headerCrypt = ExpansionProfile::HeaderCrypt::TbcHmacXor;
+        else if (era == "wotlk-rc4")     p.headerCrypt = ExpansionProfile::HeaderCrypt::WotlkRc4;
+        else {
+            // Refused rather than guessed. A wrong header cipher does not
+            // degrade: every packet after AUTH_SESSION decrypts to noise, which
+            // looks like a protocol bug anywhere but here.
+            LOG_WARNING("Expansion '", p.id, "': headerCrypt '", era,
+                        "' is not one of vanilla-xor, tbc-hmac-xor, wotlk-rc4 - "
+                        "falling back to the build number");
+        }
+    }
 
     // The realm's own Warden signing key, if it has one. 512 hex characters;
     // anything else is refused rather than half-read, because a key that is

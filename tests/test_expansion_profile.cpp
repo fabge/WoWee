@@ -209,3 +209,49 @@ TEST_CASE("A profile naming no Warden key leaves the retail one in place",
 
     std::filesystem::remove_all(root);
 }
+
+// The world header cipher is a property of the expansion, not of the network
+// layer. It used to be worked out inside WorldSocket::initEncryption from
+// hard-coded build numbers, which made src/network/ the one place that knew
+// which expansions exist.
+TEST_CASE("the header cipher comes from the profile", "[expansion][crypt]") {
+    using Crypt = wowee::game::ExpansionProfile::HeaderCrypt;
+
+    SECTION("an explicit choice is used as written") {
+        wowee::game::ExpansionProfile p;
+        p.build = 12340;
+        p.worldBuild = 12340;
+        p.headerCrypt = Crypt::VanillaXor;
+        // Against the build number, which would say RC4. The profile wins:
+        // that is the entire point of the field.
+        REQUIRE(p.resolvedHeaderCrypt() == Crypt::VanillaXor);
+    }
+
+    SECTION("a profile that says nothing falls back to the build boundaries") {
+        const auto eraFor = [](uint16_t worldBuild) {
+            wowee::game::ExpansionProfile p;
+            p.build = worldBuild;
+            p.worldBuild = worldBuild;
+            return p.resolvedHeaderCrypt();
+        };
+
+        // The boundaries the socket used before this was a profile field:
+        // 5875 is 1.12.1 and 8606 is 2.4.3, and both are inclusive.
+        REQUIRE(eraFor(5875) == Crypt::VanillaXor);
+        REQUIRE(eraFor(5876) == Crypt::TbcHmacXor);
+        REQUIRE(eraFor(8606) == Crypt::TbcHmacXor);
+        REQUIRE(eraFor(8607) == Crypt::WotlkRc4);
+        REQUIRE(eraFor(12340) == Crypt::WotlkRc4);
+    }
+
+    SECTION("the world build decides, not the realm build") {
+        // Turtle connects with realm build 7272 and world build 5875, and it
+        // is the world connection being encrypted. Reading the realm build
+        // here would key TBC's cipher on a vanilla server and every packet
+        // after AUTH_SESSION would decrypt to noise.
+        wowee::game::ExpansionProfile p;
+        p.build = 7272;
+        p.worldBuild = 5875;
+        REQUIRE(p.resolvedHeaderCrypt() == Crypt::VanillaXor);
+    }
+}

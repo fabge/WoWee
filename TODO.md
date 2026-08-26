@@ -144,15 +144,6 @@ never moved. Split by table, mechanically, no behaviour change. A
 while the real frame is sequenced imperatively. A new render pass means editing
 three lists and forgetting one is silent. **Multi-day.**
 
-### The crypto era is chosen in the network layer
-`src/network/world_socket.cpp:824`
-
-Hard-coded build numbers rather than a field on the expansion profile — the one
-place the otherwise clean data-driven expansion model leaks. Adding an
-expansion should not mean editing `src/network/`. **~3 hours.**
-
----
-
 ## Tier 3 — upstream
 
 `AGENTS.md` says fixes should be contributable and PRs kept focused. As of
