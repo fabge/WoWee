@@ -669,3 +669,63 @@ upstream touches the widget half of `lua_engine.cpp`, and it is the argument for
 the Tier 3 pull requests rather than against the split.
 
 184 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
+
+## 2026-08-26 — from play: quest text, and three things behind it
+
+Four reports from a play session, and two of them had the same cause.
+
+**`$n` and `$c` in the quest log.** `GetQuestText` and `GetObjectiveText` - the
+panel that offers a quest - have resolved WoW's in-text tokens against the
+player since the tokens were implemented. `GetQuestLogQuestText` pushed the raw
+strings, so the same quest read "are noble traits, $n" in the log and correctly
+in the panel that had just offered it. Both go through `pushQuestText` now.
+
+**"Bundle of Furs: 0/1" on a complete quest, again.** Not a regression: the
+installed binary was built at 08:46 and the fix landed at 09:34. The same
+screenshot showed `$N` unresolved, which was fixed an hour before it was taken.
+Worth writing down as a diagnostic habit - two symptoms that were both fixed
+already is a strong signal about the binary rather than the code.
+
+**The bundled addon has never shipped.** `WoweeAllBags` - every bag in one
+window, which is exactly what was asked for - lives in `addons/` and
+`make_app.sh` has never copied it into the bundle. The dev build gets it from
+the `copy_bundled_addons` CMake target, which copies next to the executable, so
+the gap was invisible to anyone running out of the build tree. `/allbags` and
+`/bags` answered nothing in every installed build since it was written.
+
+**Spell missiles do not travel.** Confirmed rather than fixed:
+`playPhysicalProjectile` exists for arrows and bullets, but `SpellVisual.dbc`'s
+`MissileModel` is read only as a *fallback path* for the cast and impact models,
+never launched from caster to target. So a Lightning Bolt is an impact effect
+with nothing in between, which is what was reported. Written into `TODO.md` with
+the machinery that already exists to do it.
+
+## 2026-08-26 — the render graph, first increment
+
+`Renderer` rebuilt its subsystems' pipelines from a hand-written enumeration
+sixty lines long. A Vulkan pipeline bakes in its render pass and sample count,
+so the failure a missing line produces is a pipeline bound to a destroyed pass:
+nothing warns, and the driver loses the device a fraction of a second after an
+anti-aliasing change. That does not look like a missing line in a list.
+
+`PipelineRegistry` replaces the enumeration with a registration, in insertion
+order because two entries depend on earlier ones - the water renderer rebuilds
+its single-sampled pass afterwards, the swim effects resync their target pass
+first, and both register the whole of what they need so the ordering stays
+visible. The registry is refilled on every rebuild rather than once at startup,
+because these are created lazily and one that did not exist when the registry
+was first filled would never be in it, which is the same silent gap.
+
+The part that matters is `render_pipeline_registry_check.py`: every type under
+`include/rendering/` declaring `recreatePipelines()` must be registered, or the
+sweep fails. Verified by removing `weather` from the registry and watching it
+report. Twenty headers, twenty-one entries, ceiling zero. Comments are stripped
+before matching, because `pipeline_registry.hpp` explains the whole mechanism in
+its own doc comment and was the first false positive it produced.
+
+This is the first increment, not the item. `RenderGraph` still registers five
+passes while the real frame is sequenced imperatively, and the 35 subsystems are
+still hand-wired members. What is done is that one of the three lists cannot
+silently go stale any more.
+
+184 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.

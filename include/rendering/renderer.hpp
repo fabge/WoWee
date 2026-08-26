@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include "rendering/pipeline_registry.hpp"
 #include <string>
 #include <cstdint>
 #include <vector>
@@ -191,6 +192,12 @@ public:
     const std::vector<pipeline::CustomZoneInfo>& getCustomZones() const { return customZones_; }
 
 private:
+    /// Subsystems whose pipelines embed the render pass, in the order they
+    /// must be rebuilt. Registered next to where each is created; see
+    /// pipeline_registry.hpp for why this is not a hand-written list.
+    PipelineRegistry pipelineRegistry_;
+    void registerPipelineOwners();
+
     // True when water is drawn in the scene continuation pass rather than in
     // the scene pass itself (see renderWorld).
     bool waterDrawsInContinuePass() const;

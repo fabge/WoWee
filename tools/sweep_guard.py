@@ -187,6 +187,12 @@ CHECKS = [
      "private members nothing mentions, which fail the Windows build"),
     # "either" since 2026-08-26: a wowee_test_link_glm() call or a link against
     # a wowee_* subsystem library, which carries glm through wowee_common.
+    # A subsystem left out of the pipeline registry keeps a pipeline bound to a
+    # destroyed render pass. Nothing warns; the driver loses the device a
+    # fraction of a second after an anti-aliasing change. Zero, and it stays.
+    ("render_pipeline_registry_check.py",
+     r"^(\d+) declare it and are never registered", 0,
+     "renderer subsystems whose pipelines would never be rebuilt"),
     ("test_glm_link_check.py",
      r"^(\d+) reach glm without either", 0,
      "test targets that build on Linux and fail on macOS"),

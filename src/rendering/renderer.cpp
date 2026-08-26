@@ -868,6 +868,61 @@ void Renderer::setWaterRefractionEnabled(bool /*enabled*/) {
     // 0 should not be able to turn it off again.
     if (waterRenderer) waterRenderer->setRefractionEnabled(true);
 }
+/// The subsystems that rebuild when the render pass changes.
+///
+/// Rebuilt on every call rather than once at startup, because these are
+/// created lazily and at different times - a subsystem that did not exist when
+/// the registry was first filled would never be in it, which is the same
+/// silent gap the hand-written list had.
+///
+/// Order is the order they are added. Two entries do more than call
+/// recreatePipelines and register the whole of what they need, so that the
+/// ordering stays visible where it matters.
+void Renderer::registerPipelineOwners() {
+    pipelineRegistry_.clear();
+    auto add = [this](const char* name, auto* obj, auto&& fn) {
+        if (obj) pipelineRegistry_.add(name, std::forward<decltype(fn)>(fn));
+    };
+
+    add("terrainRenderer", terrainRenderer.get(), [this] { terrainRenderer->recreatePipelines(); });
+    add("grassRenderer", grassRenderer_.get(), [this] { grassRenderer_->recreatePipelines(); });
+    add("waterRenderer", waterRenderer.get(), [this] {
+        waterRenderer->recreatePipelines();
+        // Under MSAA the water draws single-sampled in its own pass, after the
+        // scene has resolved - it is a large alpha-blended surface whose edges
+        // MSAA does nothing for, and drawing it there also keeps it out of its
+        // own refraction copy.
+        waterRenderer->destroyWater1xResources();
+        setupWater1xPass();
+    });
+    add("wmoRenderer", wmoRenderer.get(), [this] { wmoRenderer->recreatePipelines(); });
+    add("m2Renderer", m2Renderer.get(), [this] { m2Renderer->recreatePipelines(); });
+    add("skyboxModelRenderer", skyboxModelRenderer_.get(), [this] { skyboxModelRenderer_->recreatePipelines(); });
+    add("characterRenderer", characterRenderer.get(), [this] { characterRenderer->recreatePipelines(); });
+    add("questMarkerRenderer", questMarkerRenderer.get(), [this] { questMarkerRenderer->recreatePipelines(); });
+    add("footprintRenderer", footprintRenderer.get(), [this] { footprintRenderer->recreatePipelines(); });
+    add("weather", weather.get(), [this] { weather->recreatePipelines(); });
+    add("lightning", lightning.get(), [this] { lightning->recreatePipelines(); });
+    add("swimEffects", swimEffects.get(), [this] {
+        syncSwimEffectsTargetPass();
+        swimEffects->recreatePipelines();
+    });
+    add("mountDust", mountDust.get(), [this] { mountDust->recreatePipelines(); });
+    add("chargeEffect", chargeEffect.get(), [this] { chargeEffect->recreatePipelines(); });
+
+    // The sky's five children, which the sky system owns rather than Renderer.
+    if (skySystem) {
+        if (auto* sb = skySystem->getSkybox())    pipelineRegistry_.add("skybox",    [sb] { sb->recreatePipelines(); });
+        if (auto* sf = skySystem->getStarField()) pipelineRegistry_.add("starField", [sf] { sf->recreatePipelines(); });
+        if (auto* ce = skySystem->getCelestial()) pipelineRegistry_.add("celestial", [ce] { ce->recreatePipelines(); });
+        if (auto* cl = skySystem->getClouds())    pipelineRegistry_.add("clouds",    [cl] { cl->recreatePipelines(); });
+        if (auto* lf = skySystem->getLensFlare()) pipelineRegistry_.add("lensFlare", [lf] { lf->recreatePipelines(); });
+    }
+
+    add("minimap", minimap.get(), [this] { minimap->recreatePipelines(); });
+    add("overlaySystem", overlaySystem_.get(), [this] { overlaySystem_->recreatePipelines(); });
+}
+
 void Renderer::setMsaaSamples(VkSampleCountFlagBits samples) {
     if (!vkCtx) return;
 
@@ -910,43 +965,13 @@ void Renderer::applyMsaaChange() {
         (void)vkCtx->recreateSwapchain(window->getWidth(), window->getHeight());
     }
 
-    // Recreate all sub-renderer pipelines (they embed sample count from render pass)
-    if (terrainRenderer) terrainRenderer->recreatePipelines();
-    if (grassRenderer_) grassRenderer_->recreatePipelines();
-    if (waterRenderer) {
-        waterRenderer->recreatePipelines();
-        // Under MSAA the water draws single-sampled in its own pass, after the
-        // scene has resolved - it is a large alpha-blended surface whose edges
-        // MSAA does nothing for, and drawing it there also keeps it out of its
-        // own refraction copy.
-        waterRenderer->destroyWater1xResources();
-        setupWater1xPass();
-    }
-    if (wmoRenderer) wmoRenderer->recreatePipelines();
-    if (m2Renderer) m2Renderer->recreatePipelines();
-    if (skyboxModelRenderer_) skyboxModelRenderer_->recreatePipelines();
-    if (characterRenderer) characterRenderer->recreatePipelines();
-    if (questMarkerRenderer) questMarkerRenderer->recreatePipelines();
-    if (footprintRenderer) footprintRenderer->recreatePipelines();
-    if (weather) weather->recreatePipelines();
-    if (lightning) lightning->recreatePipelines();
-    if (swimEffects) {
-        syncSwimEffectsTargetPass();
-        swimEffects->recreatePipelines();
-    }
-    if (mountDust) mountDust->recreatePipelines();
-    if (chargeEffect) chargeEffect->recreatePipelines();
-
-    // Sky system sub-renderers
-    if (skySystem) {
-        if (auto* sb = skySystem->getSkybox()) sb->recreatePipelines();
-        if (auto* sf = skySystem->getStarField()) sf->recreatePipelines();
-        if (auto* ce = skySystem->getCelestial()) ce->recreatePipelines();
-        if (auto* cl = skySystem->getClouds()) cl->recreatePipelines();
-        if (auto* lf = skySystem->getLensFlare()) lf->recreatePipelines();
-    }
-
-    if (minimap) minimap->recreatePipelines();
+    // Every subsystem whose pipelines embed the render pass, in the order they
+    // have to be rebuilt. The list is registered rather than written out here -
+    // see pipeline_registry.hpp for the failure that a hand-written enumeration
+    // produces, and tools/render_pipeline_registry_check.py for what now fails
+    // when a subsystem is left out of it.
+    registerPipelineOwners();
+    pipelineRegistry_.rebuildAll();
 
     // Resize HiZ pyramid (depth format/MSAA may have changed)
     if (hizSystem_) {
@@ -959,9 +984,10 @@ void Renderer::applyMsaaChange() {
         }
     }
 
-    // Selection circle + overlay + FSR use lazy init, just destroy them
-    if (overlaySystem_) overlaySystem_->recreatePipelines();
-    if (postProcessPipeline_) postProcessPipeline_->destroyAllResources(); // Will be lazily recreated in beginFrame()
+    // Not pipeline owners in the registry's sense: HiZ resizes rather than
+    // rebuilding, and the post-process pipeline is destroyed and lazily remade
+    // in beginFrame. Both stay explicit so the difference is visible.
+    if (postProcessPipeline_) postProcessPipeline_->destroyAllResources();
 
     // ImGui is deliberately not restarted here.
     //

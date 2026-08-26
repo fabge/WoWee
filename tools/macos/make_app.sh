@@ -51,6 +51,16 @@ cp extract_assets.sh tools/asset_pipeline_gui.py "${APP_PATH}/Contents/Resources
 rsync -a --exclude='Original Music' \
     "${BUILD_DIR}/bin/assets/" "${APP_PATH}/Contents/Resources/assets/"
 
+# The client's own addons, which AddonManager looks for as "addons" relative to
+# the working directory - and the app sets that to Contents/Resources.
+#
+# Never copied here before, so WoweeAllBags has shipped in the repository and in
+# no installed build since it was written: /allbags answered nothing, and the
+# only way to see it was to run the binary out of the build tree. The dev build
+# gets it from the copy_bundled_addons CMake target, which copies next to the
+# executable and so covered the gap locally.
+rsync -a "${REPO_ROOT}/addons/" "${APP_PATH}/Contents/Resources/addons/"
+
 # The shipped Data tree - profiles, opcode tables, update fields, DBC layouts.
 # Tracked files only: the extracted game data lives outside the bundle and must
 # never be copied into it.
