@@ -113,7 +113,9 @@ bool MessageChatParser::parse(network::Packet& packet, MessageChatData& data) {
         case ChatType::RAID_BOSS_EMOTE:
         case ChatType::RAID_BOSS_WHISPER: {
             // Length-prefixed, bounds-checked against the packet, terminator stripped.
-            packet.readSizedString(data.senderName);
+            // Truncated here means the name length is a lie, and reading on would
+            // consume it as the leading bytes of the GUID below.
+            if (!packet.readSizedString(data.senderName)) return false;
             // Read receiver GUID (NamedGuid: guid + optional name for non-player targets)
             data.receiverGuid = packet.readUInt64();
             if (data.receiverGuid != 0) {

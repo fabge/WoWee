@@ -996,7 +996,9 @@ bool ClassicPacketParsers::parseMessageChat(network::Packet& packet, MessageChat
     switch (data.type) {
         case ChatType::MONSTER_EMOTE: {
             // Length-prefixed, bounds-checked against the packet, terminator stripped.
-            packet.readSizedString(data.senderName);
+            // Truncated here means the name length is a lie, and reading on would
+            // consume it as the leading bytes of the GUID below.
+            if (!packet.readSizedString(data.senderName)) return false;
             data.receiverGuid = packet.readUInt64();
             break;
         }
@@ -1030,7 +1032,9 @@ bool ClassicPacketParsers::parseMessageChat(network::Packet& packet, MessageChat
             // senderGuid(u64) + nameLen(u32) + name + targetGuid(u64)
             data.senderGuid = packet.readUInt64();
             // Length-prefixed, bounds-checked against the packet, terminator stripped.
-            packet.readSizedString(data.senderName);
+            // Truncated here means the name length is a lie, and reading on would
+            // consume it as the leading bytes of the GUID below.
+            if (!packet.readSizedString(data.senderName)) return false;
             data.receiverGuid = packet.readUInt64();
             break;
         }

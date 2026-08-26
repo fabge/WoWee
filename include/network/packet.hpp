@@ -43,7 +43,12 @@ public:
     ///
     /// False means the length is not one this packet can honour, and the read
     /// position is left where it was.
-    bool readSizedString(std::string& out, uint32_t maxLength = 256);
+    // [[nodiscard]] because the whole point of this helper is the bool: on a
+    // truncated packet it restores the read position and reports false, so a
+    // caller that drops the result reads the length field it just rejected as
+    // the next field's bytes and carries on parsing garbage that looks valid.
+    // Three chat parsers did exactly that.
+    [[nodiscard]] bool readSizedString(std::string& out, uint32_t maxLength = 256);
 
     [[nodiscard]] uint16_t getOpcode() const { return opcode; }
     [[nodiscard]] const std::vector<uint8_t>& getData() const { return data; }
