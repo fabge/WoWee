@@ -9,13 +9,17 @@
 // testable without a server: registerUnitLuaAPI(L) against a bare state is a
 // legitimate runtime state, not a contrivance for the test.
 //
+// It carried 41 stub definitions until 2026-08-26, 32 of them GameHandler
+// methods: every binding guards its handler pointer so none is ever called,
+// but the linker wants a definition anyway and the real ones sat behind 59
+// translation units. The target links wowee_addons now and the stubs are gone.
+//
 // What is checked is the part FrameXML actually depends on and that a
 // refactor silently breaks: the *return contract*. Blizzard's Lua treats nil,
 // false, 0 and "" as different answers, and AGENTS.md says so - a binding that
 // returns nil where FrameXML expects "" aborts the script that called it.
 #include <catch_amalgamated.hpp>
 
-#include <memory>
 #include <string>
 
 extern "C" {
@@ -28,96 +32,7 @@ extern "C" {
 #include "addons/lua_api_helpers.hpp"
 #include "core/app_clock.hpp"
 #include "game/game_handler.hpp"
-#include "game/shapeshift_forms.hpp"
-#include "game/update_field_table.hpp"
-#include "ui/widget_tree.hpp"
 
-// ---------------------------------------------------------------------------
-// The sixteen symbols this file needs to link, and the reason they are here.
-//
-// Every one of these is behind a `if (!gh) return` guard at runtime, so none is
-// ever called by these tests. The linker does not care: an unreached call still
-// needs a definition, and the definitions live in translation units that pull
-// in the rest of the client behind them.
-//
-// So this is the library-targets item in TODO.md, priced. Linking the real
-// game_handler.cpp here would drag in its 59 translation units; stubbing is
-// what the build graph leaves. When subsystem libraries exist, delete this
-// block and link the library instead - that is the whole point of doing it.
-// ---------------------------------------------------------------------------
-namespace wowee::addons {
-uint32_t cursorItemId() { return 0; }
-int cursorEquipSlot() { return 0; }
-}  // namespace wowee::addons
-
-namespace wowee::core {
-double appTimeSeconds() { return 0.0; }
-}  // namespace wowee::core
-
-namespace wowee::game {
-std::vector<ShapeshiftForm> allShapeshiftForms(uint8_t) { return {}; }
-const UpdateFieldTable* getActiveUpdateFieldTable() { return nullptr; }
-uint16_t UpdateFieldTable::index(UF) const { return 0; }
-std::shared_ptr<Entity> EntityManager::getEntity(uint64_t) const { return nullptr; }
-const ItemSlot& Inventory::getEquipSlot(EquipSlot) const {
-    static const ItemSlot empty{};
-    return empty;
-}
-
-void GameHandler::cancelAura(uint32_t) {}
-void GameHandler::castSpell(uint32_t, uint64_t) {}
-void GameHandler::dismount() {}
-void GameHandler::reclaimCorpse() {}
-void GameHandler::reportPvpAfk(uint64_t) {}
-void GameHandler::requestPvpLog() {}
-void GameHandler::startAutoAttack(uint64_t) {}
-void GameHandler::stopAutoAttack() {}
-bool GameHandler::isInCombat() const { return false; }
-bool GameHandler::isOnTaxiFlight() const { return false; }
-bool GameHandler::isInGroup() const { return false; }
-bool GameHandler::isVendorWindowOpen() const { return false; }
-uint64_t GameHandler::getEncounterUnitGuid(uint32_t) const { return 0; }
-float GameHandler::getCombatRatingBonus(int) const { return 0.0f; }
-float GameHandler::getHealthRegenFromSpirit() const { return 0.0f; }
-float GameHandler::getManaRegenFromSpirit() const { return 0.0f; }
-float GameHandler::getMeleeCritFromAgility() const { return 0.0f; }
-float GameHandler::getSpellCritFromIntellect() const { return 0.0f; }
-float GameHandler::getServerRunSpeed() const { return 0.0f; }
-float GameHandler::getSpellCooldownTotal(uint32_t) const { return 0.0f; }
-std::string GameHandler::getFormattedTitle(uint32_t) const { return {}; }
-const Character* GameHandler::getActiveCharacter() const { return nullptr; }
-const std::string& GameHandler::getFactionNamePublic(uint32_t) const {
-    static const std::string empty;
-    return empty;
-}
-uint64_t GameHandler::getBankerGuid() const { return 0; }
-uint64_t GameHandler::getVendorGuid() const { return 0; }
-uint32_t GameHandler::getSkillCategory(uint32_t) const { return 0; }
-float GameHandler::getSpellCooldown(uint32_t) const { return 0.0f; }
-const std::vector<CombatHandler::ThreatEntry>* GameHandler::getThreatList(uint64_t) const {
-    return nullptr;
-}
-const std::vector<Companion>& GameHandler::getCompanions(bool) const {
-    static const std::vector<Companion> empty{};
-    return empty;
-}
-const GossipMessageData& GameHandler::getCurrentGossip() const {
-    static const GossipMessageData empty{};
-    return empty;
-}
-const QuestDetailsData& GameHandler::getQuestDetails() const {
-    static const QuestDetailsData empty{};
-    return empty;
-}
-const GroupListData& GameHandler::getPartyData() const {
-    static const GroupListData empty{};
-    return empty;
-}
-}  // namespace wowee::game
-
-namespace wowee::ui {
-void WidgetTree::setPortraitUnit(uint32_t, const std::string&) {}
-}  // namespace wowee::ui
 
 
 namespace {

@@ -185,8 +185,10 @@ CHECKS = [
     ("unused_member_check.py",
      r"^(\d+) private and never referenced", 0,
      "private members nothing mentions, which fail the Windows build"),
+    # "either" since 2026-08-26: a wowee_test_link_glm() call or a link against
+    # a wowee_* subsystem library, which carries glm through wowee_common.
     ("test_glm_link_check.py",
-     r"^(\d+) reach glm without it", 0,
+     r"^(\d+) reach glm without either", 0,
      "test targets that build on Linux and fail on macOS"),
     ("chat_line_twice_check.py",
      r"^(\d+) of them written a second time", 0,

@@ -1410,22 +1410,15 @@ add_test(NAME quest_progress COMMAND test_quest_progress)
 register_test_target(test_quest_progress)
 
 # ── test_lua_unit_api ───────────────────────────────────────
-# The first CTest target that links a lua_*_api.cpp file. src/addons/ is the
-# highest-churn and highest-defect subsystem in the client and had no test at
-# all, because the build graph offers no library to link against - see the
-# library-targets item in TODO.md. This is the narrow seam that does not need
-# one: every binding guards its handler pointer, so the file registers and
-# answers against a bare Lua state.
-add_executable(test_lua_unit_api
-    test_lua_unit_api.cpp
-    ${CMAKE_SOURCE_DIR}/src/addons/lua_unit_api.cpp
-    ${TEST_COMMON_SOURCES}
-)
-target_include_directories(test_lua_unit_api PRIVATE ${TEST_INCLUDE_DIRS})
-target_include_directories(test_lua_unit_api SYSTEM PRIVATE
-    ${TEST_SYSTEM_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/extern/lua-5.1.5/src)
-target_link_libraries(test_lua_unit_api PRIVATE catch2_main lua51)
-wowee_test_link_glm(test_lua_unit_api)
+# The first CTest target that links a lua_*_api.cpp file, and now the first
+# that links a subsystem library rather than naming translation units.
+#
+# It used to compile lua_unit_api.cpp directly and carry 41 stub definitions,
+# 32 of them GameHandler methods, because the linker wants a definition for an
+# unreached call and the real ones dragged 59 translation units behind them.
+# wowee_addons resolves all 41 from the real code; the stubs are gone.
+add_executable(test_lua_unit_api test_lua_unit_api.cpp)
+target_link_libraries(test_lua_unit_api PRIVATE catch2_main wowee_addons)
 add_test(NAME lua_unit_api COMMAND test_lua_unit_api)
 register_test_target(test_lua_unit_api)
 
@@ -2143,3 +2136,13 @@ endif()
 # the re-parsing it saved (950.8 s of CPU against 945.2 s without). The main
 # target benefits because it is one target over 413 objects; the tests are the
 # opposite shape. Do not re-add it without measuring.
+
+# ── test_quest_item_reconcile ───────────────────────────────
+# The first CTest target to exercise a src/game/ handler rather than a
+# header-only pure function. It links wowee_game and lets the linker work out
+# what that needs; the five existing test_quest_* targets test pure functions
+# because naming 59 translation units by hand was the alternative.
+add_executable(test_quest_item_reconcile test_quest_item_reconcile.cpp)
+target_link_libraries(test_quest_item_reconcile PRIVATE catch2_main wowee_game)
+add_test(NAME quest_item_reconcile COMMAND test_quest_item_reconcile)
+register_test_target(test_quest_item_reconcile)

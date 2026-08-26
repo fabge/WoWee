@@ -25,7 +25,15 @@ WHAT IT DOES
 
 For every add_executable in tests/CMakeLists.txt, follows the local #include
 graph out of each source it compiles and asks whether anything in that graph
-mentions glm. If so, the target must appear in a wowee_test_link_glm() call.
+mentions glm. If so, the target must reach glm one of two ways: a
+wowee_test_link_glm() call, or a link against one of the wowee_* subsystem
+libraries, which carry it through wowee_common's INTERFACE.
+
+The second way did not exist before the subsystem libraries of 2026-08-26, and
+it is the better one - it is the same three-branch ladder the client uses,
+resolved once instead of per target. A target that links a subsystem library
+needs no helper call, and asking it to make one would be asking it to repeat
+something it already inherits.
 
 Run on any platform, and it answers the macOS question.
 
@@ -92,6 +100,11 @@ def main():
     text = CMAKE.read_text()
 
     linked = set(re.findall(r"wowee_test_link_glm\((\w+)\)", text))
+    # A subsystem library brings glm with it: wowee_common links it PUBLIC-ly
+    # for the client, and every wowee_* library inherits that INTERFACE.
+    for m in re.finditer(r"target_link_libraries\(\s*(\w+)([^)]*)\)", text, re.S):
+        if re.search(r"\bwowee_(?!test_|common\b)\w+", m.group(2)):
+            linked.add(m.group(1))
     targets = {m.group(1): m.group(2)
                for m in re.finditer(r"add_executable\((\w+)([^)]*)\)", text, re.S)}
     if not targets:
@@ -107,8 +120,10 @@ def main():
         if reaching and name not in linked:
             short.append((name, reaching))
 
-    print(f"{len(targets)} test targets, {len(linked)} call wowee_test_link_glm\n")
-    print(f"{len(short)} reach glm without it - these build on Linux and fail on macOS:")
+    print(f"{len(targets)} test targets, {len(linked)} reach glm deliberately "
+          f"(helper call or subsystem library)\n")
+    print(f"{len(short)} reach glm without either - these build on Linux and "
+          f"fail on macOS:")
     for name, reaching in short:
         print(f"  {name:34} via {', '.join(reaching[:3])}")
     if not short:
