@@ -484,3 +484,43 @@ loudly instead of reporting a clean zero. Afterwards: 1,462 widget methods
 answered and no gaps, 51 of 51 tooltip setters implemented.
 
 182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
+
+## 2026-08-26 — SpellHandler owns its own state
+
+TODO said to convert `SpellHandler` to one of the narrow interfaces in
+`game_interfaces.hpp` as a proof. Measuring it first showed that was the wrong
+move, which is the more useful result.
+
+`SpellHandler` names **114** distinct members of its owner, and **51** of those
+are `xRef()` accessors that return a mutable reference to `GameHandler`'s
+private state - `spellNameCacheRef()`, `playerSkillsRef()`, `actionBarRef()`.
+An interface over that decouples nothing: an interface whose methods hand out
+`std::unordered_map<...>&` is `GameHandler` with a vtable in front of it. The
+five interfaces stay unused, and they are not what unblocks this.
+
+What the measurement did find: **29 of those 51 accessors are used by
+`spell_handler.cpp` and nowhere else**, and **17 of the 29** had no other
+mention anywhere in `GameHandler` beyond the accessor itself and a line
+clearing them on character switch. That state was in the wrong class outright.
+
+So the 17 moved into `SpellHandler`, and the ten spell-domain types that
+describe them moved with them - the callback typedefs, `TotemSlot`,
+`SpellModOp`, `SpellModKey`. `GameHandler` keeps a one-line alias for each,
+because its own public setters still name them, and `PlayerSkill` moved to
+`handler_types.hpp` because `window_manager.cpp` names it too. The two reset
+sites moved as well: the character-switch clears are in `resetAllState()`, and
+the three DBC loaded-flags are behind a new `resetDbcLoadFlags()`.
+
+`GameHandler`'s public API is unchanged. Sixty call sites in `spell_handler.cpp`
+now read a member instead of reaching back through its owner, and seventeen
+`xRef()` accessors are gone: 478 member declarations to 461, 243 accessors to
+226, and the header is 132 lines shorter.
+
+That is a small fraction of a 5,030-line header, and saying so is the point -
+the value here is the measurement, not the seventeen. TODO now carries the next
+tranche with the numbers that decide it: `actionBar` has 13 non-reset uses in
+`GameHandler`'s own code and is genuinely shared; fourteen more accessors are
+shared with exactly one other handler, which is two handlers reaching through a
+third object for state one of them should own.
+
+182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.

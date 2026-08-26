@@ -93,29 +93,40 @@ tells FrameXML the addon is ready, and for a half-run addon it is not. Decide
 whether the honest answer is to fire them anyway, or to tear the partial frames
 back down. **~2 hours, and it needs the decision first.**
 
-### `GameHandler` is a real god object, and the fix is already there
+### `GameHandler` is a god object, and the interfaces are not the fix
 `include/game/game_handler.hpp`, `include/game/game_interfaces.hpp`
 
-961 method declarations, 328 members, five interfaces implemented at once, 59
-translation units rebuilding on any edit. The decomposition into Spell /
-Inventory / Social handlers is nominal: each holds a concrete `GameHandler&`
-back-reference, so the dependency graph is bidirectional. The narrow interfaces
-that would cut it exist and are unused. Convert `SpellHandler` first as a proof.
-**~1 day for the first one.**
+Still 461 members and 226 `xRef()` accessors after the first pass of
+2026-08-26. What that pass established is that the plan recorded here was
+wrong, so it is worth writing down before the next one:
 
-### The widget bindings still reach GameHandler directly
-`src/addons/lua_widget_api.cpp`
+`SpellHandler` names **114** distinct members of its owner, and **51** of those
+are `xRef()` accessors returning a mutable reference to `GameHandler`'s private
+state. Putting an interface in front of that decouples nothing - an interface
+whose methods hand out `std::unordered_map<...>&` is `GameHandler` with a
+vtable. The five interfaces in `game_interfaces.hpp` are still unused, and they
+are not what unblocks this.
 
-Done on 2026-08-26: `registerCoreAPI` was split into eight named members, and
-the widget surface then moved to `lua_widget_api.cpp` - 262 definitions, 4,586
-lines, leaving `lua_engine.cpp` at 5,067. The seam is twelve names in
-`lua_widget_internal.hpp`.
+What worked instead: of those 51 accessors, **29 were used by
+`spell_handler.cpp` and nowhere else**, and 17 of those had no other mention in
+`GameHandler` at all beyond the accessor and a line clearing them on character
+switch. Those 17 moved, and with them the ten spell-domain types that described
+them. No forwarding was left behind.
 
-What is left is not the file but what it depends on. The same measurement that
-priced the god-object item applies here: these bindings reach `GameHandler`
-directly, so the narrow interfaces in `game_interfaces.hpp` would cut this
-file's dependencies as well as `SpellHandler`'s. Worth doing *after* the
-`GameHandler` decomposition below rather than before it.
+The next tranche is the same measurement, one step harder:
+
+- **`actionBar`** — 13 non-reset uses in `GameHandler`'s own packet and callback
+  code. Genuinely shared, and the wrong thing to move blindly.
+- **`hasHomeBind_` / `homeBindMapId_`** (4 each), **`earnedAchievements_`** and
+  **`pendingGameObjectInteractGuid_`** (3 each) — each needs its `GameHandler`
+  uses read before deciding.
+- **14 accessors shared with exactly one other handler** — the pet cluster with
+  `CombatHandler`, the skill-line cluster with `InventoryHandler`, the stable
+  cluster with `QuestHandler`. Each is a pair of handlers reaching through a
+  third object for state one of them should own.
+
+Only once a handler owns its state does an interface over it mean anything.
+**~1 day per tranche.**
 
 ### The render graph exists but is vestigial
 `src/rendering/renderer.cpp:900`, `:3866`

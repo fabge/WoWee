@@ -47,6 +47,149 @@ public:
     // Equipment set info (aliased from handler_types.hpp)
     using EquipmentSetInfo = game::EquipmentSetInfo;
 
+    // ---- Spell-domain types ----
+    //
+    // These described state that lived in GameHandler and is now held here, so
+    // they moved with it. GameHandler keeps an alias for each, because its own
+    // setters still name them.
+    // Talent-driven spell modifiers (SMSG_SET_FLAT_SPELL_MODIFIER / SMSG_SET_PCT_SPELL_MODIFIER)
+    // SpellModOp matches WotLK SpellModOp enum (server-side).
+    enum class SpellModOp : uint8_t {
+        Damage            =  0,
+        Duration          =  1,
+        Threat            =  2,
+        Effect1           =  3,
+        Charges           =  4,
+        Range             =  5,
+        Radius            =  6,
+        CritChance        =  7,
+        AllEffects        =  8,
+        NotLoseCastingTime =  9,
+        CastingTime       = 10,
+        Cooldown          = 11,
+        Effect2           = 12,
+        IgnoreArmor       = 13,
+        Cost              = 14,
+        CritDamageBonus   = 15,
+        ResistMissChance  = 16,
+        JumpTargets       = 17,
+        ChanceOfSuccess   = 18,
+        ActivationTime    = 19,
+        // From here the list was the modern one - Efficiency, MultipleValue,
+        // ResistPushback and the rest are Cataclysm names - grafted onto a
+        // 3.3.5 head. Nothing read them, because only Cost and CastingTime are
+        // consumed, but the numbers are what the server sends: a talent that
+        // modifies a periodic effect arrives as op 22, and a table calling
+        // that ResistDispelChance would have applied it to dispel resistance.
+        DamageMultiplier  = 20,
+        GlobalCooldown    = 21,
+        Dot               = 22,
+        Effect3           = 23,
+        BonusMultiplier   = 24,
+        // 25 is not used by this client version.
+        ProcPerMinute     = 26,
+        ValueMultiplier   = 27,
+        ResistDispelChance = 28,
+        CritDamageBonus2  = 29,
+        SpellCostRefundOnFail = 30,
+    };
+    static constexpr int SPELL_MOD_OP_COUNT = 32;
+    // Shaman totems (4 slots: 0=Earth, 1=Fire, 2=Water, 3=Air)
+    struct TotemSlot {
+        uint32_t spellId     = 0;
+        uint32_t durationMs  = 0;
+        std::chrono::steady_clock::time_point placedAt{};
+        [[nodiscard]] bool active() const { return spellId != 0 && remainingMs() > 0; }
+        [[nodiscard]] float remainingMs() const {
+            if (spellId == 0 || durationMs == 0) return 0.0f;
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - placedAt).count();
+            float rem = static_cast<float>(durationMs) - static_cast<float>(elapsed);
+            return rem > 0.0f ? rem : 0.0f;
+        }
+    };
+    static constexpr int NUM_TOTEM_SLOTS = 4;
+    // Key: (SpellModOp, groupIndex) - value: accumulated flat or pct modifier
+    // pct values are stored in integer percent (e.g. -20 means -20% reduction).
+    struct SpellModKey {
+        SpellModOp op;
+        uint8_t    group;
+        bool operator==(const SpellModKey& o) const {
+            return op == o.op && group == o.group;
+        }
+    };
+    struct SpellModKeyHash {
+        std::size_t operator()(const SpellModKey& k) const {
+            return std::hash<uint32_t>()(
+                (static_cast<uint32_t>(static_cast<uint8_t>(k.op)) << 8) | k.group);
+        }
+    };
+    // Achievement earned callback - fires when SMSG_ACHIEVEMENT_EARNED is received
+    using AchievementEarnedCallback = std::function<void(uint32_t achievementId, const std::string& name)>;
+    // Charge callback - fires when player casts a charge spell toward target
+    // Parameters: targetGuid, targetX, targetY, targetZ (canonical WoW coordinates)
+    using ChargeCallback = std::function<void(uint64_t targetGuid, float x, float y, float z)>;
+    // Called when the player starts casting Hearthstone so terrain at the bind
+    // point can be pre-loaded during the cast time.
+    // Parameters: mapId and canonical (x, y, z) of the bind location.
+    using HearthstonePreloadCallback = std::function<void(uint32_t mapId, float x, float y, float z)>;
+    // Spell cast animation callbacks - true=start cast/channel, false=finish/cancel
+    // guid: caster (may be player or another unit), isChannel: channel vs regular cast
+    // castType: DIRECTED (unit target), OMNI (self/no target), AREA (ground AoE)
+    using SpellCastAnimCallback = std::function<void(uint64_t guid, bool start, bool isChannel,
+                                                      SpellCastType castType)>;
+    // Fired when the player's own spell cast fails (spellId of the failed spell).
+    using SpellCastFailedCallback = std::function<void(uint32_t spellId)>;
+    // Sprint aura callback - fired when sprint-type aura active state changes on player
+    using SprintAuraCallback = std::function<void(bool active)>;
+
+    // ---- Accessors for the state that moved here from GameHandler ----
+    //
+    // GameHandler's public API is unchanged: each of its setters and getters
+    // for this state now forwards to one of these. What went away is the
+    // xRef() accessor that handed this handler a mutable reference to a member
+    // of its owner.
+    void setAchievementEarnedCallback(AchievementEarnedCallback cb) { achievementEarnedCallback_ = std::move(cb); }
+    void setChargeCallback(ChargeCallback cb) { chargeCallback_ = std::move(cb); }
+    void setHearthstonePreloadCallback(HearthstonePreloadCallback cb) { hearthstonePreloadCallback_ = std::move(cb); }
+    void setSpellCastAnimCallback(SpellCastAnimCallback cb) { spellCastAnimCallback_ = std::move(cb); }
+    void setSpellCastFailedCallback(SpellCastFailedCallback cb) { spellCastFailedCallback_ = std::move(cb); }
+    void setSprintAuraCallback(SprintAuraCallback cb) { sprintAuraCallback_ = std::move(cb); }
+
+    [[nodiscard]] const TotemSlot& getActiveTotem(int slot) const {
+        static const TotemSlot empty{};
+        return (slot >= 0 && slot < NUM_TOTEM_SLOTS) ? activeTotemSlots_[slot] : empty;
+    }
+    [[nodiscard]] const std::string& getSkillDescription(uint32_t skillId) const {
+        static const std::string kNone;
+        auto it = skillLineDescriptions_.find(skillId);
+        return it != skillLineDescriptions_.end() ? it->second : kNone;
+    }
+    /// Clear the DBC loaded-flags, so the next read reloads.
+    void resetDbcLoadFlags() {
+        spellNameCacheLoaded_ = false;
+        skillLineDbcLoaded_ = false;
+        skillLineAbilityLoaded_ = false;
+    }
+    [[nodiscard]] bool hasPlayerExploredZoneMasks() const { return hasPlayerExploredZones_; }
+    [[nodiscard]] const std::unordered_map<uint32_t, PlayerSkill>& getPlayerSkills() const { return playerSkills_; }
+    [[nodiscard]] uint8_t getStableSlots() const { return stableNumSlots_; }
+
+    /// Sum of every flat modifier for one op, across all groups.
+    [[nodiscard]] int32_t getSpellFlatMod(SpellModOp op) const {
+        int32_t total = 0;
+        for (const auto& [k, v] : spellFlatMods_)
+            if (k.op == op) total += v;
+        return total;
+    }
+    /// The same for percentage modifiers, in percent.
+    [[nodiscard]] int32_t getSpellPctMod(SpellModOp op) const {
+        int32_t total = 0;
+        for (const auto& [k, v] : spellPctMods_)
+            if (k.op == op) total += v;
+        return total;
+    }
+
     // --- Public API (delegated from GameHandler) ---
     void castSpell(uint32_t spellId, uint64_t targetGuid = 0);
 
@@ -523,6 +666,45 @@ private:
     // Pet talent respec confirm dialog
     bool petUnlearnPending_ = false;
     uint32_t petUnlearnCost_ = 0;
+
+    // ---- State that used to live in GameHandler ----
+    //
+    // Seventeen members reached through a GameHandler::xRef() accessor that
+    // handed out a mutable reference to its private state. Nothing but this
+    // handler read any of them: GameHandler's only other mention of each was
+    // the accessor itself and a line clearing it on character switch, which is
+    // now in resetAllState below.
+    //
+    // The decomposition was nominal while this was true - a handler that
+    // reaches back through 114 members of its owner is a namespace, not a
+    // component. These seventeen are the ones that moved with no forwarding
+    // left behind at all.
+    AchievementEarnedCallback achievementEarnedCallback_;
+    // Shaman totem state
+    TotemSlot activeTotemSlots_[NUM_TOTEM_SLOTS];
+    ChargeCallback chargeCallback_;
+    bool hasPlayerExploredZones_ = false;
+    HearthstonePreloadCallback hearthstonePreloadCallback_;
+    // ---- Player skills ----
+    std::unordered_map<uint32_t, PlayerSkill> playerSkills_;
+    bool skillLineAbilityLoaded_ = false;
+    bool skillLineDbcLoaded_ = false;
+    /// The sentence the skills window prints under a selected skill. Read from
+    /// the same row as the name and the icon.
+    std::unordered_map<uint32_t, std::string> skillLineDescriptions_;
+    /// SkillLine.dbc's own icon, which is what gives each spellbook tab down
+    /// the side of the book its distinct picture. Read alongside the name
+    /// because they come out of the same row of the same file.
+    std::unordered_map<uint32_t, uint32_t> skillLineIcons_;
+    SpellCastAnimCallback spellCastAnimCallback_;
+    SpellCastFailedCallback spellCastFailedCallback_;
+    // ---- Spell modifiers (SMSG_SET_FLAT_SPELL_MODIFIER / SMSG_SET_PCT_SPELL_MODIFIER) ----
+    // Keyed by (SpellModOp, groupIndex); cleared on logout/character change.
+    std::unordered_map<SpellModKey, int32_t, SpellModKeyHash> spellFlatMods_;
+    mutable bool spellNameCacheLoaded_ = false;
+    std::unordered_map<SpellModKey, int32_t, SpellModKeyHash> spellPctMods_;
+    SprintAuraCallback sprintAuraCallback_;
+    uint8_t  stableNumSlots_   = 0;
 };
 
 } // namespace game

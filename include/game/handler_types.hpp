@@ -18,6 +18,18 @@
 namespace wowee {
 namespace game {
 
+// Moved here from game_handler.hpp when playerSkills_ moved to SpellHandler:
+// both that handler and window_manager.cpp name it.
+struct PlayerSkill {
+    uint32_t skillId = 0;
+    uint16_t value = 0;        // base + permanent item bonuses
+    uint16_t maxValue = 0;
+    uint16_t bonusTemp = 0;    // temporary buff bonus (food, potions, etc.)
+    uint16_t bonusPerm = 0;    // permanent spec/misc bonus (rarely non-zero)
+    [[nodiscard]] uint16_t effectiveValue() const { return value + bonusTemp + bonusPerm; }
+};
+
+
 // ---- Talent DBC data ----
 
 struct TalentEntry {

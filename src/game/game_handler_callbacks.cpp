@@ -605,20 +605,15 @@ void GameHandler::selectCharacter(uint64_t characterGuid) {
         if (auto* camera = renderer->getCameraController()) camera->setIntoxication(0.0f);
         if (auto* post = renderer->getPostProcessPipeline()) post->setIntoxication(0.0f);
     }
-    spellFlatMods_.clear();
-    spellPctMods_.clear();
     actionBar = {};
     petGuid_ = 0;
     stableWindowOpen_  = false;
     stableMasterGuid_  = 0;
-    stableNumSlots_    = 0;
     stabledPets_.clear();
     playerXp_ = 0;
     playerNextLevelXp_ = 0;
     serverPlayerLevel_ = 1;
     std::fill(playerExploredZones_.begin(), playerExploredZones_.end(), 0u);
-    hasPlayerExploredZones_ = false;
-    playerSkills_.clear();
     // The handler's, not this class's same-named members - every reader
     // forwards there, so clearing the copies here cleared nothing anyone
     // looks at and the previous character's quests stayed in the log.

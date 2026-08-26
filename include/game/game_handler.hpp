@@ -57,14 +57,6 @@ namespace audio { enum class PlayerErrorSpeech : uint8_t; }
 
 namespace game {
 
-struct PlayerSkill {
-    uint32_t skillId = 0;
-    uint16_t value = 0;        // base + permanent item bonuses
-    uint16_t maxValue = 0;
-    uint16_t bonusTemp = 0;    // temporary buff bonus (food, potions, etc.)
-    uint16_t bonusPerm = 0;    // permanent spec/misc bonus (rarely non-zero)
-    [[nodiscard]] uint16_t effectiveValue() const { return value + bonusTemp + bonusPerm; }
-};
 
 /**
  * Quest giver status values (WoW 3.3.5a)
@@ -159,6 +151,23 @@ class GameHandler : public IConnectionState,
                      public IEntityAccess,
                      public ISocialState,
                      public IPvpState {
+public:
+    // The spell-domain types moved to SpellHandler with the state they
+    // describe. These aliases are what GameHandler's own setters still name,
+    // and what the interface bindings still reach for by their old names.
+    using TotemSlot = SpellHandler::TotemSlot;
+    using SpellModOp = SpellHandler::SpellModOp;
+    static constexpr int SPELL_MOD_OP_COUNT = SpellHandler::SPELL_MOD_OP_COUNT;
+    static constexpr int NUM_TOTEM_SLOTS = SpellHandler::NUM_TOTEM_SLOTS;
+    using SpellModKey = SpellHandler::SpellModKey;
+    using SpellModKeyHash = SpellHandler::SpellModKeyHash;
+    using AchievementEarnedCallback = SpellHandler::AchievementEarnedCallback;
+    using ChargeCallback = SpellHandler::ChargeCallback;
+    using HearthstonePreloadCallback = SpellHandler::HearthstonePreloadCallback;
+    using SpellCastAnimCallback = SpellHandler::SpellCastAnimCallback;
+    using SpellCastFailedCallback = SpellHandler::SpellCastFailedCallback;
+    using SprintAuraCallback = SpellHandler::SprintAuraCallback;
+
 public:
     // Talent data structures (aliased from handler_types.hpp)
     using TalentEntry = game::TalentEntry;
@@ -1138,7 +1147,7 @@ public:
         if (wasOpen && addonEventCallback_) addonEventCallback_("PET_STABLE_CLOSED", {});
     }
     uint64_t getStableMasterGuid() const { return stableMasterGuid_; }
-    uint8_t  getStableSlots() const { return stableNumSlots_; }
+    uint8_t  getStableSlots() const { return spellHandler_ ? spellHandler_->getStableSlots() : 0; }
     const std::vector<StabledPet>& getStabledPets() const { return stabledPets_; }
     void requestStabledPetList();          // CMSG MSG_LIST_STABLED_PETS
     void stablePet(uint8_t slot);          // CMSG_STABLE_PET (store active pet in slot)
@@ -1381,16 +1390,9 @@ public:
     using RangedWeaponSwapCallback = std::function<void(bool show)>;
     void setRangedWeaponSwapCallback(RangedWeaponSwapCallback cb) { rangedWeaponSwapCallback_ = std::move(cb); }
 
-    // Spell cast animation callbacks - true=start cast/channel, false=finish/cancel
-    // guid: caster (may be player or another unit), isChannel: channel vs regular cast
-    // castType: DIRECTED (unit target), OMNI (self/no target), AREA (ground AoE)
-    using SpellCastAnimCallback = std::function<void(uint64_t guid, bool start, bool isChannel,
-                                                      SpellCastType castType)>;
-    void setSpellCastAnimCallback(SpellCastAnimCallback cb) { spellCastAnimCallback_ = std::move(cb); }
+    void setSpellCastAnimCallback(SpellCastAnimCallback cb) { if (spellHandler_) spellHandler_->setSpellCastAnimCallback(std::move(cb)); }
 
-    // Fired when the player's own spell cast fails (spellId of the failed spell).
-    using SpellCastFailedCallback = std::function<void(uint32_t spellId)>;
-    void setSpellCastFailedCallback(SpellCastFailedCallback cb) { spellCastFailedCallback_ = std::move(cb); }
+    void setSpellCastFailedCallback(SpellCastFailedCallback cb) { if (spellHandler_) spellHandler_->setSpellCastFailedCallback(std::move(cb)); }
 
     // Unit animation hint: signal jump (animId=38) for other players/NPCs
     using UnitAnimHintCallback = std::function<void(uint64_t guid, uint32_t animId)>;
@@ -1447,7 +1449,7 @@ public:
     bool isPlayerResting() const { return isResting_; }
     uint32_t getPlayerLevel() const { return serverPlayerLevel_; }
     const std::vector<uint32_t>& getPlayerExploredZoneMasks() const { return playerExploredZones_; }
-    bool hasPlayerExploredZoneMasks() const { return hasPlayerExploredZones_; }
+    bool hasPlayerExploredZoneMasks() const { return spellHandler_ && spellHandler_->hasPlayerExploredZoneMasks(); }
     static uint32_t killXp(uint32_t playerLevel, uint32_t victimLevel);
 
     // Server game time, in HOURS since midnight (0.0-24.0).
@@ -1480,7 +1482,10 @@ public:
     uint32_t getOverrideLightTransMs() const { return overrideLightTransMs_; }
 
     // Player skills
-    const std::unordered_map<uint32_t, PlayerSkill>& getPlayerSkills() const { return playerSkills_; }
+    const std::unordered_map<uint32_t, PlayerSkill>& getPlayerSkills() const {
+        static const std::unordered_map<uint32_t, PlayerSkill> empty;
+        return spellHandler_ ? spellHandler_->getPlayerSkills() : empty;
+    }
     const std::string& getSkillName(uint32_t skillId) const;
     /// The heading a skill is filed under, and that heading's name and place.
     /// Zero and empty for a skill the file does not categorise.
@@ -1527,11 +1532,7 @@ public:
     using BindPointCallback = std::function<void(uint32_t mapId, float x, float y, float z)>;
     void setBindPointCallback(BindPointCallback cb) { bindPointCallback_ = std::move(cb); }
 
-    // Called when the player starts casting Hearthstone so terrain at the bind
-    // point can be pre-loaded during the cast time.
-    // Parameters: mapId and canonical (x, y, z) of the bind location.
-    using HearthstonePreloadCallback = std::function<void(uint32_t mapId, float x, float y, float z)>;
-    void setHearthstonePreloadCallback(HearthstonePreloadCallback cb) { hearthstonePreloadCallback_ = std::move(cb); }
+    void setHearthstonePreloadCallback(HearthstonePreloadCallback cb) { if (spellHandler_) spellHandler_->setHearthstonePreloadCallback(std::move(cb)); }
 
     // Creature spawn callback (online mode - triggered when creature enters view)
     // Parameters: guid, displayId, x, y, z (canonical), orientation, scale (OBJECT_FIELD_SCALE_X)
@@ -1593,9 +1594,7 @@ public:
     using GameObjectStateCallback = std::function<void(uint64_t guid, uint8_t goState)>;
     void setGameObjectStateCallback(GameObjectStateCallback cb) { gameObjectStateCallback_ = std::move(cb); }
 
-    // Sprint aura callback - fired when sprint-type aura active state changes on player
-    using SprintAuraCallback = std::function<void(bool active)>;
-    void setSprintAuraCallback(SprintAuraCallback cb) { sprintAuraCallback_ = std::move(cb); }
+    void setSprintAuraCallback(SprintAuraCallback cb) { if (spellHandler_) spellHandler_->setSprintAuraCallback(std::move(cb)); }
 
     // Vehicle state callback - fired when player enters/exits a vehicle
     using VehicleStateCallback = std::function<void(bool entered, uint32_t vehicleId)>;
@@ -2250,79 +2249,16 @@ public:
     };
     const std::array<RuneSlot, 6>& getPlayerRunes() const { return playerRunes_; }
 
-    // Talent-driven spell modifiers (SMSG_SET_FLAT_SPELL_MODIFIER / SMSG_SET_PCT_SPELL_MODIFIER)
-    // SpellModOp matches WotLK SpellModOp enum (server-side).
-    enum class SpellModOp : uint8_t {
-        Damage            =  0,
-        Duration          =  1,
-        Threat            =  2,
-        Effect1           =  3,
-        Charges           =  4,
-        Range             =  5,
-        Radius            =  6,
-        CritChance        =  7,
-        AllEffects        =  8,
-        NotLoseCastingTime =  9,
-        CastingTime       = 10,
-        Cooldown          = 11,
-        Effect2           = 12,
-        IgnoreArmor       = 13,
-        Cost              = 14,
-        CritDamageBonus   = 15,
-        ResistMissChance  = 16,
-        JumpTargets       = 17,
-        ChanceOfSuccess   = 18,
-        ActivationTime    = 19,
-        // From here the list was the modern one - Efficiency, MultipleValue,
-        // ResistPushback and the rest are Cataclysm names - grafted onto a
-        // 3.3.5 head. Nothing read them, because only Cost and CastingTime are
-        // consumed, but the numbers are what the server sends: a talent that
-        // modifies a periodic effect arrives as op 22, and a table calling
-        // that ResistDispelChance would have applied it to dispel resistance.
-        DamageMultiplier  = 20,
-        GlobalCooldown    = 21,
-        Dot               = 22,
-        Effect3           = 23,
-        BonusMultiplier   = 24,
-        // 25 is not used by this client version.
-        ProcPerMinute     = 26,
-        ValueMultiplier   = 27,
-        ResistDispelChance = 28,
-        CritDamageBonus2  = 29,
-        SpellCostRefundOnFail = 30,
-    };
-    static constexpr int SPELL_MOD_OP_COUNT = 32;
 
-    // Key: (SpellModOp, groupIndex) - value: accumulated flat or pct modifier
-    // pct values are stored in integer percent (e.g. -20 means -20% reduction).
-    struct SpellModKey {
-        SpellModOp op;
-        uint8_t    group;
-        bool operator==(const SpellModKey& o) const {
-            return op == o.op && group == o.group;
-        }
-    };
-    struct SpellModKeyHash {
-        std::size_t operator()(const SpellModKey& k) const {
-            return std::hash<uint32_t>()(
-                (static_cast<uint32_t>(static_cast<uint8_t>(k.op)) << 8) | k.group);
-        }
-    };
 
     // Returns the sum of all flat modifiers for a given op across all groups.
     // (Callers that need per-group resolution can use getSpellFlatMods() directly.)
     int32_t getSpellFlatMod(SpellModOp op) const {
-        int32_t total = 0;
-        for (const auto& [k, v] : spellFlatMods_)
-            if (k.op == op) total += v;
-        return total;
+        return spellHandler_ ? spellHandler_->getSpellFlatMod(op) : 0;
     }
     // Returns the sum of all pct modifiers for a given op across all groups (in %).
     int32_t getSpellPctMod(SpellModOp op) const {
-        int32_t total = 0;
-        for (const auto& [k, v] : spellPctMods_)
-            if (k.op == op) total += v;
-        return total;
+        return spellHandler_ ? spellHandler_->getSpellPctMod(op) : 0;
     }
 
     // Convenience: apply flat+pct modifier to a base value.
@@ -2426,27 +2362,12 @@ public:
     uint32_t getFactionIdByRepListId(uint32_t repListId) const;
     // Returns the repListId for a given faction ID (0xFFFFFFFF if not found)
     uint32_t getRepListIdByFactionId(uint32_t factionId) const;
-    // Shaman totems (4 slots: 0=Earth, 1=Fire, 2=Water, 3=Air)
-    struct TotemSlot {
-        uint32_t spellId     = 0;
-        uint32_t durationMs  = 0;
-        std::chrono::steady_clock::time_point placedAt{};
-        [[nodiscard]] bool active() const { return spellId != 0 && remainingMs() > 0; }
-        [[nodiscard]] float remainingMs() const {
-            if (spellId == 0 || durationMs == 0) return 0.0f;
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - placedAt).count();
-            float rem = static_cast<float>(durationMs) - static_cast<float>(elapsed);
-            return rem > 0.0f ? rem : 0.0f;
-        }
-    };
-    static constexpr int NUM_TOTEM_SLOTS = 4;
     /// Pull down a totem by the slot it stands in.
     void destroyTotem(int slot);
 
     const TotemSlot& getTotemSlot(int slot) const {
         static TotemSlot empty;
-        return (slot >= 0 && slot < NUM_TOTEM_SLOTS) ? activeTotemSlots_[slot] : empty;
+        return spellHandler_ ? spellHandler_->getActiveTotem(slot) : empty;
     }
 
     const std::string& getFactionNamePublic(uint32_t factionId) const;
@@ -2465,10 +2386,7 @@ public:
     QuestGiverStatus getQuestGiverStatus(uint64_t guid) const;
     const std::unordered_map<uint64_t, QuestGiverStatus>& getNpcQuestStatuses() const;
 
-    // Charge callback - fires when player casts a charge spell toward target
-    // Parameters: targetGuid, targetX, targetY, targetZ (canonical WoW coordinates)
-    using ChargeCallback = std::function<void(uint64_t targetGuid, float x, float y, float z)>;
-    void setChargeCallback(ChargeCallback cb) { chargeCallback_ = std::move(cb); }
+    void setChargeCallback(ChargeCallback cb) { if (spellHandler_) spellHandler_->setChargeCallback(std::move(cb)); }
 
     // Level-up callback - fires when the player gains a level (newLevel > 1)
     using LevelUpCallback = std::function<void(uint32_t newLevel)>;
@@ -2529,9 +2447,7 @@ public:
     using OtherPlayerLevelUpCallback = std::function<void(uint64_t guid, uint32_t newLevel)>;
     void setOtherPlayerLevelUpCallback(OtherPlayerLevelUpCallback cb) { otherPlayerLevelUpCallback_ = std::move(cb); }
 
-    // Achievement earned callback - fires when SMSG_ACHIEVEMENT_EARNED is received
-    using AchievementEarnedCallback = std::function<void(uint32_t achievementId, const std::string& name)>;
-    void setAchievementEarnedCallback(AchievementEarnedCallback cb) { achievementEarnedCallback_ = std::move(cb); }
+    void setAchievementEarnedCallback(AchievementEarnedCallback cb) { if (spellHandler_) spellHandler_->setAchievementEarnedCallback(std::move(cb)); }
     const std::unordered_set<uint32_t>& getEarnedAchievements() const { return earnedAchievements_; }
 
     // Title system - earned title bits and the currently displayed title
@@ -3516,28 +3432,17 @@ public:
     auto& playerStatsArr() { return playerStats_; }
     auto& playerXpRef() { return playerXp_; }
 
-    // ── Skills ───────────────────────────────────────────────────────
-    auto& playerSkillsRef() { return playerSkills_; }
-    auto& skillLineAbilityLoadedRef() { return skillLineAbilityLoaded_; }
     auto& skillLineCategoriesRef() { return skillLineCategories_; }
     auto& skillCategoryNamesRef() { return skillCategoryNames_; }
     auto& skillCategorySortRef() { return skillCategorySort_; }
-    auto& skillLineIconsRef() { return skillLineIcons_; }
-    auto& skillLineDescriptionsRef() { return skillLineDescriptions_; }
     const std::string& getSkillDescription(uint32_t skillId) const {
         static const std::string kNone;
-        auto it = skillLineDescriptions_.find(skillId);
-        return it != skillLineDescriptions_.end() ? it->second : kNone;
+        return spellHandler_ ? spellHandler_->getSkillDescription(skillId) : kNone;
     }
-    auto& skillLineDbcLoadedRef() { return skillLineDbcLoaded_; }
     auto& skillLineNamesRef() { return skillLineNames_; }
     auto& spellToSkillLineRef() { return spellToSkillLine_; }
 
-    // ── Spells & Talents ─────────────────────────────────────────────
-    auto& spellFlatModsRef() { return spellFlatMods_; }
-    auto& spellPctModsRef() { return spellPctMods_; }
     auto& spellNameCacheRef() { return spellNameCache_; }
-    auto& spellNameCacheLoadedRef() { return spellNameCacheLoaded_; }
 
     // ── Quests & Achievements ────────────────────────────────────────
     auto& completedQuestsRef() { return completedQuests_; }
@@ -3572,7 +3477,6 @@ public:
     /// the markers the map draws exactly where they were.
     void clearGossipPois();
     auto& playerExploredZonesRef() { return playerExploredZones_; }
-    auto& hasPlayerExploredZonesRef() { return hasPlayerExploredZones_; }
     auto& factionStandingsRef() { return factionStandings_; }
     auto& initialFactionsRef() { return initialFactions_; }
     auto& watchedFactionIdRef() { return watchedFactionId_; }
@@ -3626,14 +3530,12 @@ public:
     auto& petSpellListRef() { return petSpellList_; }
     auto& stabledPetsRef() { return stabledPets_; }
     auto& stableMasterGuidRef() { return stableMasterGuid_; }
-    auto& stableNumSlotsRef() { return stableNumSlots_; }
     auto& stableWindowOpenRef() { return stableWindowOpen_; }
 
     // ── Trainer, GM & Misc ───────────────────────────────────────────
     auto& gmTicketActiveRef() { return gmTicketActive_; }
     auto& gmTicketTextRef() { return gmTicketText_; }
     auto& bookPagesRef() { return bookPages_; }
-    auto& activeTotemSlotsRef() { return activeTotemSlots_; }
     auto& unitAurasCacheRef() { return unitAurasCache_; }
     auto& lastInteractedGoGuidRef() { return lastInteractedGoGuid_; }
     auto& pendingGameObjectInteractGuidRef() { return pendingGameObjectInteractGuid_; }
@@ -3643,13 +3545,10 @@ public:
     auto& tabCycleListRef() { return tabCycleList; }
     auto& tabCycleStaleRef() { return tabCycleStale; }
 
-    // ── UI & Event Callbacks ─────────────────────────────────────────
-    auto& achievementEarnedCallbackRef() { return achievementEarnedCallback_; }
     auto& addonEventCallbackRef() { return addonEventCallback_; }
     auto& appearanceChangedCallbackRef() { return appearanceChangedCallback_; }
     auto& playerModelRebuildCallbackRef() { return playerModelRebuildCallback_; }
     auto& autoFollowCallbackRef() { return autoFollowCallback_; }
-    auto& chargeCallbackRef() { return chargeCallback_; }
     auto& chatBubbleCallbackRef() { return chatBubbleCallback_; }
     auto& creatureDespawnCallbackRef() { return creatureDespawnCallback_; }
     auto& creatureMoveCallbackRef() { return creatureMoveCallback_; }
@@ -3661,7 +3560,6 @@ public:
     auto& gameObjectSpawnCallbackRef() { return gameObjectSpawnCallback_; }
     auto& gameObjectStateCallbackRef() { return gameObjectStateCallback_; }
     auto& ghostStateCallbackRef() { return ghostStateCallback_; }
-    auto& hearthstonePreloadCallbackRef() { return hearthstonePreloadCallback_; }
     auto& hitReactionCallbackRef() { return hitReactionCallback_; }
     auto& itemLootCallbackRef() { return itemLootCallback_; }
     auto& knockBackCallbackRef() { return knockBackCallback_; }
@@ -3693,9 +3591,6 @@ public:
     auto& questCompleteCallbackRef() { return questCompleteCallback_; }
     auto& questProgressCallbackRef() { return questProgressCallback_; }
     auto& repChangeCallbackRef() { return repChangeCallback_; }
-    auto& spellCastAnimCallbackRef() { return spellCastAnimCallback_; }
-    auto& spellCastFailedCallbackRef() { return spellCastFailedCallback_; }
-    auto& sprintAuraCallbackRef() { return sprintAuraCallback_; }
     auto& stealthStateCallbackRef() { return stealthStateCallback_; }
     auto& stunStateCallbackRef() { return stunStateCallback_; }
     auto& taxiFlightStartCallbackRef() { return taxiFlightStartCallback_; }
@@ -4275,7 +4170,6 @@ private:
     UnstuckCallback unstuckGyCallback_;
     UnstuckCallback unstuckHearthCallback_;
     BindPointCallback bindPointCallback_;
-    HearthstonePreloadCallback hearthstonePreloadCallback_;
     CreatureSpawnCallback creatureSpawnCallback_;
     CreatureDespawnCallback creatureDespawnCallback_;
     PlayerSpawnCallback playerSpawnCallback_;
@@ -4290,7 +4184,6 @@ private:
     GameObjectInfoCallback gameObjectInfoCallback_;
     GameObjectCustomAnimCallback gameObjectCustomAnimCallback_;
     GameObjectStateCallback gameObjectStateCallback_;
-    SprintAuraCallback sprintAuraCallback_;
     VehicleStateCallback vehicleStateCallback_;
 
     // Transport tracking
@@ -4360,7 +4253,6 @@ private:
     // ---- Pet Stable ----
     bool stableWindowOpen_    = false;
     uint64_t stableMasterGuid_ = 0;
-    uint8_t  stableNumSlots_   = 0;
     std::vector<StabledPet> stabledPets_;
     void handleListStabledPets(network::Packet& packet);
 
@@ -4434,8 +4326,6 @@ private:
     uint64_t myTradeGold_   = 0;
     uint64_t peerTradeGold_ = 0;
 
-    // Shaman totem state
-    TotemSlot activeTotemSlots_[NUM_TOTEM_SLOTS];
 
     // Duel state
     std::chrono::steady_clock::time_point duelCountdownStartedAt_{};
@@ -4616,7 +4506,6 @@ private:
     // Trainer
     bool trainerWindowOpen_ = false;
     mutable std::unordered_map<uint32_t, SpellNameEntry> spellNameCache_;
-    mutable bool spellNameCacheLoaded_ = false;
 
     // Title cache: maps titleBit → title string (lazy-loaded from CharTitles.dbc)
     // The strings use "%s" as a player-name placeholder (e.g. "Commander %s", "%s the Explorer").
@@ -4825,8 +4714,6 @@ private:
     uint32_t overrideLightId_ = 0;      // 0 = no override
     uint32_t overrideLightTransMs_ = 0;
 
-    // ---- Player skills ----
-    std::unordered_map<uint32_t, PlayerSkill> playerSkills_;
     std::unordered_map<uint32_t, std::string> skillLineNames_;
     std::unordered_map<uint32_t, uint32_t> skillLineCategories_;
     /// The headings the skills tab groups under, from SkillLineCategory.dbc,
@@ -4836,19 +4723,9 @@ private:
     /// Headings the player has closed. Client-side, like the reputation ones,
     /// and saved with the rest of the character config for the same reason.
     std::unordered_set<uint32_t> collapsedSkillCategories_;
-    /// SkillLine.dbc's own icon, which is what gives each spellbook tab down
-    /// the side of the book its distinct picture. Read alongside the name
-    /// because they come out of the same row of the same file.
-    std::unordered_map<uint32_t, uint32_t> skillLineIcons_;
-    /// The sentence the skills window prints under a selected skill. Read from
-    /// the same row as the name and the icon.
-    std::unordered_map<uint32_t, std::string> skillLineDescriptions_;
     std::unordered_map<uint32_t, uint32_t> spellToSkillLine_;      // spellID -> skillLineID
-    bool skillLineDbcLoaded_ = false;
-    bool skillLineAbilityLoaded_ = false;
     std::vector<uint32_t> playerExploredZones_ =
         std::vector<uint32_t>(PLAYER_EXPLORED_ZONES_COUNT, 0u);
-    bool hasPlayerExploredZones_ = false;
     // Apply packed kill counts from player update fields to a quest entry that has
     // already had its killObjectives populated from SMSG_QUEST_QUERY_RESPONSE.
     void applyPackedKillCountsFromFields(QuestLogEntry& quest);
@@ -4866,9 +4743,6 @@ private:
     FaceCameraProvider faceCameraProvider_;
     RangedWeaponSwapCallback rangedWeaponSwapCallback_;
     bool suppressMeleeSwingAnim_ = false;
-    // lastMeleeSwingMs_ moved to CombatHandler
-    SpellCastAnimCallback spellCastAnimCallback_;
-    SpellCastFailedCallback spellCastFailedCallback_;
     UnitAnimHintCallback unitAnimHintCallback_;
     UnitMoveFlagsCallback unitMoveFlagsCallback_;
     NpcSwingCallback npcSwingCallback_;
@@ -4879,7 +4753,6 @@ private:
     NpcGreetingCallback npcGreetingCallback_;
     NpcFarewellCallback npcFarewellCallback_;
     NpcVendorCallback npcVendorCallback_;
-    ChargeCallback chargeCallback_;
     LevelUpCallback levelUpCallback_;
     LevelUpDeltas lastLevelUpDeltas_;
     std::vector<TempEnchantTimer> tempEnchantTimers_;
@@ -4895,7 +4768,6 @@ private:
     mutable bool languageNamesLoaded_ = false;
     OtherPlayerLevelUpCallback otherPlayerLevelUpCallback_;
     OtherPlayerMountCallback otherPlayerMountCallback_;
-    AchievementEarnedCallback achievementEarnedCallback_;
     AreaDiscoveryCallback areaDiscoveryCallback_;
     QuestProgressCallback questProgressCallback_;
     MountCallback mountCallback_;
@@ -5020,10 +4892,6 @@ private:
     /// One event in full, as of the last one opened.
     CalendarEventDetail calendarEventDetail_;
 
-    // ---- Spell modifiers (SMSG_SET_FLAT_SPELL_MODIFIER / SMSG_SET_PCT_SPELL_MODIFIER) ----
-    // Keyed by (SpellModOp, groupIndex); cleared on logout/character change.
-    std::unordered_map<SpellModKey, int32_t, SpellModKeyHash> spellFlatMods_;
-    std::unordered_map<SpellModKey, int32_t, SpellModKeyHash> spellPctMods_;
 };
 
 } // namespace game

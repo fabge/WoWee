@@ -976,8 +976,8 @@ void SpellHandler::castSpell(uint32_t spellId, uint64_t targetGuid) {
         float yaw = std::atan2(-dy, dx);
         owner_.movementInfoRef().orientation = yaw;
         owner_.sendMovement(Opcode::MSG_MOVE_SET_FACING);
-        if (owner_.chargeCallbackRef()) {
-            owner_.chargeCallbackRef()(target, tx, ty, tz);
+        if (chargeCallback_) {
+            chargeCallback_(target, tx, ty, tz);
         }
         facingHandled = true;
     }
@@ -1361,8 +1361,8 @@ const std::vector<SpellHandler::SpellBookTab>& SpellHandler::getSpellBookTabs() 
     // this install cannot resolve, keeps what it had rather than going blank.
     static constexpr const char* kDefaultTabIcon = "Interface\\Icons\\INV_Misc_Book_09";
     auto tabIcon = [this](uint32_t skillLineId) -> std::string {
-        auto it = owner_.skillLineIconsRef().find(skillLineId);
-        if (it == owner_.skillLineIconsRef().end()) return kDefaultTabIcon;
+        auto it = skillLineIcons_.find(skillLineId);
+        if (it == skillLineIcons_.end()) return kDefaultTabIcon;
         std::string path = owner_.getIconPath(it->second);
         return path.empty() ? kDefaultTabIcon : path;
     };
@@ -1620,8 +1620,8 @@ void SpellHandler::updateTimers(float dt) {
 void SpellHandler::stopRestorationPresentation() {
     if (!restorationActive_) return;
     const uint32_t stoppedSpell = restorationSpellId_;
-    if (owner_.spellCastAnimCallbackRef()) {
-        owner_.spellCastAnimCallbackRef()(owner_.getPlayerGuid(), false, true,
+    if (spellCastAnimCallback_) {
+        spellCastAnimCallback_(owner_.getPlayerGuid(), false, true,
                                           SpellCastType::OMNI);
     }
     restorationActive_ = false;
@@ -1689,8 +1689,8 @@ void SpellHandler::refreshRestorationFromPlayerAuras() {
         restorationSoundTimer_ = 0.0f;
         LOG_INFO("Restoration aura started: spellId=", spellId,
                  " durationMs=", totalMs);
-        if (owner_.spellCastAnimCallbackRef()) {
-            owner_.spellCastAnimCallbackRef()(owner_.getPlayerGuid(), true, true,
+        if (spellCastAnimCallback_) {
+            spellCastAnimCallback_(owner_.getPlayerGuid(), true, true,
                                               SpellCastType::OMNI);
         }
         if (owner_.addonEventCallbackRef()) {
@@ -1866,7 +1866,7 @@ void SpellHandler::handleCastFailed(network::Packet& packet) {
         owner_.addonEventCallbackRef()("UNIT_SPELLCAST_FAILED", spellcastArgs("player", data.spellId));
         owner_.addonEventCallbackRef()("UNIT_SPELLCAST_STOP", spellcastArgs("player", data.spellId));
     }
-    if (owner_.spellCastFailedCallbackRef()) owner_.spellCastFailedCallbackRef()(data.spellId);
+    if (spellCastFailedCallback_) spellCastFailedCallback_(data.spellId);
 }
 
 void SpellHandler::handleSpellStart(network::Packet& packet) {
@@ -1901,8 +1901,8 @@ void SpellHandler::handleSpellStart(network::Packet& packet) {
         s.timeRemaining  = s.timeTotal;
         s.interruptible  = owner_.isSpellInterruptible(data.spellId);
         s.castType       = castType;
-        if (owner_.spellCastAnimCallbackRef()) {
-            owner_.spellCastAnimCallbackRef()(data.casterUnit, true, false, castType);
+        if (spellCastAnimCallback_) {
+            spellCastAnimCallback_(data.casterUnit, true, false, castType);
         }
     }
 
@@ -1935,15 +1935,15 @@ void SpellHandler::handleSpellStart(network::Packet& packet) {
             }
         }
 
-        if (owner_.spellCastAnimCallbackRef()) {
-            owner_.spellCastAnimCallbackRef()(owner_.getPlayerGuid(), true, false, castType);
+        if (spellCastAnimCallback_) {
+            spellCastAnimCallback_(owner_.getPlayerGuid(), true, false, castType);
         }
 
         // Hearthstone: pre-load terrain at bind point
         const bool isHearthstone = (data.spellId == ITEM_ID_HEARTHSTONE ||
                                     data.spellId == SPELL_ID_HEARTHSTONE);
-        if (isHearthstone && owner_.hasHomeBindRef() && owner_.hearthstonePreloadCallbackRef()) {
-            owner_.hearthstonePreloadCallbackRef()(owner_.homeBindMapIdRef(), owner_.homeBindPosRef().x, owner_.homeBindPosRef().y, owner_.homeBindPosRef().z);
+        if (isHearthstone && owner_.hasHomeBindRef() && hearthstonePreloadCallback_) {
+            hearthstonePreloadCallback_(owner_.homeBindMapIdRef(), owner_.homeBindPosRef().x, owner_.homeBindPosRef().y, owner_.homeBindPosRef().z);
         }
     }
 
@@ -2062,12 +2062,12 @@ void SpellHandler::handleSpellGo(network::Packet& packet) {
                 goType = SpellCastType::DIRECTED;
             else if (data.targetGuid == 0 && data.hitCount > 1)
                 goType = SpellCastType::AREA;
-            if (owner_.spellCastAnimCallbackRef()) {
+            if (spellCastAnimCallback_) {
                 // Instant item spells have no SMSG_SPELL_START, so publish the
                 // SPELL_GO id just long enough for the animation callback to
                 // distinguish potions from generic instant magic.
                 currentCastSpellId_ = data.spellId;
-                owner_.spellCastAnimCallbackRef()(owner_.getPlayerGuid(), true, false, goType);
+                spellCastAnimCallback_(owner_.getPlayerGuid(), true, false, goType);
             }
         }
 
@@ -2094,8 +2094,8 @@ void SpellHandler::handleSpellGo(network::Packet& packet) {
         // and suppresses CMSG_CANCEL_CAST for ALL subsequent spell casts.
         owner_.pendingGameObjectInteractGuidRef() = 0;
 
-        if (owner_.spellCastAnimCallbackRef() && !rangedWeaponAttack && !restorationLoop) {
-            owner_.spellCastAnimCallbackRef()(owner_.getPlayerGuid(), false, false, SpellCastType::OMNI);
+        if (spellCastAnimCallback_ && !rangedWeaponAttack && !restorationLoop) {
+            spellCastAnimCallback_(owner_.getPlayerGuid(), false, false, SpellCastType::OMNI);
         }
 
         if (owner_.addonEventCallbackRef() && !rangedWeaponAttack)
@@ -2137,11 +2137,11 @@ void SpellHandler::handleSpellGo(network::Packet& packet) {
             npcGoType = SpellCastType::DIRECTED;
         else if (data.targetGuid == 0 && data.hitCount > 1)
             npcGoType = SpellCastType::AREA;
-        if (!wasTrackedCast && !rangedWeaponAttack && owner_.spellCastAnimCallbackRef()) {
-            owner_.spellCastAnimCallbackRef()(data.casterUnit, true, false, npcGoType);
+        if (!wasTrackedCast && !rangedWeaponAttack && spellCastAnimCallback_) {
+            spellCastAnimCallback_(data.casterUnit, true, false, npcGoType);
         }
-        if (!rangedWeaponAttack && owner_.spellCastAnimCallbackRef()) {
-            owner_.spellCastAnimCallbackRef()(data.casterUnit, false, false, SpellCastType::OMNI);
+        if (!rangedWeaponAttack && spellCastAnimCallback_) {
+            spellCastAnimCallback_(data.casterUnit, false, false, SpellCastType::OMNI);
         }
         bool targetsPlayer = false;
         for (const auto& tgt : data.hitTargets) {
@@ -2361,7 +2361,7 @@ void SpellHandler::handleAuraUpdate(network::Packet& packet, bool isAll) {
         }
 
         // Sprint aura detection - check if any sprint/dash speed buff is active
-        if (data.guid == owner_.getPlayerGuid() && owner_.sprintAuraCallbackRef()) {
+        if (data.guid == owner_.getPlayerGuid() && sprintAuraCallback_) {
             static constexpr uint32_t sprintSpells[] = {
                 2983, 8696, 11305,   // Rogue Sprint (ranks 1-3)
                 1850, 9821, 33357,   // Druid Dash (ranks 1-3)
@@ -2377,7 +2377,7 @@ void SpellHandler::handleAuraUpdate(network::Packet& packet, bool isAll) {
                 }
                 if (hasSprint) break;
             }
-            owner_.sprintAuraCallbackRef()(hasSprint);
+            sprintAuraCallback_(hasSprint);
         }
 
         if (data.guid == owner_.getPlayerGuid()) {
@@ -2671,8 +2671,8 @@ void SpellHandler::handleAchievementEarned(network::Packet& packet) {
             if (auto* sfx = ac->getUiSoundManager())
                 sfx->playAchievementAlert();
         }
-        if (owner_.achievementEarnedCallbackRef()) {
-            owner_.achievementEarnedCallbackRef()(achievementId, achName);
+        if (achievementEarnedCallback_) {
+            achievementEarnedCallback_(achievementId, achName);
         }
         // Inside the branch, not after it. ACHIEVEMENT_EARNED is what raises
         // FrameXML's badge, and it is about the player who is reading it -
@@ -2851,7 +2851,7 @@ void SpellHandler::handleListStabledPets(network::Packet& packet) {
     }
     owner_.stableMasterGuidRef() = packet.readUInt64();
     uint8_t petCount  = packet.readUInt8();
-    owner_.stableNumSlotsRef()   = packet.readUInt8();
+    stableNumSlots_   = packet.readUInt8();
 
     owner_.stabledPetsRef().clear();
     owner_.stabledPetsRef().reserve(petCount);
@@ -2881,7 +2881,7 @@ void SpellHandler::handleListStabledPets(network::Packet& packet) {
 
     owner_.stableWindowOpenRef() = true;
     LOG_INFO("MSG_LIST_STABLED_PETS: stableMasterGuid=0x", std::hex, owner_.stableMasterGuidRef(), std::dec,
-             " petCount=", static_cast<int>(petCount), " numSlots=", static_cast<int>(owner_.stableNumSlotsRef()));
+             " petCount=", static_cast<int>(petCount), " numSlots=", static_cast<int>(stableNumSlots_));
     for (const auto& p : owner_.stabledPetsRef()) {
         LOG_DEBUG("  Pet: number=", p.petNumber, " entry=", p.entry,
                   " level=", p.level, " name='", p.name, "' active=", p.isActive);
@@ -2953,6 +2953,14 @@ void SpellHandler::resetCastState() {
 }
 
 void SpellHandler::resetAllState() {
+    // Moved here from GameHandler's character-switch reset when the state
+    // itself moved: it cleared members it was the only owner of, through
+    // accessors nothing else called.
+    spellFlatMods_.clear();
+    spellPctMods_.clear();
+    stableNumSlots_ = 0;
+    hasPlayerExploredZones_ = false;
+    playerSkills_.clear();
     knownSpells_.clear();
     spellCooldowns_.clear();
     spellCooldownTotals_.clear();
@@ -3001,14 +3009,14 @@ void SpellHandler::handleUpdateAuraDuration(uint8_t slot, uint32_t durationMs) {
 static const std::string SPELL_EMPTY_STRING;
 
 void SpellHandler::loadSpellNameCache() const {
-    if (owner_.spellNameCacheLoadedRef()) return;
+    if (spellNameCacheLoaded_) return;
 
     auto* am = owner_.services().assetManager;
     // Not an attempt: the assets are not there to read yet, and a
     // caller can reach this before they are. Marking it loaded here
     // meant one early call disabled this file for the whole session.
     if (!am || !am->isInitialized()) return;
-    owner_.spellNameCacheLoadedRef() = true;
+    spellNameCacheLoaded_ = true;
 
     auto dbc = am->loadDBC("Spell.dbc");
     if (!dbc || !dbc->isLoaded()) {
@@ -3290,14 +3298,14 @@ void SpellHandler::loadSpellNameCache() const {
 }
 
 void SpellHandler::loadSkillLineAbilityDbc() {
-    if (owner_.skillLineAbilityLoadedRef()) return;
+    if (skillLineAbilityLoaded_) return;
 
     auto* am = owner_.services().assetManager;
     // Not an attempt: the assets are not there to read yet, and a
     // caller can reach this before they are. Marking it loaded here
     // meant one early call disabled this file for the whole session.
     if (!am || !am->isInitialized()) return;
-    owner_.skillLineAbilityLoadedRef() = true;
+    skillLineAbilityLoaded_ = true;
 
     auto slaDbc = am->loadDBC("SkillLineAbility.dbc");
     if (slaDbc && slaDbc->isLoaded()) {
@@ -3660,14 +3668,14 @@ const std::string& SpellHandler::getSkillLineName(uint32_t skillLineId) const {
 // ============================================================
 
 void SpellHandler::loadSkillLineDbc() {
-    if (owner_.skillLineDbcLoadedRef()) return;
+    if (skillLineDbcLoaded_) return;
 
     auto* am = owner_.services().assetManager;
     // Not an attempt: the assets are not there to read yet, and a
     // caller can reach this before they are. Marking it loaded here
     // meant one early call disabled this file for the whole session.
     if (!am || !am->isInitialized()) return;
-    owner_.skillLineDbcLoadedRef() = true;
+    skillLineDbcLoaded_ = true;
 
     auto dbc = am->loadDBC("SkillLine.dbc");
     if (!dbc || !dbc->isLoaded()) {
@@ -3701,12 +3709,12 @@ void SpellHandler::loadSkillLineDbc() {
             // give every tab the same nonsense icon rather than none.
             if (slIconField < fieldCount) {
                 if (uint32_t icon = dbc->getUInt32(i, slIconField); icon > 0) {
-                    owner_.skillLineIconsRef()[id] = icon;
+                    skillLineIcons_[id] = icon;
                 }
             }
             if (slDescField < fieldCount) {
                 std::string desc = dbc->getString(i, slDescField);
-                if (!desc.empty()) owner_.skillLineDescriptionsRef()[id] = std::move(desc);
+                if (!desc.empty()) skillLineDescriptions_[id] = std::move(desc);
             }
         }
     }
@@ -3783,8 +3791,8 @@ void SpellHandler::extractSkillFields(const FlatFieldMap& fields) {
 
     for (const auto& [skillId, skill] : newSkills) {
         if (skill.value == 0) continue;
-        auto oldIt = owner_.playerSkillsRef().find(skillId);
-        if (oldIt != owner_.playerSkillsRef().end() && skill.value > oldIt->second.value) {
+        auto oldIt = playerSkills_.find(skillId);
+        if (oldIt != playerSkills_.end() && skill.value > oldIt->second.value) {
             auto catIt = owner_.skillLineCategoriesRef().find(skillId);
             if (catIt != owner_.skillLineCategoriesRef().end()) {
                 uint32_t category = catIt->second;
@@ -3799,17 +3807,17 @@ void SpellHandler::extractSkillFields(const FlatFieldMap& fields) {
         }
     }
 
-    bool skillsChanged = (newSkills.size() != owner_.playerSkillsRef().size());
+    bool skillsChanged = (newSkills.size() != playerSkills_.size());
     if (!skillsChanged) {
         for (const auto& [id, sk] : newSkills) {
-            auto it = owner_.playerSkillsRef().find(id);
-            if (it == owner_.playerSkillsRef().end() || it->second.value != sk.value) {
+            auto it = playerSkills_.find(id);
+            if (it == playerSkills_.end() || it->second.value != sk.value) {
                 skillsChanged = true;
                 break;
             }
         }
     }
-    owner_.playerSkillsRef() = std::move(newSkills);
+    playerSkills_ = std::move(newSkills);
     if (skillsChanged)
         owner_.fireAddonEvent("SKILL_LINES_CHANGED", {});
 }
@@ -3836,7 +3844,7 @@ void SpellHandler::extractExploredZoneFields(const FlatFieldMap& fields) {
     }
 
     if (foundAny) {
-        owner_.hasPlayerExploredZonesRef() = true;
+        hasPlayerExploredZones_ = true;
     }
 }
 
@@ -3893,7 +3901,7 @@ void SpellHandler::handleCastResult(network::Packet& packet) {
                 }
             }
             owner_.addUIError(errMsg);
-            if (owner_.spellCastFailedCallbackRef()) owner_.spellCastFailedCallbackRef()(castResultSpellId);
+            if (spellCastFailedCallback_) spellCastFailedCallback_(castResultSpellId);
                 owner_.fireAddonEvent("UNIT_SPELLCAST_FAILED", spellcastArgs("player", castResultSpellId));
                 owner_.fireAddonEvent("UNIT_SPELLCAST_STOP",   spellcastArgs("player", castResultSpellId));
             // The second of the two chat writes. See handleCastFailed.
@@ -3980,7 +3988,7 @@ void SpellHandler::handlePlaySpellVisual(network::Packet& packet) {
 }
 
 void SpellHandler::handleSpellModifier(network::Packet& packet, bool isFlat) {
-    auto& modMap = isFlat ? owner_.spellFlatModsRef() : owner_.spellPctModsRef();
+    auto& modMap = isFlat ? spellFlatMods_ : spellPctMods_;
     while (packet.hasRemaining(6)) {
         uint8_t groupIndex = packet.readUInt8();
         uint8_t modOpRaw   = packet.readUInt8();
@@ -4181,14 +4189,14 @@ void SpellHandler::handleSpellFailure(network::Packet& packet) {
                 ssm->stopPrecast();
             }
         }
-        if (owner_.spellCastAnimCallbackRef()) {
-            owner_.spellCastAnimCallbackRef()(owner_.getPlayerGuid(), false, false, SpellCastType::OMNI);
+        if (spellCastAnimCallback_) {
+            spellCastAnimCallback_(owner_.getPlayerGuid(), false, false, SpellCastType::OMNI);
         }
     } else {
         // Another unit's cast failed - clear their tracked cast bar
         unitCastStates_.erase(failGuid);
-        if (owner_.spellCastAnimCallbackRef()) {
-            owner_.spellCastAnimCallbackRef()(failGuid, false, false, SpellCastType::OMNI);
+        if (spellCastAnimCallback_) {
+            spellCastAnimCallback_(failGuid, false, false, SpellCastType::OMNI);
         }
     }
 }
@@ -4298,9 +4306,9 @@ void SpellHandler::handleTotemCreated(network::Packet& packet) {
     LOG_DEBUG("SMSG_TOTEM_CREATED: slot=", static_cast<int>(slot),
               " spellId=", spellId, " duration=", duration, "ms");
     if (slot < GameHandler::NUM_TOTEM_SLOTS) {
-        owner_.activeTotemSlotsRef()[slot].spellId    = spellId;
-        owner_.activeTotemSlotsRef()[slot].durationMs = duration;
-        owner_.activeTotemSlotsRef()[slot].placedAt   = std::chrono::steady_clock::now();
+        activeTotemSlots_[slot].spellId    = spellId;
+        activeTotemSlots_[slot].durationMs = duration;
+        activeTotemSlots_[slot].placedAt   = std::chrono::steady_clock::now();
         // The totem bar draws each slot from its start and duration, and
         // refreshes on this alone - without it a totem is placed and the bar
         // goes on showing whatever was there before.
@@ -5114,8 +5122,8 @@ void SpellHandler::handleChannelStart(network::Packet& packet) {
         SpellCastType chanType = SpellCastType::OMNI;
         if (chanCaster == owner_.getPlayerGuid() && owner_.getTargetGuid() != 0)
             chanType = SpellCastType::DIRECTED;
-        if (owner_.spellCastAnimCallbackRef()) {
-            owner_.spellCastAnimCallbackRef()(chanCaster, true, true, chanType);
+        if (spellCastAnimCallback_) {
+            spellCastAnimCallback_(chanCaster, true, true, chanType);
         }
 
         // Fire UNIT_SPELLCAST_CHANNEL_START for Lua addons
@@ -5159,8 +5167,8 @@ void SpellHandler::handleChannelUpdate(network::Packet& packet) {
     // Fire UNIT_SPELLCAST_CHANNEL_STOP when channel ends
     if (chanRemainMs == 0) {
         // Stop channeling animation - return to idle
-        if (owner_.spellCastAnimCallbackRef()) {
-            owner_.spellCastAnimCallbackRef()(chanCaster2, false, true, SpellCastType::OMNI);
+        if (spellCastAnimCallback_) {
+            spellCastAnimCallback_(chanCaster2, false, true, SpellCastType::OMNI);
         }
         auto unitId = owner_.guidToUnitId(chanCaster2);
         if (!unitId.empty())

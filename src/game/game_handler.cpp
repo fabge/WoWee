@@ -212,12 +212,12 @@ void GameHandler::disconnect() {
 }
 
 void GameHandler::resetDbcCaches() {
-    spellNameCacheLoaded_ = false;
+    // The three loaded-flags moved to SpellHandler with the caches they
+    // guard; it clears them itself.
+    if (spellHandler_) spellHandler_->resetDbcLoadFlags();
     spellNameCache_.clear();
-    skillLineDbcLoaded_ = false;
     skillLineNames_.clear();
     skillLineCategories_.clear();
-    skillLineAbilityLoaded_ = false;
     spellToSkillLine_.clear();
     taxiNodes_.clear();
     taxiPathEdges_.clear();
