@@ -201,8 +201,6 @@ Suggested order, each its own PR:
   `docs/plan-new-mmo.md:19` cite line numbers and sizes that have moved.
   `plan-new-mmo.md` describes `src/ui/` as "~42k, ImGui-based"; it is 31k and
   FrameXML-driven. Stale plans are worse than none.
-- `tests/CMakeLists.txt:418` claims the sweeps take "under three seconds". They
-  take three minutes.
 - No ctest invocation passes `-j`. (The Windows jobs now run their tests: the
   earlier note here said they configured without `-DWOWEE_BUILD_TESTS=ON`,
   which was wrong — the option defaults to ON, so they were building every test

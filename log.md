@@ -596,3 +596,48 @@ declared with their real edges instead of as a complete graph, and that is what
 lets a test link a genuine subset.
 
 182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
+
+## 2026-08-26 — a working session, later half
+
+Four things, and the ordering was deliberate: the correctness item first, then
+the build graph, then the docs that describe both.
+
+**The pet bug.** `SMSG_PET_SPELLS` is the only thing that has ever populated or
+cleared the pet's spell list, autocast set and action bar, and it arrives when a
+pet is summoned or dismissed - so a character that has never had a pet is never
+sent it, and a hunter's pet survived into the next character logged in.
+`GameHandler` zeroed `petGuid_` on the switch, which is what kept the stale pet
+off the screen; every other reader still answered from it. Fixed by clearing
+`pet_` alongside, and covered by a test that fails without it. It was testable
+at all only because the pet state had moved into `SpellHandler` that morning -
+which is the argument for the whole decomposition, made concrete.
+
+**Cycles: 18 in the morning, 10 now**, with four libraries acyclic outright.
+Every fix was a file in the wrong library rather than a call in the wrong place:
+`framexml_takeover` is interface policy consulted by five of the ten libraries
+and got its own target; the CVar store moved to `wowee_base` because `src/game`
+and `src/rendering` read it during play and were reaching into `src/addons` for
+it; the app clock followed the logger. The store moved rather than just the
+reader - `storedCVarValue` checks the in-memory map before the file and is
+called from the threat update, so leaving the map in `addons` would have traded
+a cycle for a file read per call.
+
+What is left is three singletons and a module that is too big to move for one
+symbol, and `TODO.md` says which is which. `game -> core` is now literally
+`Application::instance`: the game layer reaching into the composition root
+through a global, which `AGENTS.md` says is exactly what this codebase does not
+do. That is a design change, not a relocation, and it is written down as one.
+
+**`tempEnchantTimers_`** moved to `SpellHandler` - written there, read once by
+`InventoryHandler` through the forwarding getter. Across the day `GameHandler`
+went from 478 member declarations to 453, 243 `xRef()` accessors to 219, and
+5,030 header lines to 4,883.
+
+**The docs.** `AGENTS.md` described a build that no longer exists, and it is the
+file every session reads first. It now has the target layout, the rule that a
+test links a subsystem library rather than re-enumerating translation units, and
+why the libraries are declared as a cycle. The `sweep_guard` comment in
+`tests/CMakeLists.txt` claimed three seconds for what takes three minutes and is
+95% of the suite; corrected, with the two ways to avoid paying it.
+
+183 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
