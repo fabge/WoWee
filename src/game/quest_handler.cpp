@@ -40,7 +40,19 @@ void QuestHandler::reconcileItemObjectivesFromInventory(
     // firing it once with nothing named watched nothing at all.
     std::vector<uint32_t> movedQuests;
     for (auto& quest : questLog_) {
-        if (quest.complete) continue;
+        // Complete quests included, deliberately.
+        //
+        // Skipping them left the log showing "Bundle of Furs: 0/1" on a quest
+        // it was simultaneously marking (Complete), because the server marks a
+        // collect quest complete from its update fields the moment the item is
+        // looted - and this reconcile, the only thing that ever fills
+        // itemCounts from the bag, then declined to look at it. The count the
+        // objective line reads stayed at zero for the rest of the quest's life.
+        //
+        // Nothing is re-fired by including them: the tracked == newCount test
+        // below is the guard, and a quest already at its required count moves
+        // nothing. Letting the count fall again when the item leaves the bag is
+        // also what a stock client does.
         for (const auto& obj : quest.itemObjectives) {
             if (obj.itemId == 0 || obj.required == 0) continue;
             // Keep the derived required-count map in sync so the
