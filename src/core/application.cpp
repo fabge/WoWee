@@ -1270,23 +1270,6 @@ void Application::run() {
             LOG_WARNING("Watchdog: force-released mouse capture on main thread");
         }
 
-        // Hold the frame to the cap, if one is set.
-        //
-        // Before the delta time is taken, so the wait is part of the frame
-        // it paces rather than a stall the next one has to absorb. Sleep
-        // granularity is a millisecond or so, which is close enough for a
-        // cap and far cheaper than spinning.
-        if (window) {
-            const int capFps = window->frameCap();
-            if (capFps > 0) {
-                const std::chrono::duration<float> target(1.0f / static_cast<float>(capFps));
-                const auto elapsed = std::chrono::high_resolution_clock::now() - lastTime;
-                if (elapsed < target) {
-                    std::this_thread::sleep_for(target - elapsed);
-                }
-            }
-        }
-
         // Calculate delta time
         auto currentTime = std::chrono::high_resolution_clock::now();
         std::chrono::duration<float> deltaTimeDuration = currentTime - lastTime;
@@ -1310,6 +1293,10 @@ void Application::run() {
         ui::clearInterfaceConsumedKeys();
         Input::getInstance().beginFrame();
         SDL_Event event;
+        // Held between the two passes below. A member rather than a local so
+        // the allocation survives the frame.
+        static std::vector<SDL_Event> pendingEvents;
+        pendingEvents.clear();
         while (SDL_PollEvent(&event)) {
 #ifdef __ANDROID__
             // The stick and the pinch read the finger events SDL sends
@@ -1347,6 +1334,29 @@ void Application::run() {
             if (uiManager) {
                 uiManager->processEvent(event);
             }
+            // Kept regardless of whether there is a UI manager: without one
+            // there is no ImGui to feed, but the world still has to be driven.
+            pendingEvents.push_back(event);
+        }
+
+        // The ImGui frame starts here, between draining SDL and acting on what
+        // it gave us - which is the whole reason this pump is in two passes.
+        //
+        // WantCaptureMouse and WantCaptureKeyboard are computed inside
+        // NewFrame from the events fed since the last one. NewFrame used to run
+        // later, inside Application::update, so every capture test below was
+        // answering about the *previous* frame: on the frame where focus or
+        // hover changed, a click reached both the interface and the world, or
+        // neither. Four separate instances of that were found and fixed one at
+        // a time before the cause was this.
+        //
+        // Dear ImGui's own guidance is exactly this order - feed the events,
+        // call NewFrame, then use the flags to decide who the events belonged
+        // to. The loading screen runs its own NewFrame and ends any open frame
+        // first, so it is unaffected.
+        if (uiManager) uiManager->beginFrame();
+
+        for (const SDL_Event& event : pendingEvents) {
 
             // What the interface has bound to a mouse button. The binding
             // panel accepts them and the stock tables carry them, but nothing
@@ -1721,14 +1731,27 @@ void Application::run() {
             window->setShouldClose(true);
         }
 
-        // Pace from the start of the frame we just completed. Using deltaTime
-        // here measured the previous frame, and relying only on FIFO present
-        // still allowed the main thread to saturate a core on high-refresh or
-        // compositor-managed displays. VSync defaults to a conservative 60 Hz;
-        // disabling it retains the existing 240 Hz ceiling.
-        const auto targetFrame = window->isVsyncEnabled()
-            ? std::chrono::microseconds(16667)
-            : std::chrono::microseconds(4167);
+        // One pacer, and the player's setting wins.
+        //
+        // There used to be two: one at the top of the loop honouring
+        // window->frameCap(), and this one, which knew only about vsync. This
+        // one ran second and so decided - which meant that with vsync on, its
+        // default state, a cap of 90, 120, 144 or 240 was silently served at
+        // 60, and the setting appeared to do nothing.
+        //
+        // The vsync/no-vsync numbers survive as the ceiling for "Unlimited",
+        // where there is no setting to honour: relying on FIFO present alone
+        // still let the main thread saturate a core on high-refresh and
+        // compositor-managed displays, which is what they were added for.
+        //
+        // Paced from the start of the frame just completed rather than from
+        // deltaTime, which measured the previous one.
+        const int capFps = window->frameCap();
+        const auto targetFrame =
+            capFps > 0
+                ? std::chrono::microseconds(1'000'000 / capFps)
+                : (window->isVsyncEnabled() ? std::chrono::microseconds(16667)
+                                            : std::chrono::microseconds(4167));
         const auto deadline = frameStart + targetFrame;
         const auto now = std::chrono::steady_clock::now();
         if (now < deadline) {
@@ -1956,7 +1979,9 @@ void Application::setState(AppState newState) {
                     // canonical is a half-turn off here (getYaw's zero is opposite the look
                     // vector). Add the half-turn so the bobber lands where the camera looks.
                     float canon = core::coords::normalizeAngleRad(glm::radians(360.0f - camYawDeg));
-                    LOG_WARNING("[FISH-AIM] getYaw=", camYawDeg,
+                    // DEBUG, not WARNING: this fires on every fishing cast, and
+                    // a warning is for something that went wrong.
+                    LOG_DEBUG("[FISH-AIM] getYaw=", camYawDeg,
                                 " getFacingYaw=", renderer->getCameraController()->getFacingYaw(),
                                 " charYaw=", renderer->getCharacterYaw(),
                                 " canonicalDeg=", canon * 57.29578f,
