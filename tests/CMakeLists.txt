@@ -2146,3 +2146,11 @@ add_executable(test_quest_item_reconcile test_quest_item_reconcile.cpp)
 target_link_libraries(test_quest_item_reconcile PRIVATE catch2_main wowee_game)
 add_test(NAME quest_item_reconcile COMMAND test_quest_item_reconcile)
 register_test_target(test_quest_item_reconcile)
+
+# ── test_spell_pet_state ────────────────────────────────────
+# Pet state across a character switch. Testable because the pet state moved
+# from GameHandler into SpellHandler; it links wowee_game.
+add_executable(test_spell_pet_state test_spell_pet_state.cpp)
+target_link_libraries(test_spell_pet_state PRIVATE catch2_main wowee_game)
+add_test(NAME spell_pet_state COMMAND test_spell_pet_state)
+register_test_target(test_spell_pet_state)

@@ -1,4 +1,5 @@
 #include "game/spell_handler.hpp"
+#include "core/cvar_store.hpp"
 #include "addons/lua_api_registrations.hpp"
 #include "game/protocol_constants.hpp"
 #include "game/gather_spells.hpp"
@@ -708,7 +709,7 @@ void SpellHandler::castSpell(uint32_t spellId, uint64_t targetGuid) {
                 constexpr long kToggleGuardMs = 500;
                 if (autoAttackToggledAt_.time_since_epoch().count() != 0 &&
                     since < kToggleGuardMs &&
-                    addons::storedCVarValue("secureAbilityToggle", "0") != "0") {
+                    core::storedCVarValue("secureAbilityToggle", "0") != "0") {
                     return;
                 }
                 owner_.stopAutoAttack();
@@ -780,7 +781,7 @@ void SpellHandler::castSpell(uint32_t spellId, uint64_t targetGuid) {
             // sensible one, since the alternative is falling - but with the
             // setting on this dismounts and lets the cast go, which is what
             // the option is for and what the real client does with it.
-            if (addons::storedCVarValue("autoDismountFlying", "0") == "0") {
+            if (core::storedCVarValue("autoDismountFlying", "0") == "0") {
                 owner_.addUIError("You can't do that while flying.");
                 return;
             }
@@ -1098,7 +1099,7 @@ void SpellHandler::startCraftQueue(uint32_t spellId, int count) {
     // cast does fire, so refusing to queue it here would leave crafting the one
     // thing still blocked in the air.
     if (owner_.isMounted() && owner_.isPlayerFlying() &&
-        addons::storedCVarValue("autoDismountFlying", "0") == "0") {
+        core::storedCVarValue("autoDismountFlying", "0") == "0") {
         owner_.addUIError("You can't do that while flying.");
         return;
     }
@@ -2956,6 +2957,15 @@ void SpellHandler::resetAllState() {
     // Moved here from GameHandler's character-switch reset when the state
     // itself moved: it cleared members it was the only owner of, through
     // accessors nothing else called.
+    //
+    // The pet is the exception: nothing cleared it, here or in GameHandler.
+    // SMSG_PET_SPELLS is the only thing that ever did, and it arrives when a
+    // pet is summoned or dismissed - a character that has never had one is
+    // never sent it, so a hunter's spell list, autocast set and action bar
+    // survived into the next character logged in. GameHandler already zeroed
+    // petGuid_ here, which is what kept it off the screen; this makes the rest
+    // of the pet agree with that rather than relying on it.
+    pet_ = PetState{};
     spellFlatMods_.clear();
     spellPctMods_.clear();
     stableNumSlots_ = 0;
