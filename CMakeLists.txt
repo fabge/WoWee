@@ -581,9 +581,23 @@ else()
     message(FATAL_ERROR "vk-bootstrap not found in extern/vk-bootstrap")
 endif()
 
-# Source files
-set(WOWEE_SOURCES
-    # Core
+# Source files, one list per subsystem.
+#
+# These were a single 419-entry WOWEE_SOURCES list feeding one target, which
+# meant a test could not link a subsystem: it had to re-enumerate the .cpp
+# files it needed by hand, and tests/CMakeLists.txt grew to 2,145 lines doing
+# exactly that. src/audio/ and src/addons/lua_engine.cpp ended up with no test
+# at all, and the 2026-08-26 fix to QuestHandler shipped without a regression
+# test because covering it meant naming 59 translation units.
+#
+# The lists below are the same files, grouped by the directory they already
+# live in, so each becomes a STATIC library a test can link by name.
+
+set(WOWEE_SRC_MATH
+    src/math/spline.cpp
+)
+
+set(WOWEE_SRC_CORE
     src/core/application.cpp
     src/core/entity_spawner.cpp
     src/core/entity_spawner_player.cpp
@@ -604,17 +618,16 @@ set(WOWEE_SOURCES
     src/core/memory_monitor.cpp
     src/core/app_clock.cpp
     src/core/config_paths.cpp
+)
 
-    # Math
-    src/math/spline.cpp
-
-    # Network
+set(WOWEE_SRC_NETWORK
     src/network/socket.cpp
     src/network/packet.cpp
     src/network/tcp_socket.cpp
     src/network/world_socket.cpp
+)
 
-    # Auth
+set(WOWEE_SRC_AUTH
     src/auth/auth_handler.cpp
     src/auth/auth_opcodes.cpp
     src/auth/auth_packets.cpp
@@ -625,53 +638,9 @@ set(WOWEE_SOURCES
     src/auth/crypto.cpp
     src/auth/rc4.cpp
     src/auth/vanilla_crypt.cpp
+)
 
-    # Game
-    src/game/expansion_profile.cpp
-    src/game/opcode_table.cpp
-    src/game/update_field_table.cpp
-    src/game/game_handler.cpp
-    src/game/game_handler_packets.cpp
-    src/game/game_handler_callbacks.cpp
-    src/game/chat_handler.cpp
-    src/game/text_tokens.cpp
-    src/game/text_tokens_subject.cpp
-    src/game/movement_handler.cpp
-    src/game/combat_handler.cpp
-    src/game/spell_handler.cpp
-    src/game/inventory_handler.cpp
-    src/game/social_handler.cpp
-    src/game/quest_handler.cpp
-    src/game/entity_controller.cpp
-    src/game/warden_handler.cpp
-    src/game/warden_crypto.cpp
-    src/game/warden_module.cpp
-    src/game/warden_emulator.cpp
-    src/game/warden_memory.cpp
-    src/game/transport_manager.cpp
-    src/game/transport_path_repository.cpp
-    src/game/transport_clock_sync.cpp
-    src/game/transport_animator.cpp
-    src/game/world.cpp
-    src/game/player.cpp
-    src/game/entity.cpp
-    src/game/opcodes.cpp
-    src/game/world_packets.cpp
-    src/game/world_packets_social.cpp
-    src/game/world_packets_entity.cpp
-    src/game/world_packets_world.cpp
-    src/game/world_packets_economy.cpp
-    src/game/spline_packet.cpp
-    src/game/shapeshift_forms.cpp
-    src/game/calendar_data.cpp
-    src/game/faction_hostility.cpp
-    src/game/packet_parsers_tbc.cpp
-    src/game/packet_parsers_classic.cpp
-    src/game/character.cpp
-    src/game/zone_manager.cpp
-    src/game/inventory.cpp
-
-    # Audio
+set(WOWEE_SRC_AUDIO
     src/audio/audio_engine.cpp
     src/audio/audio_coordinator.cpp
     src/audio/music_manager.cpp
@@ -685,8 +654,9 @@ set(WOWEE_SOURCES
     src/audio/combat_sound_manager.cpp
     src/audio/spell_sound_manager.cpp
     src/audio/movement_sound_manager.cpp
+)
 
-    # Pipeline (asset loaders)
+set(WOWEE_SRC_PIPELINE
     src/pipeline/blp_loader.cpp
     src/pipeline/dbc_loader.cpp
     src/pipeline/asset_manager.cpp
@@ -844,15 +814,20 @@ set(WOWEE_SOURCES
     src/pipeline/wowee_chat_links.cpp
     src/pipeline/custom_zone_discovery.cpp
     src/pipeline/char_sections.cpp
-    src/ui/settings_schema.cpp
     src/pipeline/item_textures.cpp
     src/pipeline/m2_asset_loader.cpp
     src/pipeline/dbc_layout.cpp
     src/pipeline/spell_icon_paths.cpp
-
     src/pipeline/terrain_mesh.cpp
+    src/pipeline/adt_alpha.cpp
+    src/pipeline/grass_terrain.cpp
+    src/pipeline/grass_population.cpp
+    src/pipeline/grass_profile.cpp
+    src/pipeline/grass_biomes.cpp
+    src/pipeline/grass_clearing.cpp
+)
 
-    # Rendering (Vulkan infrastructure)
+set(WOWEE_SRC_RENDERING
     src/rendering/vk_context.cpp
     src/rendering/vk_utils.cpp
     src/rendering/vk_shader.cpp
@@ -860,8 +835,6 @@ set(WOWEE_SOURCES
     src/rendering/vk_buffer.cpp
     src/rendering/vk_pipeline.cpp
     src/rendering/vk_render_target.cpp
-
-    # Rendering
     src/rendering/renderer.cpp
     src/rendering/amd_fsr3_runtime.cpp
     src/rendering/camera.cpp
@@ -897,12 +870,6 @@ set(WOWEE_SOURCES
     src/rendering/render_graph.cpp
     src/rendering/hiz_system.cpp
     src/rendering/grass_renderer.cpp
-    src/pipeline/adt_alpha.cpp
-    src/pipeline/grass_terrain.cpp
-    src/pipeline/grass_population.cpp
-    src/pipeline/grass_profile.cpp
-    src/pipeline/grass_biomes.cpp
-    src/pipeline/grass_clearing.cpp
     src/rendering/quest_marker_renderer.cpp
     src/rendering/footprint_renderer.cpp
     src/rendering/minimap.cpp
@@ -947,8 +914,56 @@ set(WOWEE_SOURCES
     src/rendering/animation/character_animator.cpp  # Renamed from player_animator.cpp; npc_animator.cpp removed
     src/rendering/animation/animation_manager.cpp
     src/rendering/loading_screen.cpp
+)
 
-    # UI
+set(WOWEE_SRC_GAME
+    src/game/expansion_profile.cpp
+    src/game/opcode_table.cpp
+    src/game/update_field_table.cpp
+    src/game/game_handler.cpp
+    src/game/game_handler_packets.cpp
+    src/game/game_handler_callbacks.cpp
+    src/game/chat_handler.cpp
+    src/game/text_tokens.cpp
+    src/game/text_tokens_subject.cpp
+    src/game/movement_handler.cpp
+    src/game/combat_handler.cpp
+    src/game/spell_handler.cpp
+    src/game/inventory_handler.cpp
+    src/game/social_handler.cpp
+    src/game/quest_handler.cpp
+    src/game/entity_controller.cpp
+    src/game/warden_handler.cpp
+    src/game/warden_crypto.cpp
+    src/game/warden_module.cpp
+    src/game/warden_emulator.cpp
+    src/game/warden_memory.cpp
+    src/game/transport_manager.cpp
+    src/game/transport_path_repository.cpp
+    src/game/transport_clock_sync.cpp
+    src/game/transport_animator.cpp
+    src/game/world.cpp
+    src/game/player.cpp
+    src/game/entity.cpp
+    src/game/opcodes.cpp
+    src/game/world_packets.cpp
+    src/game/world_packets_social.cpp
+    src/game/world_packets_entity.cpp
+    src/game/world_packets_world.cpp
+    src/game/world_packets_economy.cpp
+    src/game/spline_packet.cpp
+    src/game/shapeshift_forms.cpp
+    src/game/calendar_data.cpp
+    src/game/faction_hostility.cpp
+    src/game/packet_parsers_tbc.cpp
+    src/game/packet_parsers_classic.cpp
+    src/game/character.cpp
+    src/game/zone_manager.cpp
+    src/game/inventory.cpp
+)
+
+set(WOWEE_SRC_UI
+    src/ui/settings_schema.cpp
     src/ui/ui_manager.cpp
     src/ui/ui_upload_budget.cpp
     src/ui/widget_tree.cpp
@@ -1009,8 +1024,9 @@ set(WOWEE_SOURCES
     src/ui/spellbook_screen.cpp
     src/ui/key_names.cpp
     src/ui/keybinding_manager.cpp
+)
 
-    # Addons
+set(WOWEE_SRC_ADDONS
     src/addons/addon_manager.cpp
     src/addons/lua_engine.cpp
     src/addons/lua_handler_globals.cpp
@@ -1024,9 +1040,6 @@ set(WOWEE_SOURCES
     src/addons/lua_system_api.cpp
     src/addons/lua_action_api.cpp
     src/addons/toc_parser.cpp
-
-    # Main
-    src/main.cpp
 )
 
 set(WOWEE_HEADERS
@@ -1149,12 +1162,19 @@ set(WOWEE_HEADERS
 )
 
 # macOS needs an Objective-C++ shim for AppKit behavior that has no SDL
-# equivalent (press-and-hold accents).  window.cpp calls into it, so every
-# target that compiles window.cpp must link it.
+# equivalent (press-and-hold accents), and for the localized key names the
+# keybinding UI shows. window.cpp and ui/key_names.cpp call into it.
+#
+# It belongs to wowee_core, which is where its callers are: attached to the
+# executable instead, as it was, every target that linked a subsystem library
+# without also being the client failed on localizedKeyName. Keeping it in the
+# library makes "every target that compiles window.cpp must link it" something
+# the build graph enforces rather than something each target remembers.
 set(WOWEE_MACOS_SOURCES)
 if(APPLE)
     enable_language(OBJCXX)
     set(WOWEE_MACOS_SOURCES src/core/macos_platform.mm)
+    list(APPEND WOWEE_SRC_CORE ${WOWEE_MACOS_SOURCES})
 endif()
 
 set(WOWEE_PLATFORM_SOURCES)
@@ -1204,26 +1224,84 @@ if(ANDROID)
     target_compile_options(lua51 PRIVATE -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0)
 endif()
 
+# ---- wowee_common: how every part of the client is compiled ----
+#
+# One INTERFACE target holding the include paths, third-party links, warning
+# flags, sanitizer flags and precompiled header that used to be attached
+# directly to the single `wowee` target. Nothing about the build changed when
+# this moved; what changed is that there is now somewhere for a second target
+# to inherit it from, which is what makes the subsystem libraries below
+# possible and keeps them compiled exactly as the client is.
+#
+# Properties are added to it further down, at the same places they were
+# applied to `wowee` before. That is deliberate and it works: usage
+# requirements are resolved when the build is generated, not when the target
+# is created, so an INTERFACE property set after a consumer links it still
+# reaches that consumer.
+add_library(wowee_common INTERFACE)
+
+# ---- Subsystem libraries ----
+#
+# The client is these plus src/main.cpp. Each is a STATIC library so a test can
+# link one by name -- `target_link_libraries(test_x PRIVATE wowee_game)` --
+# and let the linker work out which objects it actually needs, instead of a
+# test hand-listing translation units and going stale.
+#
+# The dependency graph between them is cyclic in every direction (measured
+# 2026-08-26: addons->game 502 symbols against game->addons 1, ui->game 211
+# against 3, core<->rendering 165 against 17). CMake allows cycles among STATIC
+# libraries and repeats the connected component on the link line, so the cycles
+# are declared below rather than pretended away. Breaking them is worth doing
+# and is a separate job; the asymmetry says where to start.
+foreach(_sub math core network auth audio pipeline rendering game ui addons)
+    string(TOUPPER "${_sub}" _SUB)
+    add_library(wowee_${_sub} STATIC ${WOWEE_SRC_${_SUB}})
+    target_link_libraries(wowee_${_sub} PUBLIC wowee_common)
+    set_target_properties(wowee_${_sub} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endforeach()
+
+# The headers, attached to one library so IDEs and `install` still see them.
+target_sources(wowee_core PRIVATE ${WOWEE_HEADERS})
+
+# Every subsystem may call into every other. Stated once, as a cycle, because
+# that is what the symbol graph actually is.
+set(WOWEE_SUBSYSTEM_LIBS
+    wowee_core wowee_game wowee_ui wowee_addons wowee_rendering
+    wowee_pipeline wowee_audio wowee_network wowee_auth wowee_math
+)
+foreach(_lib ${WOWEE_SUBSYSTEM_LIBS})
+    foreach(_other ${WOWEE_SUBSYSTEM_LIBS})
+        if(NOT _lib STREQUAL _other)
+            target_link_libraries(${_lib} PUBLIC ${_other})
+        endif()
+    endforeach()
+endforeach()
+
 # Create executable
 # On Android the client is a shared library, not a program: SDLActivity loads
 # it and calls SDL_main, and SDL_main.h has already renamed main() to that - so
 # an executable link asks for a main that no longer exists.
 if(ANDROID)
-    add_library(wowee SHARED ${WOWEE_SOURCES} ${WOWEE_HEADERS} ${WOWEE_PLATFORM_SOURCES} ${WOWEE_MACOS_SOURCES})
+    add_library(wowee SHARED src/main.cpp ${WOWEE_PLATFORM_SOURCES})
 else()
-    add_executable(wowee ${WOWEE_SOURCES} ${WOWEE_HEADERS} ${WOWEE_PLATFORM_SOURCES} ${WOWEE_MACOS_SOURCES})
+    add_executable(wowee src/main.cpp ${WOWEE_PLATFORM_SOURCES})
 endif()
+# One name is enough: the subsystems declare each other above, so the whole
+# connected component arrives with it.
+target_link_libraries(wowee PRIVATE wowee_core)
 
 # Tracy profiler - zero overhead when WOWEE_ENABLE_TRACY is OFF
 if(WOWEE_ENABLE_TRACY)
     target_sources(wowee PRIVATE ${CMAKE_SOURCE_DIR}/extern/tracy/public/TracyClient.cpp)
-    target_compile_definitions(wowee PRIVATE TRACY_ENABLE)
-    target_include_directories(wowee SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/extern/tracy/public)
+    target_compile_definitions(wowee_common INTERFACE TRACY_ENABLE)
+    target_include_directories(wowee_common SYSTEM INTERFACE ${CMAKE_SOURCE_DIR}/extern/tracy/public)
     message(STATUS "Tracy profiler: ENABLED")
 endif()
 
 if(TARGET opcodes-generate)
-    add_dependencies(wowee opcodes-generate)
+    foreach(_t wowee ${WOWEE_SUBSYSTEM_LIBS})
+        add_dependencies(${_t} opcodes-generate)
+    endforeach()
 endif()
 # macOS cross-compilation: MoltenVK is not available at link time.
 # Allow unresolved Vulkan symbols - resolved at runtime. Scoped to wowee only.
@@ -1262,10 +1340,12 @@ add_custom_target(wowee_version ALL
     COMMENT "Resolving version from git"
     VERBATIM
 )
-add_dependencies(wowee wowee_version)
+foreach(_t wowee ${WOWEE_SUBSYSTEM_LIBS})
+    add_dependencies(${_t} wowee_version)
+endforeach()
 
 # Include directories
-target_include_directories(wowee PRIVATE
+target_include_directories(wowee_common INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_BINARY_DIR}/generated
@@ -1314,22 +1394,22 @@ set(WOWEE_PCH_STD
     <future>
 )
 
-target_precompile_headers(wowee PRIVATE
+target_precompile_headers(wowee_common INTERFACE
     ${WOWEE_PCH_STD}
     <glm/glm.hpp>
     ${CMAKE_CURRENT_SOURCE_DIR}/include/core/logger.hpp
 )
 # Vendored headers as SYSTEM to suppress third-party warnings
-target_include_directories(wowee SYSTEM PRIVATE
+target_include_directories(wowee_common SYSTEM INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/extern
     ${CMAKE_CURRENT_SOURCE_DIR}/extern/vk-bootstrap/src
 )
 if(HAVE_FFMPEG)
-    target_include_directories(wowee PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    target_include_directories(wowee_common INTERFACE ${FFMPEG_INCLUDE_DIRS})
 endif()
 
 # Link libraries
-target_link_libraries(wowee PRIVATE
+target_link_libraries(wowee_common INTERFACE
     SDL2::SDL2
     Vulkan::Vulkan
     OpenSSL::SSL
@@ -1341,10 +1421,10 @@ target_link_libraries(wowee PRIVATE
 )
 
 if(HAVE_FFMPEG)
-    target_compile_definitions(wowee PRIVATE HAVE_FFMPEG)
-    target_link_libraries(wowee PRIVATE ${FFMPEG_LIBRARIES})
+    target_compile_definitions(wowee_common INTERFACE HAVE_FFMPEG)
+    target_link_libraries(wowee_common INTERFACE ${FFMPEG_LIBRARIES})
     if(FFMPEG_LIBRARY_DIRS)
-        target_link_directories(wowee PRIVATE ${FFMPEG_LIBRARY_DIRS})
+        target_link_directories(wowee_common INTERFACE ${FFMPEG_LIBRARY_DIRS})
     endif()
 endif()
 
@@ -1352,13 +1432,13 @@ endif()
 # Android is UNIX and not APPLE, and has no X11: the ungrab path in main.cpp is
 # compiled out there, so there is nothing to link.
 if(UNIX AND NOT APPLE AND NOT ANDROID)
-    target_link_libraries(wowee PRIVATE X11)
+    target_link_libraries(wowee_common INTERFACE X11)
 endif()
 if(APPLE)
-    target_link_libraries(wowee PRIVATE "-framework Foundation" "-framework Carbon")
+    target_link_libraries(wowee_common INTERFACE "-framework Foundation" "-framework Carbon")
 endif()
 if(WIN32)
-    target_link_libraries(wowee PRIVATE ws2_32)
+    target_link_libraries(wowee_common INTERFACE ws2_32)
     # SDL2main provides WinMain entry point on Windows
     if(TARGET SDL2::SDL2main)
         target_link_libraries(wowee PRIVATE SDL2::SDL2main)
@@ -1367,19 +1447,19 @@ endif()
 
 # Link ImGui if available
 if(TARGET imgui)
-    target_link_libraries(wowee PRIVATE imgui)
+    target_link_libraries(wowee_common INTERFACE imgui)
 endif()
 
 # Link vk-bootstrap
 if(TARGET vk-bootstrap)
-    target_link_libraries(wowee PRIVATE vk-bootstrap)
+    target_link_libraries(wowee_common INTERFACE vk-bootstrap)
 endif()
 
 if(TARGET wowee_fsr2_amd_vk)
-    target_link_libraries(wowee PRIVATE wowee_fsr2_amd_vk)
+    target_link_libraries(wowee_common INTERFACE wowee_fsr2_amd_vk)
 endif()
 if(TARGET wowee_fsr3_framegen_amd_vk_probe)
-    target_link_libraries(wowee PRIVATE wowee_fsr3_framegen_amd_vk_probe)
+    target_link_libraries(wowee_common INTERFACE wowee_fsr3_framegen_amd_vk_probe)
 endif()
 if(TARGET wowee_fsr3_official_runtime_copy)
     # FSR3 Path A runtime is an opt-in artifact; build explicitly with:
@@ -1390,19 +1470,19 @@ endif()
 
 # Link Unicorn if available
 if(HAVE_UNICORN)
-    target_link_libraries(wowee PRIVATE ${UNICORN_LIBRARY})
-    target_include_directories(wowee PRIVATE ${UNICORN_INCLUDE_DIR})
-    target_compile_definitions(wowee PRIVATE HAVE_UNICORN)
+    target_link_libraries(wowee_common INTERFACE ${UNICORN_LIBRARY})
+    target_include_directories(wowee_common INTERFACE ${UNICORN_INCLUDE_DIR})
+    target_compile_definitions(wowee_common INTERFACE HAVE_UNICORN)
 endif()
 
 # Prefer GLM's explicit header-only target. GLM 1.0 may build glm::glm as a
 # shared library, which creates an unnecessary runtime dependency in app bundles.
 if(TARGET glm::glm-header-only)
-    target_link_libraries(wowee PRIVATE glm::glm-header-only)
+    target_link_libraries(wowee_common INTERFACE glm::glm-header-only)
 elseif(TARGET glm::glm)
-    target_link_libraries(wowee PRIVATE glm::glm)
+    target_link_libraries(wowee_common INTERFACE glm::glm)
 elseif(glm_FOUND)
-    target_include_directories(wowee PRIVATE ${GLM_INCLUDE_DIRS})
+    target_include_directories(wowee_common INTERFACE ${GLM_INCLUDE_DIRS})
 endif()
 
 # Compiler warnings.
@@ -1417,12 +1497,12 @@ endif()
 option(WOWEE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 
 if(MSVC)
-    target_compile_options(wowee PRIVATE /W4)
+    target_compile_options(wowee_common INTERFACE /W4)
     if(WOWEE_WARNINGS_AS_ERRORS)
-        target_compile_options(wowee PRIVATE /WX)
+        target_compile_options(wowee_common INTERFACE /WX)
     endif()
 else()
-    target_compile_options(wowee PRIVATE -Wall -Wextra -Wpedantic -Wno-missing-field-initializers)
+    target_compile_options(wowee_common INTERFACE -Wall -Wextra -Wpedantic -Wno-missing-field-initializers)
     # A constant left behind by a deleted function is not in -Wall for C++ on
     # every clang, and the macOS and Windows runners have it where the clang
     # here does not, so it failed two of five CI jobs and no local build.
@@ -1431,17 +1511,17 @@ else()
     # write down a whole wire enum, InvType::AMMO and GuildEvent::SIGNED_ON
     # among them, and those are documentation rather than dead code.
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        target_compile_options(wowee PRIVATE -Wunused-const-variable)
+        target_compile_options(wowee_common INTERFACE -Wunused-const-variable)
     endif()
     if(WOWEE_WARNINGS_AS_ERRORS)
-        target_compile_options(wowee PRIVATE -Werror)
+        target_compile_options(wowee_common INTERFACE -Werror)
     endif()
     # GCC LTO emits -Wodr for FFX enum-name mismatches across SDK generations.
     # We intentionally keep FSR2+FSR3 integrations in separate TUs and suppress
     # this linker-time diagnostic to avoid CI noise.
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(wowee PRIVATE -Wno-odr)
-        target_link_options(wowee PRIVATE -Wno-odr)
+        target_compile_options(wowee_common INTERFACE -Wno-odr)
+        target_link_options(wowee_common INTERFACE -Wno-odr)
     endif()
 endif()
 
@@ -1451,11 +1531,11 @@ if(MSVC)
     # /RTC1 - stack-frame and uninitialised-variable runtime checks (Debug only)
     # /sdl  - additional SDL security checks
     # /Od   - disable optimisation so stepping matches source lines exactly
-    target_compile_options(wowee PRIVATE
+    target_compile_options(wowee_common INTERFACE
         $<$<CONFIG:Debug>:/ZI /RTC1 /sdl /Od>
     )
     # Ensure the linker emits a .pdb alongside the .exe for every config
-    target_link_options(wowee PRIVATE
+    target_link_options(wowee_common INTERFACE
         $<$<CONFIG:Debug>:/DEBUG:FULL>
         $<$<CONFIG:RelWithDebInfo>:/DEBUG:FASTLINK>
     )
@@ -1464,7 +1544,7 @@ else()
     # -Og          - optimise for debugging (better than -O0, keeps most frames)
     # -fno-omit-frame-pointer - preserve frame pointers so stack traces are clean
     # Frame pointers in all configs (negligible perf cost, critical for crash backtraces)
-    target_compile_options(wowee PRIVATE
+    target_compile_options(wowee_common INTERFACE
         -fno-omit-frame-pointer
         $<$<CONFIG:Debug>:-g3 -Og>
         $<$<CONFIG:RelWithDebInfo>:-g>
@@ -1481,15 +1561,15 @@ endif()
 # Enable with:  cmake ... -DWOWEE_ENABLE_ASAN=ON -DCMAKE_BUILD_TYPE=Debug
 if(WOWEE_ENABLE_ASAN)
     if(MSVC)
-        target_compile_options(wowee PRIVATE /fsanitize=address)
+        target_compile_options(wowee_common INTERFACE /fsanitize=address)
         # ASAN on MSVC requires the dynamic CRT (/MD or /MDd)
-        target_compile_options(wowee PRIVATE
+        target_compile_options(wowee_common INTERFACE
             $<$<CONFIG:Debug>:/MDd>
             $<$<CONFIG:Release>:/MD>
         )
     else()
-        target_compile_options(wowee PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
-        target_link_options(wowee PRIVATE -fsanitize=address,undefined)
+        target_compile_options(wowee_common INTERFACE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(wowee_common INTERFACE -fsanitize=address,undefined)
     endif()
     message(STATUS "AddressSanitizer + UBSan: ENABLED")
 endif()
@@ -1498,14 +1578,17 @@ endif()
 include(CheckIPOSupported)
 check_ipo_supported(RESULT _ipo_supported OUTPUT _ipo_error)
 if(_ipo_supported)
-    set_property(TARGET wowee PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    # Every target that holds client code, not just the one holding main().
+    foreach(_t wowee ${WOWEE_SUBSYSTEM_LIBS})
+        set_property(TARGET ${_t} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    endforeach()
 endif()
 if(NOT MSVC)
     # -O3: more aggressive inlining and auto-vectorization vs CMake's default -O2
-    target_compile_options(wowee PRIVATE $<$<CONFIG:Release>:-O3>)
+    target_compile_options(wowee_common INTERFACE $<$<CONFIG:Release>:-O3>)
     # -fvisibility=hidden: keeps all symbols internal by default, shrinks binary
     # and gives the linker and optimizer more freedom to dead-strip and inline
-    target_compile_options(wowee PRIVATE $<$<CONFIG:Release>:-fvisibility=hidden -fvisibility-inlines-hidden>)
+    target_compile_options(wowee_common INTERFACE $<$<CONFIG:Release>:-fvisibility=hidden -fvisibility-inlines-hidden>)
 endif()
 
 # Copy assets next to the executable (runs every build, not just configure).
@@ -1603,40 +1686,22 @@ endif()
 option(WOWEE_BUILD_FRAMEXML_RUN
        "Build the headless FrameXML runner (tools/framexml_run.cpp)" OFF)
 if(WOWEE_BUILD_FRAMEXML_RUN)
-    set(WOWEE_HEADLESS_SOURCES ${WOWEE_SOURCES})
-    list(REMOVE_ITEM WOWEE_HEADLESS_SOURCES src/main.cpp)
+    # The client minus its main. It links the same subsystem libraries the
+    # client does, so it is compiled and linked identically by construction -
+    # any answer that differs from wowee's is wrong.
+    #
+    # This used to copy four properties off the wowee target one at a time,
+    # because there was no shared target to inherit from. Three were copied and
+    # the fourth, LINK_DIRECTORIES, was not, so a dependency named by
+    # pkg-config as a bare library - which is every one of them on a Homebrew
+    # prefix - linked for wowee and not for this: "ld: library 'avformat' not
+    # found", from a target built out of the same sources. wowee_common is the
+    # thing that was missing then; there is nothing left to keep in sync.
     add_executable(framexml_run
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/framexml_run.cpp
-        ${WOWEE_HEADLESS_SOURCES}
         ${WOWEE_PLATFORM_SOURCES}
-        ${WOWEE_MACOS_SOURCES}
     )
-    # Copied from the client rather than written out again. This target is the
-    # client minus its main, so any answer that differs from wowee's is wrong
-    # by construction - and a hand-kept second list would drift the first time
-    # a dependency moved.
-    get_target_property(_wowee_libs wowee LINK_LIBRARIES)
-    get_target_property(_wowee_incs wowee INCLUDE_DIRECTORIES)
-    get_target_property(_wowee_defs wowee COMPILE_DEFINITIONS)
-    # And where to find them. Three of the four properties were copied and this
-    # one was not, so a dependency named by pkg-config as a bare library - which
-    # is every one of them on a Homebrew prefix - linked for wowee and not for
-    # this: "ld: library 'avformat' not found", from a target built out of the
-    # same sources. The tool that exists to answer questions about the running
-    # interface could not be built at all on that setup.
-    get_target_property(_wowee_libdirs wowee LINK_DIRECTORIES)
-    if(_wowee_libs)
-        target_link_libraries(framexml_run PRIVATE ${_wowee_libs})
-    endif()
-    if(_wowee_libdirs)
-        target_link_directories(framexml_run PRIVATE ${_wowee_libdirs})
-    endif()
-    if(_wowee_incs)
-        target_include_directories(framexml_run PRIVATE ${_wowee_incs})
-    endif()
-    if(_wowee_defs)
-        target_compile_definitions(framexml_run PRIVATE ${_wowee_defs})
-    endif()
+    target_link_libraries(framexml_run PRIVATE wowee_core)
     target_include_directories(framexml_run SYSTEM PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/extern
         ${CMAKE_CURRENT_SOURCE_DIR}/extern/vk-bootstrap/src)

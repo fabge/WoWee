@@ -144,7 +144,6 @@ int main(int argc, char** argv) {
     // channels were written to it and saved from the chat panel's, so they read
     // back as whatever they had always been.
     gameScreen.setServices(wowee::ui::UIServices{});
-    wowee::ui::SettingsPanel& settingsPanel = gameScreen.getSettingsPanel();
     // No seeding of the defaults. The panel's fields already hold them - the
     // schema's default and the member's initialiser are checked against each
     // other in settings_apply_on_load - and setting them here went through
