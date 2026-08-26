@@ -1,4 +1,5 @@
 #include "network/world_socket.hpp"
+#include "core/config_paths.hpp"
 #include "core/env_flag.hpp"
 #include "network/packet.hpp"
 #include "network/net_platform.hpp"
@@ -286,10 +287,15 @@ void WorldSocket::send(const Packet& packet) {
 
     const auto& data = packet.getData();
     uint16_t opcode = packet.getOpcode();
-    // CMSG header uses a 16-bit size field, so payloads > 64KB are unsupported.
-    // Guard here rather than silently truncating via cast, which would write a
-    // wrong size to the header while still appending all bytes.
-    if (data.size() > 0xFFFF) {
+    // The CMSG header's 16-bit size field counts the opcode too, so the largest
+    // payload it can describe is 0xFFFF - 4 and not 0xFFFF.
+    //
+    // The four sizes in between passed this guard and then wrapped: 65532 bytes
+    // of payload made a size field of 0, the full payload was appended anyway,
+    // and the server read the next header out of the middle of it. A desynced
+    // TCP stream is not a dropped packet - it is every packet after this one.
+    static constexpr size_t kMaxCmsgPayload = 0xFFFFu - 4u;
+    if (data.size() > kMaxCmsgPayload) {
         LOG_ERROR("Packet payload too large for CMSG header: ", data.size(),
                   " bytes (opcode=0x", std::hex, opcode, std::dec, "). Dropping.");
         return;
@@ -323,7 +329,8 @@ void WorldSocket::send(const Packet& packet) {
                      " facial=", static_cast<int>(facial), " outfit=", static_cast<int>(outfit),
                      " payloadLen=", payloadLen);
             // Persist to disk so we can compare TX vs DB even if the console scrolls away.
-            std::ofstream f("charcreate_payload.log", std::ios::app);
+            const std::string logPath = core::diagnosticFilePath("charcreate_payload.log");
+            std::ofstream f(logPath, std::ios::app);
             if (f.is_open()) {
                 f << "name='" << name << "'"
                   << " race=" << static_cast<int>(race)
@@ -410,13 +417,28 @@ void WorldSocket::send(const Packet& packet) {
     // can return fewer bytes than requested when the kernel buffer is full.
     // Without a retry loop, the server receives a truncated packet and the
     // TCP stream permanently desyncs (next header lands mid-payload).
+    // Bounded, because this runs with ioMutex_ held.
+    //
+    // The retry on EWOULDBLOCK used to be unconditional. A peer that stops
+    // reading fills the kernel send buffer, every retry then blocks, and this
+    // spins forever inside the lock - so the caller never returns and nothing
+    // else can take ioMutex_ either, which includes disconnect() and shutdown.
+    // A stalled server took the client with it, unkillable except by signal.
+    static constexpr auto kSendDeadline = std::chrono::seconds(5);
+    const auto sendStart = std::chrono::steady_clock::now();
+
     size_t totalSent = 0;
+    bool timedOut = false;
     while (totalSent < sendData.size()) {
         ssize_t sent = net::portableSend(sockfd, sendData.data() + totalSent,
                                           sendData.size() - totalSent);
         if (sent < 0) {
             int err = net::lastError();
             if (net::isWouldBlock(err)) {
+                if (std::chrono::steady_clock::now() - sendStart > kSendDeadline) {
+                    timedOut = true;
+                    break;
+                }
                 // Kernel buffer full - yield briefly and retry.
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
                 continue;
@@ -427,8 +449,16 @@ void WorldSocket::send(const Packet& packet) {
         if (sent == 0) break;  // connection closed
         totalSent += static_cast<size_t>(sent);
     }
+
     if (totalSent != sendData.size()) {
-        LOG_WARNING("Incomplete send: ", totalSent, " of ", sendData.size(), " bytes");
+        LOG_WARNING("Incomplete send: ", totalSent, " of ", sendData.size(), " bytes",
+                    timedOut ? " (peer stopped reading)" : "");
+        // A half-written packet has already desynced the stream: the server
+        // will read the next header from the middle of this payload. There is
+        // no recovering that, so the connection is closed rather than left to
+        // produce garbage. Closing is also what frees the caller.
+        LOG_ERROR("Closing the world connection: the outgoing stream is desynced");
+        closeSocketNoJoin();
     }
 }
 
@@ -596,10 +626,24 @@ void WorldSocket::pumpNetworkIO() {
                       core::toHexString(receiveBuffer.data() + receiveReadOffset_,
                                         receiveBuffer.size() - receiveReadOffset_, true));
         }
+    }
+
+    // Parse whenever anything is buffered, not only when this tick read
+    // something.
+    //
+    // tryParsePackets stops at parsedPacketsBudgetPerUpdate, so a burst that
+    // buffers more complete packets than the budget allows leaves the rest sitting
+    // in the buffer. Gating the parser on receivedAny meant those packets waited
+    // for the next byte from the peer - and when the peer is waiting on a response
+    // to one of them, that byte never comes and the connection hangs with a full
+    // buffer and an idle client. Nothing recovers it; it is not a stall that
+    // resolves, it is a deadlock.
+    if (bufferedBytes() > 0) {
         tryParsePackets();
-        if (debugLog && connected && bufferedBytes() > 0) {
+        if (core::Logger::getInstance().shouldLog(core::LogLevel::DEBUG) && connected &&
+            bufferedBytes() > 0) {
             LOG_DEBUG("World socket parse left ", bufferedBytes(),
-                     " bytes buffered (awaiting complete packet)");
+                     " bytes buffered (awaiting complete packet or budget)");
         }
     }
 
