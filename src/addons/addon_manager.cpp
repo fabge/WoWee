@@ -471,8 +471,66 @@ void AddonManager::saveEnabledState() const {
     }
 }
 
+// Where an addon's SavedVariables live: under the user's config root, never
+// beside the addon's own source.
+//
+// They used to be written to addon.basePath. For a bundled addon on macOS that
+// is Wowee.app/Contents/Resources/addons - inside the code-signed seal, which
+// the runtime layout treats as read-only - and for an addon living under the
+// extracted game data it wrote into proprietary input. It worked only because
+// those writes happened to be permitted; on a signed-and-notarized bundle, or a
+// read-only install, the first save would simply fail.
+//
+// One flat directory keyed by addon name rather than a tree mirroring the addon
+// layout: addon names are already unique across the client, and the flat form
+// is what a player can back up or delete by hand.
+std::string AddonManager::savedVariablesDir() const {
+    return core::getConfigRoot() + "/savedvariables";
+}
+
+// The path this addon's SavedVariables used to be written to, or empty if that
+// is not somewhere we would have written. Only ever read, never written.
+std::string AddonManager::legacySavedVariablesPath(const TocFile& addon,
+                                                   const std::string& leaf) const {
+    if (addon.basePath.empty()) return "";
+    if (auto path = core::safeChildPath(addon.basePath, leaf)) return *path;
+    return "";
+}
+
+// Move a SavedVariables file left in an addon directory by an older build into
+// the config root, once, on the way to reading it.
+//
+// Without this every player silently loses their addon settings the first time
+// they run a build with the new location - the file is still on disk, just
+// never looked at again. Copied and then removed rather than renamed, because
+// the two paths are frequently on different filesystems.
+void AddonManager::migrateLegacySavedVariables(const std::string& legacyPath,
+                                               const std::string& currentPath) const {
+    if (legacyPath.empty() || currentPath.empty()) return;
+
+    std::error_code ec;
+    if (fs::exists(currentPath, ec)) return;      // already migrated, or freshly written
+    if (!fs::exists(legacyPath, ec)) return;      // nothing left behind
+
+    fs::create_directories(fs::path(currentPath).parent_path(), ec);
+    fs::copy_file(legacyPath, currentPath, fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        LOG_WARNING("AddonManager: could not move saved variables from ", legacyPath, " to ",
+                    currentPath, ": ", ec.message(), " - the old file is being read in place");
+        return;
+    }
+
+    std::error_code removeEc;
+    fs::remove(legacyPath, removeEc);
+    LOG_INFO("AddonManager: moved saved variables out of the addon directory: ", legacyPath,
+             " -> ", currentPath);
+}
+
 std::string AddonManager::getSavedVariablesPath(const TocFile& addon) const {
-    return addon.basePath + "/" + addon.addonName + ".lua.saved";
+    const std::string leaf = addon.addonName + ".lua.saved";
+    const std::string path = savedVariablesDir() + "/" + leaf;
+    migrateLegacySavedVariables(legacySavedVariablesPath(addon, leaf), path);
+    return path;
 }
 
 // A character name is chosen on the server and delivered in SMSG_CHAR_ENUM, so
@@ -512,11 +570,15 @@ std::string AddonManager::getSavedVariablesPerCharacterPath(const TocFile& addon
     // Composed and re-checked as a whole: setCharacterName is the guard, and
     // this is the assertion that the guard held for the name actually in hand.
     const std::string leaf = addon.addonName + "." + characterName_ + ".lua.saved";
-    if (auto path = core::safeChildPath(addon.basePath, leaf)) return *path;
+    const auto path = core::safeChildPath(savedVariablesDir(), leaf);
+    if (!path) {
+        LOG_WARNING("AddonManager: per-character SavedVariables path for ", addon.addonName,
+                    " is not a single path component; skipping it");
+        return "";
+    }
 
-    LOG_WARNING("AddonManager: per-character SavedVariables path for ", addon.addonName,
-                " is not confined to its addon directory; skipping it");
-    return "";
+    migrateLegacySavedVariables(legacySavedVariablesPath(addon, leaf), *path);
+    return *path;
 }
 
 // The client's settings, as panels in FrameXML's Interface Options.

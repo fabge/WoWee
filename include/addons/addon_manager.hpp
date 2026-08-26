@@ -104,6 +104,14 @@ private:
     bool loadAddon(const TocFile& addon);
     [[nodiscard]] std::string getSavedVariablesPath(const TocFile& addon) const;
     [[nodiscard]] std::string getSavedVariablesPerCharacterPath(const TocFile& addon) const;
+
+    // SavedVariables live under the config root, never beside the addon's own
+    // source - a bundled addon's directory is inside the macOS code-signed seal.
+    [[nodiscard]] std::string savedVariablesDir() const;
+    [[nodiscard]] std::string legacySavedVariablesPath(const TocFile& addon,
+                                                       const std::string& leaf) const;
+    void migrateLegacySavedVariables(const std::string& legacyPath,
+                                     const std::string& currentPath) const;
     std::string characterName_;
 
     // addonName -> enabled. Absent means enabled (default on).
