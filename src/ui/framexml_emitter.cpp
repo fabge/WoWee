@@ -1426,7 +1426,36 @@ EmitResult emitFrameXml(const XmlNode& rootIn) {
         } else if (node.name == "Font") {
             e.emitFont(node);
         } else if (isFrameElement(node.name)) {
+            // Each top-level frame in its own pcall.
+            //
+            // The emitter produces one chunk per XML file and runs it whole, so
+            // a Lua error while building the fourth frame of a file took the
+            // fifth through the fortieth with it - they were never created, the
+            // file reported one error, and what showed up was a half-built
+            // interface with no indication of where it stopped. That is the
+            // failure mode AGENTS.md warns about, and this is its source.
+            //
+            // Safe to wrap because every frame the emitter builds lives in
+            // __w[n], a table declared at the top of the chunk: inside the
+            // closure it is an upvalue, so nothing goes out of scope. There are
+            // no top-level locals to lose.
+            //
+            // Through geterrorhandler(), which is what FrameXML's own pcall
+            // sites use, so the error reaches the client's error handler and
+            // reads like any other Lua error rather than a new kind of message.
+            const size_t start = e.result.lua.size();
             e.emitFrame(node, "", "");
+
+            std::string segment = e.result.lua.substr(start);
+            if (!segment.empty()) {
+                e.result.lua.resize(start);
+                const std::string label = node.attrOr("name", "<unnamed " + node.name + ">");
+                e.result.lua += "do local __ok, __err = pcall(function()\n";
+                e.result.lua += segment;
+                e.result.lua += "end) if not __ok then geterrorhandler()(";
+                e.result.lua += quote(label + ": ");
+                e.result.lua += " .. tostring(__err)) end end\n";
+            }
         } else if (node.name == "Texture" || node.name == "FontString") {
             if (node.attrBool("virtual")) {
                 e.emitRegionTemplate(node, node.name == "Texture");

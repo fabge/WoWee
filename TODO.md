@@ -103,15 +103,6 @@ the concrete measure of how tangled `lua_unit_api.cpp` is with `GameHandler` —
 one file needing 32 methods of it is the god-object item below, stated in a
 number rather than an opinion.
 
-### A Lua error mid-file destroys every frame declared after it
-`src/ui/framexml_emitter.cpp:1428`, `src/addons/addon_manager.cpp:1273`
-
-The emitter produces one chunk per XML file and runs it whole. This is the
-principal source of the half-built interface `AGENTS.md` warns about. Wrapping
-each top-level frame in a `pcall` (the `__w` temporaries table is an upvalue and
-survives) turns "the rest of the file is gone" into one named failure.
-**~2 hours.**
-
 ### A partially-loaded addon still gets no initialisation event
 `src/addons/addon_manager.cpp:1330`, `:1399`
 

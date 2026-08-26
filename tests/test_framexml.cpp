@@ -740,19 +740,61 @@ TEST_CASE("Temporaries do not run into Lua's local-variable limit",
     // Lua allows 200 locals per function. A large file declares far more
     // widgets than that, and going over does not degrade - the whole chunk
     // refuses to compile. FriendsFrame and InterfaceOptionsPanels both did.
-    std::string xml = "<Ui><Frame name=\"Big\"><Layers><Layer>";
-    for (int i = 0; i < 300; ++i) {
-        xml += "<Texture name=\"$parentT" + std::to_string(i) + "\"/>";
-    }
-    xml += "</Layer></Layers></Frame></Ui>";
-    XmlNode root = parseOrFail(xml);
-    const EmitResult r = emitFrameXml(root);
+    const auto emitWithTextures = [](int count) {
+        std::string xml = "<Ui><Frame name=\"Big\"><Layers><Layer>";
+        for (int i = 0; i < count; ++i) {
+            xml += "<Texture name=\"$parentT" + std::to_string(i) + "\"/>";
+        }
+        xml += "</Layer></Layers></Frame></Ui>";
+        XmlNode root = parseOrFail(xml);
+        return emitFrameXml(root);
+    };
+    const auto countLocals = [](const std::string& lua) {
+        size_t locals = 0, at = 0;
+        while ((at = lua.find("local ", at)) != std::string::npos) { ++locals; at += 6; }
+        return locals;
+    };
+
+    const EmitResult few = emitWithTextures(3);
+    const EmitResult many = emitWithTextures(300);
 
     // One table, not three hundred locals.
-    REQUIRE(has(r.lua, "local __w = {}"));
-    size_t locals = 0, at = 0;
-    while ((at = r.lua.find("local ", at)) != std::string::npos) { ++locals; at += 6; }
-    REQUIRE(locals == 1);
+    REQUIRE(has(many.lua, "local __w = {}"));
+
+    // The real invariant, and the one worth protecting: the number of locals
+    // does not grow with the number of widgets. Asserting a literal count
+    // instead made this fail the first time a local was added for an unrelated
+    // reason - the per-frame pcall - even though that local is inside its own
+    // do...end and so is never live at the same time as another.
+    REQUIRE(countLocals(many.lua) == countLocals(few.lua));
+}
+
+TEST_CASE("A frame that fails to build does not take the rest of the file",
+          "[framexml][emit]") {
+    // The emitter produces one chunk per XML file and runs it whole, so an
+    // error building the second of forty frames used to lose the other
+    // thirty-eight - the half-built interface AGENTS.md warns about, with
+    // nothing to say where it stopped. Each top-level frame gets its own pcall.
+    XmlNode root = parseOrFail(
+        "<Ui>"
+        "<Frame name=\"First\"/>"
+        "<Frame name=\"Second\"/>"
+        "<Frame name=\"Third\"/>"
+        "</Ui>");
+    const EmitResult r = emitFrameXml(root);
+
+    // One guarded block per top-level frame, not one for the file.
+    size_t guards = 0, at = 0;
+    while ((at = r.lua.find("pcall(function()", at)) != std::string::npos) { ++guards; at += 4; }
+    REQUIRE(guards == 3);
+
+    // Each names the frame it was building, so the report says which one.
+    REQUIRE(has(r.lua, "\"First: \""));
+    REQUIRE(has(r.lua, "\"Second: \""));
+    REQUIRE(has(r.lua, "\"Third: \""));
+
+    // Through the interface's own error handler rather than a channel of ours.
+    REQUIRE(has(r.lua, "geterrorhandler()"));
 }
 
 TEST_CASE("An empty function attribute is not emitted as a handler name",
