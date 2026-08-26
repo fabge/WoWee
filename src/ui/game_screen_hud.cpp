@@ -1,4 +1,5 @@
 #include "ui/game_screen.hpp"
+#include "core/cvar_store.hpp"
 #include "core/config_paths.hpp"
 #include "addons/lua_api_registrations.hpp"
 #include "ui/ui_texture_load.hpp"
@@ -890,7 +891,7 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
     // Nearest first, so the plate that gets moved is the one further away. The
     // list is sorted by distance below for that reason and no other.
     const bool allowPlateOverlap =
-        addons::storedCVarValue("nameplateAllowOverlap", "0") != "0";
+        core::storedCVarValue("nameplateAllowOverlap", "0") != "0";
     static thread_local std::vector<ui::PlateBox> placedPlates;
     placedPlates.clear();
     if (!allowPlateOverlap) {
@@ -962,7 +963,7 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
         if (isTotem && !isTarget) {
             const char* totemPlateCVar = isHostile ? "nameplateShowEnemyTotems"
                                                    : "nameplateShowFriendlyTotems";
-            if (addons::storedCVarValue(totemPlateCVar, isHostile ? "1" : "0") == "0") continue;
+            if (core::storedCVarValue(totemPlateCVar, isHostile ? "1" : "0") == "0") continue;
         }
 
         // The same question for the other two summon categories. Every one of
@@ -973,7 +974,7 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
                 isPet ? (isHostile ? "nameplateShowEnemyPets" : "nameplateShowFriendlyPets")
                       : (isHostile ? "nameplateShowEnemyGuardians"
                                    : "nameplateShowFriendlyGuardians");
-            if (addons::storedCVarValue(platecVar, "1") == "0") continue;
+            if (core::storedCVarValue(platecVar, "1") == "0") continue;
         }
 
         // For corpses (dead units), only show a minimal grey nameplate if selected
@@ -1041,7 +1042,7 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
             // setting is honoured when it is asked for.
             const uint8_t classId = entityClassId(entityPtr.get());
             if (classId != 0 &&
-                addons::storedCVarValue("showClassColorInNameplate", "0") != "0") {
+                core::storedCVarValue("showClassColorInNameplate", "0") != "0") {
                 barColor = classColorU32(classId, A(200));
                 bgColor  = classColorU32(classId, A(90));
             } else {
@@ -1139,7 +1140,7 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
             // target keeps its bar for the same reason it keeps its plate.
             const bool castBarAllowed =
                 isTarget || !isHostile ||
-                addons::storedCVarValue("showVKeyCastBar", "1") != "0";
+                core::storedCVarValue("showVKeyCastBar", "1") != "0";
             const auto* cs = castBarAllowed ? gameHandler.getUnitCastState(guid) : nullptr;
             if (cs && cs->casting && cs->timeTotal > 0.0f) {
                 float castPct = std::clamp((cs->timeTotal - cs->timeRemaining) / cs->timeTotal, 0.0f, 1.0f);
@@ -1335,7 +1336,7 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
                             ? "unitNameNonCombatCreatureName"   // critters
                             : "unitNameNPC");
         const bool showThisName =
-            isTarget || addons::storedCVarValue(nameCVar, "1") != "0";
+            isTarget || core::storedCVarValue(nameCVar, "1") != "0";
 
         uint32_t level = unit->getLevel();
         const std::string& unitName = unit->getName();
@@ -1347,7 +1348,7 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
         // formats to nothing and the plain name is kept.
         std::string titledName;
         if (isPlayer && !unitName.empty() &&
-            addons::storedCVarValue("unitNamePlayerPvPTitle", "1") != "0") {
+            core::storedCVarValue("unitNamePlayerPvPTitle", "1") != "0") {
             const auto& fields = entityPtr->getFields();
             auto tit = fields.find(game::fieldIndex(game::UF::PLAYER_CHOSEN_TITLE));
             if (tit != fields.end() && tit->second != 0) {
@@ -1401,7 +1402,7 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
             // The NPC subtitle below is a different thing wearing the same
             // angle brackets, and is not what this control names.
             uint32_t guildId =
-                addons::storedCVarValue("unitNamePlayerGuild", "1") != "0"
+                core::storedCVarValue("unitNamePlayerGuild", "1") != "0"
                     ? gameHandler.getEntityGuildId(guid) : 0;
             if (guildId != 0) {
                 const std::string& gn = gameHandler.lookupGuildName(guildId);
@@ -1541,7 +1542,7 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
     // click target. The loop skips the player outright for that reason, and
     // threading an exception through every draw in it to reach one label would
     // cost more than the label is worth.
-    if (addons::storedCVarValue("unitNameOwn", "0") != "0") {
+    if (core::storedCVarValue("unitNameOwn", "0") != "0") {
         auto self = gameHandler.getEntityManager().getEntity(playerGuid);
         if (self && self->isUnit()) {
             const std::string& ownName = static_cast<game::Unit*>(self.get())->getName();

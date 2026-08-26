@@ -1,4 +1,5 @@
 #include "game/inventory_handler.hpp"
+#include "core/cvar_store.hpp"
 #include "addons/lua_api_registrations.hpp"
 #include "game/spell_classification.hpp"
 #include "game/item_text.hpp"
@@ -411,7 +412,7 @@ void InventoryHandler::registerOpcodes(DispatchTable& table) {
             // what the setting is named after. Default on: it is what this
             // client has always printed, and a player who does not want it
             // has now got the switch that says so.
-            if (addons::storedCVarValue("showLootSpam", "1") != "0") {
+            if (core::storedCVarValue("showLootSpam", "1") != "0") {
                 owner_.addSystemChatMessage("You receive loot: " + itemLink2 + ".");
             }
         }
@@ -3720,7 +3721,7 @@ void InventoryHandler::handleTradeStatus(network::Packet& packet) {
             // request opened a window whatever it said. Refused before the
             // window rather than after, and said in chat, because a request
             // silently swallowed reads as the other player being ignored.
-            if (addons::storedCVarValue("blockTrades", "0") != "0") {
+            if (core::storedCVarValue("blockTrades", "0") != "0") {
                 owner_.addSystemChatMessage(
                     "Declined a trade from " + tradePeerName_ + " (trades are blocked).");
                 declineTradeRequest();

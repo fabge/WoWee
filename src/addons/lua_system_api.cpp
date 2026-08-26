@@ -1,6 +1,7 @@
 // lua_system_api.cpp - System, time, sound, locale, map, addons, instances, and utilities Lua API bindings.
 // Extracted from lua_engine.cpp as part of §5.1 (Tame LuaEngine).
 #include <array>
+#include "core/cvar_store.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -497,79 +498,9 @@ static int lua_GetPlayerFacing(lua_State* L) {
     return 1;
 }
 
-// GetCVar(name) → value string (stub for most, real for a few)
-/// CVars the player or the interface has actually set, which win over the
-/// defaults below.
-///
-/// SetCVar was a no-op, so every option the interface changed reverted the
-/// instant it was read back: ticking a box in the interface options did
-/// nothing, and any code that writes a CVar and then reads it to confirm - of
-/// which FrameXML has a fair amount - saw its own write disappear.
-static std::unordered_map<std::string, std::string>& cvarStore() {
-    static std::unordered_map<std::string, std::string> store;
-    return store;
-}
 
-/// Where the CVars live between runs.
-///
-/// Its own file rather than settings.cfg, which this client's own panel writes
-/// whole from its own fields: a CVar written into that file would be dropped
-/// the next time that panel saved.
-static std::string cvarStorePath() {
-    return core::getConfigRoot() + "/cvars.cfg";
-}
 
-/// Read the stored CVars back. Called once, before the interface loads,
-/// because a panel reads its checkbox out of the CVar as it is built and
-/// anything arriving later leaves the box disagreeing with the setting.
-///
-/// Storing them in memory alone made every interface option last exactly one
-/// session. That is not a small thing: the equipment manager is off until its
-/// box is ticked, the box writes equipmentManager, and the paperdoll reads that
-/// on VARIABLES_LOADED - so it came back off on every login, and so did every
-/// other option the player had set.
-static void loadStoredCVars() {
-    std::ifstream in(cvarStorePath());
-    if (!in.is_open()) return;
-    std::string line;
-    size_t loaded = 0;
-    while (std::getline(in, line)) {
-        const size_t eq = line.find('=');
-        if (eq == std::string::npos || eq == 0) continue;
-        std::string key = line.substr(0, eq);
-        toLowerInPlace(key);
-        cvarStore()[key] = line.substr(eq + 1);
-        ++loaded;
-    }
-    LOG_INFO("CVars: loaded ", loaded, " from ", cvarStorePath());
-}
 
-/// Write them back. Called on every change rather than at shutdown: the file is
-/// a few hundred bytes, and a setting that survives only a clean exit is not
-/// one a player can rely on.
-static void saveStoredCVars() {
-    const std::string path = cvarStorePath();
-    std::error_code ec;
-    std::filesystem::create_directories(
-        std::filesystem::path(path).parent_path(), ec);
-    std::ofstream out(path);
-    if (!out.is_open()) {
-        LOG_WARNING("Could not save CVars to ", path);
-        return;
-    }
-    // Sorted, so a diff of the file reads as a change of settings rather than
-    // as the hash order moving underneath it.
-    std::vector<const std::pair<const std::string, std::string>*> rows;
-    rows.reserve(cvarStore().size());
-    for (const auto& kv : cvarStore()) rows.push_back(&kv);
-    std::sort(rows.begin(), rows.end(),
-              [](const auto* a, const auto* b) { return a->first < b->first; });
-    for (const auto* kv : rows) {
-        // A value with a newline in it would come back as two broken lines.
-        if (kv->second.find('\n') != std::string::npos) continue;
-        out << kv->first << '=' << kv->second << '\n';
-    }
-}
 
 /// Tutorials the player has already been shown.
 ///
@@ -585,7 +516,7 @@ static void saveStoredCVars() {
 static const char* kTutorialCVar = "wowee_tutorialsFlagged";
 
 static bool tutorialFlagged(int id) {
-    const std::string& all = cvarStore()[kTutorialCVar];
+    const std::string& all = core::cvarStore()[kTutorialCVar];
     const std::string needle = std::to_string(id);
     size_t at = 0;
     while ((at = all.find(needle, at)) != std::string::npos) {
@@ -605,7 +536,7 @@ static bool tutorialFlagged(int id) {
 /// rather than kept sorted, and a file hand-edited into any order still reads.
 static std::vector<int> tutorialIds() {
     std::vector<int> ids;
-    const std::string& all = cvarStore()[kTutorialCVar];
+    const std::string& all = core::cvarStore()[kTutorialCVar];
     size_t at = 0;
     while (at < all.size()) {
         const size_t comma = all.find(',', at);
@@ -623,10 +554,10 @@ static std::vector<int> tutorialIds() {
 
 static void flagTutorial(int id) {
     if (id <= 0 || tutorialFlagged(id)) return;
-    std::string& all = cvarStore()[kTutorialCVar];
+    std::string& all = core::cvarStore()[kTutorialCVar];
     if (!all.empty()) all += ',';
     all += std::to_string(id);
-    saveStoredCVars();
+    core::saveStoredCVars();
 }
 
 /// A sound CVar's value, or the stock client's default for it.
@@ -636,7 +567,7 @@ static void flagTutorial(int id) {
 /// no default it reads nil, the `if (volume)` guard below it fails, and the
 /// volume keys do nothing at all rather than anything visible.
 static float soundCVar(const char* key, float fallback) {
-    if (auto it = cvarStore().find(key); it != cvarStore().end()) {
+    if (auto it = core::cvarStore().find(key); it != core::cvarStore().end()) {
         try {
             return std::stof(it->second);
         } catch (const std::exception&) {
@@ -1220,7 +1151,7 @@ constexpr ClientCVarBinding kClientCVars[] = {
 /// order GetCVar answers in.
 std::string cvarValueOr(lua_State* L, const char* name, const char* fallback) {
     (void)L;
-    if (auto it = cvarStore().find(name); it != cvarStore().end()) return it->second;
+    if (auto it = core::cvarStore().find(name); it != core::cvarStore().end()) return it->second;
     return fallback;
 }
 
@@ -1305,7 +1236,7 @@ static int lua_GetCVar(lua_State* L) {
         // it - and fixing only the default would leave those players with the
         // 0 in front of every line for good. The word for off is "none"; a
         // digit is a strftime format that prints itself.
-        if (auto it = cvarStore().find(n); it != cvarStore().end() &&
+        if (auto it = core::cvarStore().find(n); it != core::cvarStore().end() &&
             (it->second.empty() || it->second == "0")) {
             lua_pushstring(L, "none");
             return 1;
@@ -1338,7 +1269,7 @@ static int lua_GetCVar(lua_State* L) {
             }
         }
     }
-    if (auto it = cvarStore().find(n); it != cvarStore().end()) {
+    if (auto it = core::cvarStore().find(n); it != core::cvarStore().end()) {
         lua_pushstring(L, it->second.c_str());
         return 1;
     }
@@ -1617,32 +1548,6 @@ static void applyCVarSideEffects(lua_State* L, const std::string& key,
     }
 }
 
-/// Apply what was loaded from disk, once the services behind it exist.
-///
-/// Called after the interface is up rather than at load: the store is filled
-/// before any renderer, camera or audio manager is wired, and every branch
-/// above checks its service and would quietly do nothing that early - which is
-/// indistinguishable from the fault this exists to fix.
-std::string storedCVarValue(const std::string& key, const std::string& fallback) {
-    // The store first, for a call made after the interface is up; the file
-    // otherwise, which is the case this exists for. Reading the file twice
-    // costs nothing and keeps the two answers the same.
-    std::string wanted = key;
-    toLowerInPlace(wanted);
-    if (auto it = cvarStore().find(wanted); it != cvarStore().end()) return it->second;
-
-    std::ifstream in(cvarStorePath());
-    if (!in.is_open()) return fallback;
-    std::string line;
-    while (std::getline(in, line)) {
-        const size_t eq = line.find('=');
-        if (eq == std::string::npos || eq == 0) continue;
-        std::string k = line.substr(0, eq);
-        toLowerInPlace(k);
-        if (k == wanted) return line.substr(eq + 1);
-    }
-    return fallback;
-}
 
 void noteClientSettingChanged(const std::string& settingKey, const std::string& value) {
     if (g_applyingCVarToSetting) return;
@@ -1653,19 +1558,19 @@ void noteClientSettingChanged(const std::string& settingKey, const std::string& 
             binding.scale != 1.0
                 ? ui::settingNumberText(std::atof(value.c_str()) / binding.scale)
                 : value;
-        auto it = cvarStore().find(binding.cvar);
-        if (it != cvarStore().end() && it->second == text) return;
-        cvarStore()[binding.cvar] = text;
-        saveStoredCVars();
+        auto it = core::cvarStore().find(binding.cvar);
+        if (it != core::cvarStore().end() && it->second == text) return;
+        core::cvarStore()[binding.cvar] = text;
+        core::saveStoredCVars();
         return;
     }
 }
 
 void applyStoredCVarSideEffects(lua_State* L) {
-    for (const auto& [key, value] : cvarStore()) {
+    for (const auto& [key, value] : core::cvarStore()) {
         applyCVarSideEffects(L, key, value);
     }
-    LOG_INFO("CVars: applied ", cvarStore().size(), " stored values");
+    LOG_INFO("CVars: applied ", core::cvarStore().size(), " stored values");
 }
 
 /// Report the controls kRemovedControlsLua could not find.
@@ -1702,12 +1607,12 @@ static int lua_SetCVar(lua_State* L) {
     // would be invisible to a read of "uiscale".
     std::string key(name);
     toLowerInPlace(key);
-    const auto existing = cvarStore().find(key);
-    const bool changed = (existing == cvarStore().end() || existing->second != value);
-    cvarStore()[key] = value;
+    const auto existing = core::cvarStore().find(key);
+    const bool changed = (existing == core::cvarStore().end() || existing->second != value);
+    core::cvarStore()[key] = value;
     // Only on a real change. A slider drag calls SetCVar on every frame it
     // moves, and most of those calls set the value it already has.
-    if (changed) saveStoredCVars();
+    if (changed) core::saveStoredCVars();
     applyCVarSideEffects(L, key, value);
     // Announced, because nine frames listen for it - the options panels redraw
     // themselves from this rather than from the click that caused it.
@@ -4808,7 +4713,7 @@ static std::vector<uint32_t>& taxiRouteShown() {
 void registerSystemLuaAPI(lua_State* L) {
     // Before any binding is registered, so the first GetCVar of the run - which
     // happens while a panel is being built - sees what the player last set.
-    loadStoredCVars();
+    core::loadStoredCVars();
     loadInterfaceState();
     static const struct { const char* name; lua_CFunction func; } api[] = {
                 {"Screenshot",               lua_Screenshot},
@@ -6039,7 +5944,7 @@ void registerSystemLuaAPI(lua_State* L) {
                 {"IsThreatWarningEnabled", [](lua_State* L) -> int {
             auto* gh = getGameHandler(L);
             int setting = 3;
-            if (auto it = cvarStore().find("threatwarning"); it != cvarStore().end()) {
+            if (auto it = core::cvarStore().find("threatwarning"); it != core::cvarStore().end()) {
                 try { setting = std::stoi(it->second); } catch (const std::exception&) {}
             }
             bool on = false;
@@ -6529,8 +6434,8 @@ void registerSystemLuaAPI(lua_State* L) {
                 {"CanResetTutorials",           lua_ReturnTrue},
                 {"ResetTutorials", [](lua_State* L) -> int {
             (void)L;
-            cvarStore()[kTutorialCVar].clear();
-            saveStoredCVars();
+            core::cvarStore()[kTutorialCVar].clear();
+            core::saveStoredCVars();
             return 0;
         }},
                 // A Mac-only mouse this build does not look for.

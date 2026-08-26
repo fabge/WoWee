@@ -16,24 +16,11 @@ validation policy, including which checks are cheap and which are not.
 
 ## Tier 1 — correctness
 
-### Pet state is not cleared on a character switch
-`src/game/spell_handler.cpp` — `resetAllState`
-
-Noticed while moving the pet state there on 2026-08-26, and deliberately not
-changed in that commit: `GameHandler` never cleared `petSpellList_`,
-`petAutocastSpells_`, `petActionSlots_`, `petCommand_` or `petReact_` on a
-character switch either, so the move preserved the behaviour rather than
-quietly altering it. The question is whether a hunter's pet spell list should
-survive logging into a different character. Almost certainly not - every other
-per-character cache is cleared there. **Reproduce first**, on two characters
-with pets, then clear `pet_` in `resetAllState` with a regression test.
-**~1 hour.**
-
 Bounded, each with a stated failure mode. A regression test is expected with
 each fix; every one of these is testable headlessly.
 
-One item, found on 2026-08-26 and not yet reproduced. The eight that stood here
-on 2026-08-25 and the three that
+Empty. The pet-state item found on 2026-08-26 was fixed the same day with a
+regression test. The eight that stood here on 2026-08-25 and the three that
 outlived them - SavedVariables written beside the addon's own source, the crash
 handler's fixed `/tmp` path, and quest objective lines that named no creature -
 were all fixed on 2026-08-26 and are in `log.md`. The three were still listed
@@ -47,52 +34,42 @@ None of these is urgent. Each taxes every future change in its area.
 ### Breaking the cycles between the subsystem libraries
 `CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block
 
-**18 cycles on 2026-08-26, 13 now.** `wowee_base` took the logger, the memory
-monitor and the writable-path rules out of `core`, which is all that
-`src/auth`, `src/audio` and `src/pipeline` were reaching into `core` for; and
-`stb_image`'s implementation moved from `src/rendering/loading_screen.cpp` to
-`src/pipeline/stb_image_impl.cpp`, where the format parsers are. `pipeline` is
-now acyclic outright, and `wowee_base` has zero out-edges.
+**18 cycles on 2026-08-26, 10 now**, and four libraries are acyclic outright:
+`wowee_base`, `wowee_takeover`, `wowee_math`, `wowee_pipeline`. Every fix so
+far was a file in the wrong library, not a call in the wrong place - the
+logger, the memory monitor, the writable-path rules, the app clock, the CVar
+store, `stb_image`'s implementation, and the takeover policy.
 
-The point of getting to zero is that the libraries can then be declared with
+The point of reaching zero is that the libraries can then be declared with
 their real edges instead of as a complete graph, and a test can link a genuine
-subset. Ranked by the weakest side, which is what to fix next:
+subset. What is left, by weakest side:
 
 | cycle | weak side | what it is |
 | --- | --- | --- |
-| `game` → `addons` | **1** | `addons::storedCVarValue` |
-| `rendering` → `addons` | **1** | the same symbol |
-| `game` → `core` | 2 | |
-| `rendering` → `ui` | 2 | `frameXmlOwnsMouse`, `interfaceTakingTypedInput` |
-| `addons` → `core` | 3 | |
-| `game` → `ui` | 3 | `frameXmlOwns`, `frameXmlNoteWorldEntry`, `frameXmlRequestCheck` |
+| `game` → `core` | **1** | `core::Application::instance` |
+| `rendering` → `ui` | **1** | `ui::interfaceTakingTypedInput` |
+| `addons` → `core` | 2 | `core::Input::getInstance`, `setBindingCommandHeld` |
 | `network` → `game` | 3 | `OpcodeTable`, `getActiveOpcodeTable` |
 | `audio` → `game` | 4 | `ZoneManager` |
 | `rendering` → `core` | 7 | |
 | `network` → `auth` | 8 | genuinely mutual |
 | `rendering` → `game` | 8 | |
-| `ui` → `addons` | 10 | |
-| `core` → `ui` | 25 | |
+| `ui` → `addons` | 9 | |
+| `core` → `ui` | 24 | |
 
-Two are worth doing next and are bigger than they look:
+The two single-symbol ones are the interesting pair, and neither is a move:
 
-**`storedCVarValue`** kills two cycles by itself, but it is not a move: the
-function checks an in-memory CVar store before falling back to the file, and
-the store lives with the Lua CVar API. The file-reading half belongs beside
-`config_paths` in `wowee_base` and the store half stays in `addons` - but the
-two answers have to be shown to agree first, since `game` and `rendering` call
-it before the interface exists and the store is empty then.
+- **`Application::instance`** is `game` reaching into the composition root
+  through a global. The fix is injection, not relocation - `AGENTS.md` says
+  services are hand-wired downward as structs of pointers rather than reached
+  back up through singletons, and this is the exception to that rule.
+- **`interfaceTakingTypedInput`** lives in `src/ui/keybinding_manager.cpp`,
+  which is far too big to move for one symbol. Either the query belongs in
+  `wowee_takeover` beside the rest of the ownership policy, or the camera
+  controller should be told rather than asking.
 
-**`framexml_takeover`** kills two more. It is 727 self-contained lines whose
-only dependency is the logger, so it moves easily - the question is where. It
-is not a base utility, it is the policy deciding which interface owns an
-element, consulted by `ui`, `game` and `rendering` alike. Probably its own
-small library rather than something bolted onto `wowee_base`, whose value is
-that it depends on nothing.
-
-Do not replace the complete graph with a hand-written edge list until these are
-gone: the measurement is macOS-only, a missing edge is a link failure on GNU
-ld, and CI builds five platforms. **~half a day for the two above.**
+`Input::getInstance` is the same singleton shape as `Application::instance`.
+**~half a day for the three singletons, and it is a design change each time.**
 
 ### 147 translation units the client links for nothing
 `CMakeLists.txt` — `WOWEE_SRC_PIPELINE`

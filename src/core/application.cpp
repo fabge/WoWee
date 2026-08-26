@@ -1,4 +1,5 @@
 #include "core/application.hpp"
+#include "core/cvar_store.hpp"
 #include "core/env_flag.hpp"
 #include "core/character_paths.hpp"
 #include "ui/settings_schema.hpp"
@@ -1451,7 +1452,7 @@ void Application::run() {
                     const bool focused =
                         (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED);
                     const bool playInBackground =
-                        addons::storedCVarValue("Sound_EnableSoundWhenGameIsInBG", "0") != "0";
+                        core::storedCVarValue("Sound_EnableSoundWhenGameIsInBG", "0") != "0";
                     audio::AudioEngine::instance().setSuspended(!focused && !playInBackground);
                     if (!focused) {
                         Input::getInstance().clearBindingCommands();

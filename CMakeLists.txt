@@ -614,7 +614,6 @@ set(WOWEE_SRC_CORE
     src/core/ui_screen_callback_handler.cpp
     src/core/window.cpp
     src/core/input.cpp
-    src/core/app_clock.cpp
 )
 
 set(WOWEE_SRC_NETWORK
@@ -967,7 +966,6 @@ set(WOWEE_SRC_UI
     src/ui/widget_tree.cpp
     src/ui/xml_parser.cpp
     src/ui/framexml_emitter.cpp
-    src/ui/framexml_takeover.cpp
     src/ui/unit_portrait.cpp
     src/ui/interface_fonts.cpp
     src/ui/text_edit.cpp
@@ -1252,12 +1250,30 @@ add_library(wowee_common INTERFACE)
 # reachable from every subsystem at once, which is the property that makes the
 # rest of the graph describable.
 add_library(wowee_base STATIC
+    src/core/app_clock.cpp
     src/core/logger.cpp
     src/core/memory_monitor.cpp
     src/core/config_paths.cpp
+    src/core/cvar_store.cpp
 )
 target_link_libraries(wowee_base PUBLIC wowee_common)
 set_target_properties(wowee_base PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---- wowee_takeover: which interface owns each element ----
+#
+# Not a subsystem and not a base utility. It is the policy deciding, per UI
+# element, whether this client or FrameXML owns it, and it is consulted from
+# src/ui, src/addons, src/game, src/rendering and src/core alike - five of the
+# ten libraries. Left in src/ui it was the whole of the rendering -> ui and
+# game -> ui back-edges, two and three symbols against seventy-eight and two
+# hundred and eleven the other way.
+#
+# Its own target rather than something added to wowee_base: base's value is
+# that it depends on nothing and means one thing, and interface policy is not
+# a logging facade.
+add_library(wowee_takeover STATIC src/ui/framexml_takeover.cpp)
+target_link_libraries(wowee_takeover PUBLIC wowee_common wowee_base)
+set_target_properties(wowee_takeover PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---- Subsystem libraries ----
 #
@@ -1275,7 +1291,7 @@ set_target_properties(wowee_base PROPERTIES POSITION_INDEPENDENT_CODE ON)
 foreach(_sub math core network auth audio pipeline rendering game ui addons)
     string(TOUPPER "${_sub}" _SUB)
     add_library(wowee_${_sub} STATIC ${WOWEE_SRC_${_SUB}})
-    target_link_libraries(wowee_${_sub} PUBLIC wowee_common wowee_base)
+    target_link_libraries(wowee_${_sub} PUBLIC wowee_common wowee_base wowee_takeover)
     set_target_properties(wowee_${_sub} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endforeach()
 

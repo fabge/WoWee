@@ -20,14 +20,6 @@ void registerSystemLuaAPI(lua_State* L);
 /// exist. See applyCVarSideEffects.
 void applyStoredCVarSideEffects(lua_State* L);
 
-/// One CVar's saved value, read straight from the file.
-///
-/// For the settings that have to be known before the Lua state exists - the
-/// shadow map's size is chosen when the per-frame resources are built, which
-/// is long before the interface loads. Returns the fallback when the file has
-/// no such key, so a fresh install gets the default rather than nothing.
-std::string storedCVarValue(const std::string& key, const std::string& fallback);
-
 /// Tell the CVar store that a setting it drives has been changed elsewhere.
 ///
 /// Six settings are driven by a Blizzard control through kClientCVars, and

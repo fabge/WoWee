@@ -1,4 +1,5 @@
 #include "rendering/renderer.hpp"
+#include "core/cvar_store.hpp"
 #include "core/config_paths.hpp"
 
 #include <fstream>
@@ -601,7 +602,7 @@ bool Renderer::initialize(core::Window* win) {
         constexpr const char* kDefaultShadowLevel = "2";   // 2048, 32 MB the pair
 #endif
         const int level = std::clamp(
-            std::atoi(addons::storedCVarValue("extShadowQuality", kDefaultShadowLevel).c_str()),
+            std::atoi(core::storedCVarValue("extShadowQuality", kDefaultShadowLevel).c_str()),
             0, 4);
         setShadowMapSize(kShadowSideForLevel[level]);
     }

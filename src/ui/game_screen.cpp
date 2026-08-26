@@ -1,4 +1,5 @@
 #include "ui/graphics_choices.hpp"
+#include "core/cvar_store.hpp"
 #include "ui/game_screen.hpp"
 #include "addons/lua_api_registrations.hpp"
 #include "ui/escape_action.hpp"
@@ -652,7 +653,7 @@ void GameScreen::render(game::GameHandler& gameHandler) {
     // unread; this is the one that turns the whole thing off, which is what
     // somebody who does not want numbers over the world actually reaches for.
     if (!frameXmlDrawsCombatText() &&
-        addons::storedCVarValue("enableCombatText", "1") != "0") {
+        core::storedCVarValue("enableCombatText", "1") != "0") {
         combatUI_.renderCombatText(gameHandler);
     }
     // No target frame of ours to park under any more, so the meter takes its
@@ -1738,7 +1739,7 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
                     } else {
                         gameHandler.setTarget(closestGuid);
                     }
-                } else if (addons::storedCVarValue("deselectOnClick", "1") != "0") {
+                } else if (core::storedCVarValue("deselectOnClick", "1") != "0") {
                     // Clicked empty space - deselect current target, unless the
                     // player asked otherwise. The panel calls this Sticky
                     // Targeting and ticks it to mean "do not", which is why the

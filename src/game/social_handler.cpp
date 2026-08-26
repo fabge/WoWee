@@ -1,4 +1,5 @@
 #include "game/group_defines.hpp"
+#include "core/cvar_store.hpp"
 #include "core/local_time.hpp"
 #include "game/item_text.hpp"
 #include "game/social_handler.hpp"
@@ -2558,12 +2559,12 @@ void SocialHandler::handleGuildEvent(network::Packet& packet) {
             // suppressed - the roster's idea of who is online is not the
             // player's idea of what is worth reading.
             if (data.numStrings >= 1 && guildMemberOnlineTransition(data.strings[0], true) &&
-                addons::storedCVarValue("guildMemberNotify", "1") != "0")
+                core::storedCVarValue("guildMemberNotify", "1") != "0")
                 msg = "[Guild] " + data.strings[0] + " has come online.";
             break;
         case GuildEvent::SIGNED_OFF:
             if (data.numStrings >= 1 && guildMemberOnlineTransition(data.strings[0], false) &&
-                addons::storedCVarValue("guildMemberNotify", "1") != "0")
+                core::storedCVarValue("guildMemberNotify", "1") != "0")
                 msg = "[Guild] " + data.strings[0] + " has gone offline.";
             break;
         default:

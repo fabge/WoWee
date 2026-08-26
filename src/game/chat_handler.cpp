@@ -1,4 +1,5 @@
 #include "game/chat_handler.hpp"
+#include "core/cvar_store.hpp"
 #include "addons/lua_api_registrations.hpp"
 #include "game/chat_filters.hpp"
 #include "game/text_tokens.hpp"
@@ -302,7 +303,7 @@ void ChatHandler::sendChatMessage(ChatType type, const std::string& message, con
     // it is the one where the player is visibly present and being answered
     // for by a machine.
     if (owner_.afkStatusRef() &&
-        addons::storedCVarValue("autoClearAFK", "1") != "0") {
+        core::storedCVarValue("autoClearAFK", "1") != "0") {
         toggleAfk("");
     }
 
@@ -709,7 +710,7 @@ void ChatHandler::deliverChatMessage(MessageChatData data, bool alreadyWaited) {
 
     if (fromAPlayer) {
         // Disable Spam Filter, so the CVar being on means filtering happens.
-        if (addons::storedCVarValue("spamFilter", "1") != "0") {
+        if (core::storedCVarValue("spamFilter", "1") != "0") {
             const double now = std::chrono::duration<double>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
             if (repeatsRecentLine(recentChatLines_, data.senderGuid, data.message, now)) {
@@ -732,7 +733,7 @@ void ChatHandler::deliverChatMessage(MessageChatData data, bool alreadyWaited) {
         // whichever way it was set. Off unless asked for, as it ships, since a
         // five-person group talking is a lot of text over the fight.
         if (!bubble && (data.type == ChatType::PARTY || data.type == ChatType::RAID)) {
-            bubble = addons::storedCVarValue("chatBubblesParty", "0") != "0";
+            bubble = core::storedCVarValue("chatBubblesParty", "0") != "0";
         }
         if (bubble) {
             bool isYell = (data.type == ChatType::YELL || data.type == ChatType::MONSTER_YELL);
@@ -1147,7 +1148,7 @@ void ChatHandler::autoJoinDefaultChannels() {
     // At world entry, like the rest of this function: the other five are
     // applied here too, so a channel joined by ticking a box arrives on the
     // next login, and this behaves the same way rather than differently.
-    if (addons::storedCVarValue("guildRecruitmentChannel", "0") != "0") {
+    if (core::storedCVarValue("guildRecruitmentChannel", "0") != "0") {
         joinChannel("GuildRecruitment");
     }
 }

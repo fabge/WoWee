@@ -5,6 +5,7 @@
 // battleground score HUD, combat log, threat window, BG scoreboard.
 // ============================================================
 #include "core/local_time.hpp"
+#include "core/cvar_store.hpp"
 #include "ui/combat_ui.hpp"
 #include "addons/lua_api_registrations.hpp"
 #include "ui/buff_bar_layout.hpp"
@@ -223,11 +224,11 @@ void CombatUI::renderCombatText(game::GameHandler& gameHandler) {
     // Read once for the frame rather than per entry: a busy fight puts dozens
     // through this loop and the answer cannot change inside it.
     const bool showDamage =
-        addons::storedCVarValue("fctDamage", "1") != "0";
+        core::storedCVarValue("fctDamage", "1") != "0";
     const bool showHealing =
-        addons::storedCVarValue("fctHealing", "1") != "0";
+        core::storedCVarValue("fctHealing", "1") != "0";
     const bool showMisses =
-        addons::storedCVarValue("fctDodgeParryMiss", "1") != "0";
+        core::storedCVarValue("fctDodgeParryMiss", "1") != "0";
 
     const auto wanted = [&](game::CombatTextEntry::Type t) {
         using T = game::CombatTextEntry;
