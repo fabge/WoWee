@@ -87,14 +87,21 @@ regression test because covering it means linking `quest_handler.cpp`,
 `test_quest_*` targets all test header-only pure functions, which is the shape
 of test this build graph permits and the reason the handler logic has none.
 
-### One test seam for the interface layer
-`src/addons/lua_unit_api.cpp`
+### Deleting the link stubs in `test_lua_unit_api.cpp`
+`tests/test_lua_unit_api.cpp`
 
-The cheapest first step against the above, and worth doing before it: a
-`test_lua_unit_api` target linking that one file plus lua51, calling
-`registerUnitLuaAPI(L)` against a null `GameHandler` — every binding already
-guards its handler pointer. That opens the highest-churn subsystem in the
-codebase to CTest for the first time. **~3 hours.**
+The seam itself is done — `src/addons/` reaches CTest for the first time. But
+the estimate that preceded it was wrong in an instructive way: every binding
+does guard its handler pointer, so nothing is *called*, and the linker wants
+the symbols anyway. `lua_unit_api.cpp` leaves **41 undefined symbols, 32 of
+them `GameHandler` methods**, and the test carries a stub for each.
+
+The stubs are bounded and they fail loudly (a link error, never a wrong
+result), but they are the tax the single-target build charges. They are the
+first thing to delete when subsystem libraries exist, and the number above is
+the concrete measure of how tangled `lua_unit_api.cpp` is with `GameHandler` —
+one file needing 32 methods of it is the god-object item below, stated in a
+number rather than an opinion.
 
 ### A Lua error mid-file destroys every frame declared after it
 `src/ui/framexml_emitter.cpp:1428`, `src/addons/addon_manager.cpp:1273`
