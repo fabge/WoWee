@@ -167,14 +167,47 @@ What is left, hardest last:
 Only once a handler owns its state does an interface over it mean anything.
 **~1 day per tranche.**
 
-### The render graph exists but is vestigial
-`src/rendering/renderer.cpp:900`, `:3866`
+### Spell missiles do not travel
+`src/rendering/spell_visual_system.cpp:116`, `:147`
 
-`Renderer` holds 35 hand-wired subsystems and 35 headers declare
-`recreatePipelines()` with no common interface, so an MSAA change is a literal
-60-line enumeration. `RenderGraph` was built to fix this and registers 5 passes
-while the real frame is sequenced imperatively. A new render pass means editing
-three lists and forgetting one is silent. **Multi-day.**
+Reported from play on 2026-08-26: a Shaman's Lightning Bolt is a glowing ball
+at the target with nothing between caster and target. Confirmed - it is not
+normal, and the machinery to fix it is already there.
+
+`SpellVisual.dbc`'s `MissileModel` is read only as a *fallback path* when a
+spell has no CastKit or ImpactKit, so it is used as a stationary model rather
+than launched. `playPhysicalProjectile(model, texture, start, end, duration,
+spin)` already flies arrows, bullets and thrown weapons along exactly this
+shape, and is documented as being outside the spell visual pipeline.
+
+The work is: read `MissileModel` as a missile rather than a fallback, take the
+travel speed from `Spell.dbc`'s missile speed field, launch from the caster's
+hand attachment to the target on SMSG_SPELL_GO, and fire the existing impact
+visual on arrival instead of immediately. Frostbolt, Fireball and every wand
+shot are the same gap. **~1 day, and it needs a play session to judge.**
+
+### The render graph exists but is vestigial
+`src/rendering/renderer.cpp`, `src/rendering/render_graph.cpp`
+
+One of the three lists is done as of 2026-08-26: pipeline rebuilds go through
+`PipelineRegistry` and `render_pipeline_registry_check.py` fails the build if a
+type declaring `recreatePipelines()` is never registered. That was the failure
+worth killing first - a missing entry left a pipeline bound to a destroyed
+render pass and cost a lost device, with no warning anywhere.
+
+What is left is the larger half:
+
+- `Renderer` still holds ~35 hand-wired subsystem members, referenced through
+  the frame rather than through any interface (`m2Renderer` alone appears 66
+  times), so a registry cannot touch most of it.
+- `RenderGraph` registers 5 passes while the real frame is sequenced
+  imperatively. Until the graph is authoritative it is a second description of
+  the frame that nothing checks against the first.
+- `shutdown()` is still an enumeration, and is the obvious next registry.
+
+Take `shutdown()` next: it is the same shape as the pipeline one and the sweep
+generalises. Making the graph authoritative is the multi-day piece and should
+not start until the lifecycle lists are gone. **Multi-day.**
 
 ### Remove the four Escape probes
 `src/core/application.cpp:1548`, `:1579`, `:1616`, `:1632`
