@@ -156,6 +156,7 @@ public:
     // describe. These aliases are what GameHandler's own setters still name,
     // and what the interface bindings still reach for by their old names.
     using TotemSlot = SpellHandler::TotemSlot;
+    using TempEnchantTimer = SpellHandler::TempEnchantTimer;
     using SpellModOp = SpellHandler::SpellModOp;
     static constexpr int SPELL_MOD_OP_COUNT = SpellHandler::SPELL_MOD_OP_COUNT;
     static constexpr int NUM_TOTEM_SLOTS = SpellHandler::NUM_TOTEM_SLOTS;
@@ -2402,13 +2403,10 @@ public:
     };
     const LevelUpDeltas& getLastLevelUpDeltas() const { return lastLevelUpDeltas_; }
 
-    // Temporary weapon enchant timers (from SMSG_ITEM_ENCHANT_TIME_UPDATE)
-    // Slot: 0=main-hand, 1=off-hand, 2=ranged. Value: expire time (steady_clock ms).
-    struct TempEnchantTimer {
-        uint32_t slot     = 0;
-        uint64_t expireMs = 0;   // std::chrono::steady_clock ms timestamp when it expires
-    };
-    const std::vector<TempEnchantTimer>& getTempEnchantTimers() const { return tempEnchantTimers_; }
+    const std::vector<TempEnchantTimer>& getTempEnchantTimers() const {
+        static const std::vector<TempEnchantTimer> empty;
+        return spellHandler_ ? spellHandler_->getTempEnchantTimers() : empty;
+    }
     // Returns remaining ms for a given slot, or 0 if absent/expired.
     uint32_t getTempEnchantRemainingMs(uint32_t slot) const;
     static constexpr const char* kTempEnchantSlotNames[] = { "Main Hand", "Off Hand", "Ranged" };
@@ -3401,7 +3399,6 @@ public:
     auto& pendingMoneyDeltaTimerRef() { return pendingMoneyDeltaTimer_; }
     auto& pendingAutoInspectRef() { return pendingAutoInspect_; }
     auto& pendingGameObjectLootRetriesRef() { return pendingGameObjectLootRetries_; }
-    auto& tempEnchantTimersRef() { return tempEnchantTimers_; }
     auto& localLootStateRef() { return localLootState_; }
     static const auto& getTempEnchantSlotNames() { return kTempEnchantSlotNames; }
 
@@ -4744,7 +4741,6 @@ private:
     NpcVendorCallback npcVendorCallback_;
     LevelUpCallback levelUpCallback_;
     LevelUpDeltas lastLevelUpDeltas_;
-    std::vector<TempEnchantTimer> tempEnchantTimers_;
     std::vector<BookPage> bookPages_;            // pages collected for the current readable item
     std::string bookTitle_;                      // name of the object or item those pages belong to
     uint32_t bookMaterial_ = 0;                  // PageTextMaterial.dbc id, 0 for unknown

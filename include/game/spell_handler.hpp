@@ -220,6 +220,22 @@ public:
         return pet_.autocastSpells.count(spellId) != 0;
     }
 
+    // Temporary weapon enchant timers (from SMSG_ITEM_ENCHANT_TIME_UPDATE)
+    // Slot: 0=main-hand, 1=off-hand, 2=ranged. Value: expire time (steady_clock ms).
+    struct TempEnchantTimer {
+        uint32_t slot     = 0;
+        uint64_t expireMs = 0;   // std::chrono::steady_clock ms timestamp when it expires
+    };
+    /// Temporary weapon enchants and when they run out.
+    ///
+    /// Written here - a temporary enchant arrives as a spell effect - and read
+    /// by InventoryHandler for the item tooltip, which is why it sat on
+    /// GameHandler with an accessor for each of them.
+    [[nodiscard]] const std::vector<TempEnchantTimer>& getTempEnchantTimers() const {
+        return tempEnchantTimers_;
+    }
+    [[nodiscard]] std::vector<TempEnchantTimer>& tempEnchantTimers() { return tempEnchantTimers_; }
+
     // --- Public API (delegated from GameHandler) ---
     void castSpell(uint32_t spellId, uint64_t targetGuid = 0);
 
@@ -695,6 +711,7 @@ private:
 
     // Pet talent respec confirm dialog
     PetState pet_;
+    std::vector<TempEnchantTimer> tempEnchantTimers_;
     bool petUnlearnPending_ = false;
     uint32_t petUnlearnCost_ = 0;
 

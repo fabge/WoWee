@@ -5037,17 +5037,17 @@ void SpellHandler::handleItemEnchantTimeUpdate(network::Packet& packet) {
 
     if (durationSec == 0) {
         // Enchant expired / removed - erase the slot entry
-        owner_.tempEnchantTimersRef().erase(
-            std::remove_if(owner_.tempEnchantTimersRef().begin(), owner_.tempEnchantTimersRef().end(),
+        tempEnchantTimers_.erase(
+            std::remove_if(tempEnchantTimers_.begin(), tempEnchantTimers_.end(),
                            [enchSlot](const GameHandler::TempEnchantTimer& t) { return t.slot == enchSlot; }),
-            owner_.tempEnchantTimersRef().end());
+            tempEnchantTimers_.end());
     } else {
         uint64_t expireMs = nowMs + static_cast<uint64_t>(durationSec) * 1000u;
         bool found = false;
-        for (auto& t : owner_.tempEnchantTimersRef()) {
+        for (auto& t : tempEnchantTimers_) {
             if (t.slot == enchSlot) { t.expireMs = expireMs; found = true; break; }
         }
-        if (!found) owner_.tempEnchantTimersRef().push_back({.slot = enchSlot, .expireMs = expireMs});
+        if (!found) tempEnchantTimers_.push_back({.slot = enchSlot, .expireMs = expireMs});
 
         // Warn at important thresholds
         if (durationSec <= 60 && durationSec > 55) {

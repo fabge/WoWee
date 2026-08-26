@@ -5505,7 +5505,7 @@ uint32_t InventoryHandler::getTempEnchantRemainingMs(uint32_t slot) const {
     uint64_t nowMs = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
-    for (const auto& t : owner_.tempEnchantTimersRef()) {
+    for (const auto& t : owner_.getTempEnchantTimers()) {
         if (t.slot == slot) {
             return (t.expireMs > nowMs)
                 ? static_cast<uint32_t>(t.expireMs - nowMs) : 0u;
