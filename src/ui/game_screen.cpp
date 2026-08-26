@@ -7,6 +7,7 @@
 #include "ui/scene_pick.hpp"
 #include "ui/ui_colors.hpp"
 #include "ui/ui_helpers.hpp"
+#include "ui/ui_texture_load.hpp"
 #include "rendering/vk_context.hpp"
 #include "core/application.hpp"
 #include "core/appearance_composer.hpp"
@@ -121,6 +122,24 @@ void GameScreen::applySavedAntiAliasing(rendering::Renderer* renderer) {
     settingsPanel_.msaaSettingsApplied_ = true;
     if (settingsPanel_.pendingAntiAliasing <= 0) return;
     renderer->setMsaaSamples(msaaSamplesForChoice(settingsPanel_.pendingAntiAliasing));
+}
+
+void GameScreen::applySavedDisplayMode(core::Window* window) {
+    if (!window) return;
+    // Saved on every change and read back by the panel, and applied by nobody
+    // at startup: the window is built from a WindowConfig with the field left
+    // at its default, so every session began windowed however it was left.
+    //
+    // Resolution is deliberately not set with it. This is a desktop
+    // fullscreen - Window::applyResolution keeps the desktop mode for one -
+    // and the panel's width and height are not saved at all, so they still
+    // hold their 1920x1080 defaults this early and would be a guess rather
+    // than a setting.
+    //
+    // Vsync goes the same way for the same reason: saved, and the config it
+    // would be read into is written by hand above the window.
+    window->setFullscreen(settingsPanel_.pendingFullscreen);
+    window->setVsync(settingsPanel_.pendingVsync);
 }
 
 // Set UI services and propagate to child components
@@ -761,10 +780,11 @@ void GameScreen::render(game::GameHandler& gameHandler) {
                 bool isFist = (mh.item.subclassName == "Fist Weapon");
                 bool isDagger = (mh.item.subclassName == "Dagger");
                 bool hasOffHand = !oh.empty() &&
-                    (oh.item.inventoryType == game::InvType::ONE_HAND ||
-                     oh.item.subclassName == "Fist Weapon");
+                    game::isOffHandWeaponInventoryType(oh.item.inventoryType);
                 bool hasShield = !oh.empty() && oh.item.inventoryType == game::InvType::SHIELD;
-                if (auto* ac = r->getAnimationController()) ac->setEquippedWeaponType(mh.item.inventoryType, is2HLoose, isFist, isDagger, hasOffHand, hasShield);
+                bool offHandIsFist = hasOffHand && oh.item.subclassName == "Fist Weapon";
+                bool offHandIsDagger = hasOffHand && oh.item.subclassName == "Dagger";
+                if (auto* ac = r->getAnimationController()) ac->setEquippedWeaponType(mh.item.inventoryType, is2HLoose, isFist, isDagger, hasOffHand, hasShield, offHandIsFist, offHandIsDagger);
             }
             // Detect ranged weapon type from RANGED slot
             const auto& rangedSlot = gameHandler.getInventory().getEquipSlot(game::EquipSlot::RANGED);
@@ -1042,6 +1062,47 @@ void GameScreen::renderPlayerInfo(game::GameHandler& gameHandler) {
     ImGui::Unindent();
 
     ImGui::End();
+}
+
+/// Interface\\Cursor\\Buy.blp under the pointer while it is over a vendor.
+///
+/// Every interactable answered the same hand cursor, so a merchant looked like
+/// a door: what a unit is for is known before it is clicked, and the real
+/// client says so with the art. The bag is the one WoW uses for a vendor.
+///
+/// False when the unit is not a vendor to trade with, and the caller falls back
+/// to the hand. A hostile is not one - it is the attack cursor's business - and
+/// neither is a corpse, which is loot.
+bool GameScreen::drawVendorCursor(game::GameHandler& gameHandler,
+                                  const ui::ScenePick& pick) {
+    const uint64_t guid = pick.closestGuid;
+    if (guid == 0 || guid == pick.hostileUnitGuid || guid == pick.deadUnitGuid) {
+        return false;
+    }
+    auto entity = gameHandler.getEntityManager().getEntity(guid);
+    if (!entity || entity->getType() != game::ObjectType::UNIT) return false;
+    auto unit = std::static_pointer_cast<game::Unit>(entity);
+    if ((unit->getNpcFlags() & game::NPC_FLAG_VENDOR) == 0) return false;
+
+    // Only a successful upload is cached, so a transient descriptor-pool
+    // failure is retried rather than leaving the cursor plain for good.
+    static VkDescriptorSet cursorTex = VK_NULL_HANDLE;
+    if (!cursorTex) {
+        cursorTex = ui::uploadUiTextureFromBlp(
+            services_.assetManager, "Interface\\Cursor\\Buy.blp", services_.window);
+    }
+    if (!cursorTex) return false;
+
+    // Drawn in place of the pointer rather than beside it, which is what a
+    // cursor is - so the arrow goes for as long as the bag is up. The tip sits
+    // at the mouse position, the way the art is authored.
+    ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+    const ImVec2 at = ImGui::GetIO().MousePos;
+    constexpr float kSize = 32.0f;
+    ImGui::GetForegroundDrawList()->AddImage(
+        (ImTextureID)(uintptr_t)cursorTex, at,
+        ImVec2(at.x + kSize, at.y + kSize));
+    return true;
 }
 
 void GameScreen::renderEntityList(game::GameHandler& gameHandler) {
@@ -1578,7 +1639,9 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
             const ui::ScenePick hoverPick =
                 ui::pickScene(gameHandler, ray, ui::ScenePickParams{});
             if (hoverPick.closestGuid != 0) {
-                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                if (!drawVendorCursor(gameHandler, hoverPick)) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                }
             }
         }
     }

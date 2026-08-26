@@ -120,6 +120,7 @@ struct WorldMapFacade::Impl {
     // that works it out is the one the first open already runs - so this
     // re-enters that rather than keeping a second copy of it here.
     bool recenterOnPlayer = false;
+    bool viewChanged = false;
 
     DataRepository data;
     ViewStateMachine viewState;
@@ -501,6 +502,17 @@ void WorldMapFacade::render(const glm::vec3& playerRenderPos,
             d.viewState.setCurrentZoneIdx(d.viewState.continentIdx());
             d.viewState.setLevel(ViewLevel::CONTINENT);
         }
+        // The view has only now become the player's zone, and the interface
+        // asked before it did.
+        //
+        // SetMapToCurrentZone runs on every open and fires WORLD_MAP_UPDATE on
+        // the spot, which is when both dropdowns rebuild themselves. All this
+        // call does here is raise the recenter flag - the move happens in this
+        // block, one frame later - so GetCurrentMapContinent answered 0 while
+        // the dropdowns were being built, and 0 is what makes watchframe's
+        // ClearAll branch run and GetMapZones(0) return an empty list. Both
+        // came up blank and stayed blank, because nothing asked again.
+        d.viewChanged = true;
     }
 
     // Process input
@@ -932,11 +944,26 @@ void WorldMapFacade::Impl::renderImGuiOverlay(const glm::vec3& playerRenderPos,
         displayW = contentSize.x;
         displayH = contentSize.y;
         // Show only the visible 1002×668 content region of the 1024×768 FBO.
-        ImGui::Image(
-            reinterpret_cast<ImTextureID>(compositor.displayDescriptorSet()),
-            ImVec2(displayW, displayH),
-            ImVec2(0, 0), ImVec2(CompositeRenderer::MAP_U_MAX,
-                                 CompositeRenderer::MAP_V_MAX));
+        //
+        // Not before the first composite has run. The image is created and
+        // never written until then, so opening the map sampled whatever its
+        // memory happened to hold for the one frame between the window
+        // appearing and the pass that fills it - which is the magenta flash.
+        // A zone change is not this case: invalidateComposite() only says the
+        // picture is stale, and a stale map for one frame is the right thing
+        // to show.
+        if (compositor.everComposited()) {
+            ImGui::Image(
+                reinterpret_cast<ImTextureID>(compositor.displayDescriptorSet()),
+                ImVec2(displayW, displayH),
+                ImVec2(0, 0), ImVec2(CompositeRenderer::MAP_U_MAX,
+                                     CompositeRenderer::MAP_V_MAX));
+        } else {
+            // The colour the composite pass clears to, so the first frame is
+            // the map's own background rather than a hole.
+            ImGui::Dummy(ImVec2(displayW, displayH));
+            drawList->AddRectFilled(imgMin, imgMax, IM_COL32(13, 20, 31, 255));
+        }
 
         // Transition fade overlay
         const auto& trans = viewState.transition();
@@ -1558,6 +1585,12 @@ int WorldMapFacade::currentZoneIndex() const {
         if (rows[i].second == zoneIdx) return static_cast<int>(i) + 1;
     }
     return 0;
+}
+
+bool WorldMapFacade::takeViewChanged() {
+    const bool was = impl_->viewChanged;
+    impl_->viewChanged = false;
+    return was;
 }
 
 void WorldMapFacade::showPlayerZone() {

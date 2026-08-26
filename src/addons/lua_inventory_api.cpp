@@ -1835,7 +1835,14 @@ static int lua_UseContainerItem(lua_State* L) {
     //
     // A lockbox and its kind have no equip slot, so they still open; a bag has
     // one, so it goes into a bag slot the way it should.
-    const bool equippable = info && info->valid && info->inventoryType != 0;
+    //
+    // Never a quest item, whatever INVTYPE it carries - and some carry one.
+    // A right-click on one of those sent CMSG_AUTOEQUIP_ITEM and the realm
+    // answered ERR_NOT_EQUIPPABLE, so the item could not be used at all and the
+    // only sign of why was an error about equipping something nobody had asked
+    // to equip. Class 12 is the quest item and there is no equipment in it.
+    const bool equippable = info && info->valid && info->inventoryType != 0 &&
+                            info->itemClass != game::ITEM_CLASS_QUEST;
 
     // An item that begins a quest offers it, and that is not a use at all.
     // AzerothCore starts an item quest from CMSG_QUESTGIVER_QUERY_QUEST naming
@@ -2460,6 +2467,18 @@ struct AuctionSellSlot {
     uint8_t slot = 0;
 };
 static AuctionSellSlot& auctionSellSlot() { static AuctionSellSlot s; return s; }
+
+/// Say the sell slot changed.
+///
+/// AuctionSellItemButton_OnEvent is the only thing that draws that slot, and it
+/// runs on this event alone: it sets the button's texture, its name, and the
+/// stackCount and totalCount fields. Nothing fired it, so an item dropped on
+/// the slot was held here and never appeared - and Create Auction stayed
+/// greyed out, because ValidateAuction reads those same two fields and reads
+/// nil as zero.
+static void fireAuctionSellUpdate(game::GameHandler* gh) {
+    if (gh) gh->fireAddonEvent("NEW_AUCTION_UPDATE", {});
+}
 
 /// The item a wire (container, slot) pair names, and its guid. Null when the
 /// pair names nothing this client is holding.
@@ -4224,6 +4243,7 @@ void registerInventoryLuaAPI(lua_State* L) {
                 luaL_optnumber(L, 4, item->item.stackCount ? item->item.stackCount : 1));
             gh->auctionSellItemByGuid(guid, stack, bid, buy, dur);
             auctionSellSlot() = AuctionSellSlot{};
+            fireAuctionSellUpdate(gh);
             return 0;
         }},
                 // The sell slot: the item the player dropped on it, held here
@@ -4240,6 +4260,7 @@ void registerInventoryLuaAPI(lua_State* L) {
             if (!wowee::ui::frameXmlCursorWireSlot(bag, slot)) {
                 // Nothing carried: a click takes the item back out.
                 auctionSellSlot() = AuctionSellSlot{};
+                fireAuctionSellUpdate(getGameHandler(L));
                 return 0;
             }
             auto* gh = getGameHandler(L);
@@ -4253,11 +4274,12 @@ void registerInventoryLuaAPI(lua_State* L) {
                 return 0;
             }
             wowee::ui::frameXmlPutCursorDown();
+            fireAuctionSellUpdate(gh);
             return 0;
         }},
                 {"CancelSell", [](lua_State* L) -> int {
             auctionSellSlot() = AuctionSellSlot{};
-            (void)L;
+            fireAuctionSellUpdate(getGameHandler(L));
             return 0;
         }},
                 {"GetAuctionSellItemInfo", [](lua_State* L) -> int {

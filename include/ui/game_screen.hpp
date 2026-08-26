@@ -22,8 +22,10 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "ui/scene_pick.hpp"
+
 namespace wowee {
-namespace core { class AppearanceComposer; }
+namespace core { class AppearanceComposer; class Window; }
 namespace pipeline { class AssetManager; }
 namespace rendering { class Renderer; }
 namespace ui {
@@ -110,6 +112,9 @@ public:
     /// the session, with a world loaded and uploads in flight, rather than
     /// against a renderer that has drawn nothing yet.
     void applySavedAntiAliasing(rendering::Renderer* renderer);
+    /// The saved windowed/fullscreen choice and vsync, applied before the
+    /// first frame. Neither reaches the WindowConfig the window is built from.
+    void applySavedDisplayMode(core::Window* window);
 
     GameScreen();
 
@@ -349,6 +354,9 @@ private:
     std::unordered_map<uint32_t, uint32_t> spellIconIds_;
     bool spellIconDbLoaded_ = false;
     VkDescriptorSet getSpellIcon(uint32_t spellId, pipeline::AssetManager* am);
+    /// The vendor cursor, drawn in place of the pointer. True when it drew, so
+    /// the caller knows not to also ask for the hand.
+    bool drawVendorCursor(game::GameHandler& gameHandler, const ui::ScenePick& pick);
 
     // Minimap quest-objective cache, rebuilt only when tracked quest progress changes.
     uint64_t minimapQuestCacheSignature_ = 0;

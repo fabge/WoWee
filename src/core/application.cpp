@@ -262,6 +262,10 @@ bool Application::initialize() {
     // flight. Here the renderer has drawn nothing yet and there is nothing for
     // the rebuild to disturb.
     uiManager->getGameScreen().applySavedAntiAliasing(renderer.get());
+    // And the window's own two, for the same reason and at the same moment:
+    // nothing has been drawn, so entering fullscreen here costs no visible
+    // change of mode.
+    uiManager->getGameScreen().applySavedDisplayMode(window.get());
 
     // Create subsystems
     authHandler = std::make_unique<auth::AuthHandler>();
@@ -595,8 +599,9 @@ bool Application::initialize() {
             auto* wmap = r ? r->getWorldMap() : nullptr;
             return wmap ? wmap->zoneNames(continent) : std::vector<std::string>();
         };
-        luaSvc.setMapByIndex = [r = renderer.get()](int continent, int zone) {
-            if (auto* wmap = r ? r->getWorldMap() : nullptr) wmap->showMap(continent, zone);
+        luaSvc.setMapByIndex = [r = renderer.get()](int continent, int zone) -> bool {
+            auto* wmap = r ? r->getWorldMap() : nullptr;
+            return wmap && wmap->showMap(continent, zone);
         };
         luaSvc.getMapContinentIndex = [r = renderer.get()]() -> int {
             auto* wmap = r ? r->getWorldMap() : nullptr;
@@ -3374,7 +3379,7 @@ void Application::updateInGame(float deltaTime, const char*& updateCheckpoint) {
         const auto& offHand = inventory.getEquipSlot(game::EquipSlot::OFF_HAND);
         const auto& ranged = inventory.getEquipSlot(game::EquipSlot::RANGED);
         const bool hasOffHandWeapon = !offHand.empty() &&
-            offHand.item.inventoryType == game::InvType::ONE_HAND;
+            game::isOffHandWeaponInventoryType(offHand.item.inventoryType);
         const bool hasRangedWeapon = !ranged.empty() &&
             (ranged.item.inventoryType == game::InvType::RANGED_BOW ||
              ranged.item.inventoryType == game::InvType::RANGED_GUN ||
@@ -3812,6 +3817,13 @@ void Application::render() {
                 // a picture. The detail frame, not the outer one: that is the
                 // map area inside the panel FrameXML drew.
                 if (auto* wmap = renderer->getWorldMap()) {
+                    // The map settles on the player's zone a frame after the
+                    // interface asked where it was, so it says when it has and
+                    // the dropdowns are rebuilt from the answer rather than
+                    // from the one before it.
+                    if (wmap->takeViewChanged() && gameHandler) {
+                        gameHandler->fireAddonEvent("WORLD_MAP_UPDATE", {});
+                    }
                     ui::Widget* wm = worldMapWidgetId_
                         ? widgets.get(worldMapWidgetId_) : nullptr;
                     if (!wm || wm->name != "WorldMapDetailFrame") {
