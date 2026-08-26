@@ -60,17 +60,6 @@ lookup through `getItemInfo`. **~3 hours, most of it the cache.**
 
 None of these is urgent. Each taxes every future change in its area.
 
-### Input capture decisions are one frame stale
-`src/core/application.cpp:1294`, `:1359`, `:1618` vs `src/ui/ui_manager.cpp:367`
-
-The event pump reads `WantCaptureMouse` / `WantCaptureKeyboard` before
-`ImGui::NewFrame()` runs, so every claim decision describes the previous frame.
-This is the structural cause of the "a key reaches two handlers, or none" class
-— four separate instances of it were fixed individually on 2026-08-25. Move
-`NewFrame()` ahead of the pump, then delete the four `LOG_WARNING("Escape: …")`
-probes, which are that bug being instrumented rather than removed.
-**Half a day, and it retires the class.**
-
 ### No library targets, so subsystems cannot be tested
 `CMakeLists.txt:585`, `:1214`
 
@@ -144,6 +133,15 @@ never moved. Split by table, mechanically, no behaviour change. A
 while the real frame is sequenced imperatively. A new render pass means editing
 three lists and forgetting one is silent. **Multi-day.**
 
+### Remove the four Escape probes
+`src/core/application.cpp:1548`, `:1579`, `:1616`, `:1632`
+
+They log at WARNING on every Escape press and exist to say which path an Escape
+took. They were kept deliberately through the two-pass event pump change of
+2026-08-26, which is the fix they were instrumenting: they are the evidence if
+that change misbehaves in play. Delete them once a play session has confirmed
+it — and not before.
+
 ## Tier 3 — upstream
 
 `AGENTS.md` says fixes should be contributable and PRs kept focused. As of
@@ -181,13 +179,9 @@ Suggested order, each its own PR:
   FrameXML-driven. Stale plans are worse than none.
 - `tests/CMakeLists.txt:418` claims the sweeps take "under three seconds". They
   take three minutes.
-- CI runs less than local: both Windows jobs configure without
-  `-DWOWEE_BUILD_TESTS=ON`, so no tests run on Windows at all, and no ctest
-  invocation passes `-j`.
+- No ctest invocation passes `-j`. (The Windows jobs now run their tests: the
+  earlier note here said they configured without `-DWOWEE_BUILD_TESTS=ON`,
+  which was wrong — the option defaults to ON, so they were building every test
+  target and simply never running one.)
 - `tools/` has 141 files and no README; the only index is the `CHECKS` list
   inside `sweep_guard.py`.
-- `src/core/application.cpp:1956` logs `[FISH-AIM]` at warning level on every
-  fishing cast in release builds.
-- Two independent frame pacers exist (`application.cpp:1273` and `:1722`); a
-  user frame cap above 60 is silently overridden by the second while vsync is
-  on.

@@ -306,3 +306,35 @@ is the world connection being encrypted.
 
 Also from the play session: kill objectives name their creature instead of
 reading "Creature slain".
+
+## 2026-08-26 — a second review, and the risky one
+
+An external review against a snapshot from earlier in the day. Four of its
+findings were already fixed by the time it arrived — SavedVariables out of the
+addon directories, the crash log off `/tmp`, per-frame `pcall` in the emitter,
+and the cipher family on the expansion profile — which is a decent argument for
+`log.md` existing at all.
+
+Of the rest, the network findings were the serious ones and both were hangs
+rather than crashes. `tryParsePackets` stops at a budget, and it was only
+re-entered when the tick also read bytes: a burst that buffered more complete
+packets than the budget allowed left the rest waiting for a byte that never
+came, because the peer was waiting on a response to one of them. And the
+`EWOULDBLOCK` retry in `send()` was unbounded while holding `ioMutex_`, so a
+peer that stopped reading spun it forever inside the lock and took `disconnect`
+and shutdown with it. A send that cannot finish now closes the connection: a
+half-written packet has already desynced the stream.
+
+Sixteen parse loops reserved on a server-supplied count before anything
+constrained it. The loops always stopped when the bytes ran out — the count
+never decided how much was *read*, only how much was *allocated*, which is the
+kind of bug that survives review because the loop looks careful.
+`Packet::boundedCount` is the shared answer.
+
+The one worth flagging is the event pump. `WantCaptureMouse` is computed inside
+`ImGui::NewFrame`, which ran after the pump, so every capture decision in the
+pump described the previous frame — the structural cause of a bug class fixed
+four times individually. The pump is two passes now: drain SDL and feed ImGui,
+start the frame, then dispatch. It is committed alone, because it changes input
+routing globally and no test here can see it. The four Escape probes stay until
+a play session says it worked; they are the instrumentation for exactly this.
