@@ -103,33 +103,19 @@ back-reference, so the dependency graph is bidirectional. The narrow interfaces
 that would cut it exist and are unused. Convert `SpellHandler` first as a proof.
 **~1 day for the first one.**
 
-### `lua_widget_api.cpp` is still the missing file
-`src/addons/lua_engine.cpp`
+### The widget bindings still reach GameHandler directly
+`src/addons/lua_widget_api.cpp`
 
-Half done on 2026-08-26. `registerCoreAPI()` was 2,712 lines in one function
-and is now a ten-line dispatcher over eight named members, verified as pure
-movement by diffing the old body against the new ones. `registerWidgetMethods`
-and `registerWidgetStubLua` are the seam a `lua_widget_api.cpp` would cut along.
+Done on 2026-08-26: `registerCoreAPI` was split into eight named members, and
+the widget surface then moved to `lua_widget_api.cpp` - 262 definitions, 4,586
+lines, leaving `lua_engine.cpp` at 5,067. The seam is twelve names in
+`lua_widget_internal.hpp`.
 
-What is left is the file, and it is bigger than the "mechanically, no behaviour
-change, ~half a day" this entry used to claim. Measured 2026-08-26:
-
-- The registration block names **207** widget binding functions.
-- **131 of them have internal linkage**, inside the anonymous namespace at
-  `lua_engine.cpp:345`–`3723`. Moving only the registration leaves them
-  invisible to the new translation unit, so the definitions have to move too.
-- Those 131 definitions are **interleaved with non-widget ones in 16 separate
-  runs**, and each carries the doc comment above it that has to travel with it.
-- The good news: only **five** helpers are shared with non-widget code —
-  `widgetIdOf`, `widgetOf`, `applyFontObject`, `callScriptOnTable` and
-  `fireTooltipSetItem` — so a shared header is small. Thirteen more helpers are
-  used by widget code alone and move with it.
-
-So: ~3,000 lines across 16 runs plus a small shared header, not a table move.
-The validation for it is strong — `framexml_compile_check` runs the emitter
-over 140 real interface files and a lost widget method shows up there — but
-budget a day, and do it in one commit so it can be reverted whole.
-**~1 day.**
+What is left is not the file but what it depends on. The same measurement that
+priced the god-object item applies here: these bindings reach `GameHandler`
+directly, so the narrow interfaces in `game_interfaces.hpp` would cut this
+file's dependencies as well as `SpellHandler`'s. Worth doing *after* the
+`GameHandler` decomposition below rather than before it.
 
 ### The render graph exists but is vestigial
 `src/rendering/renderer.cpp:900`, `:3866`

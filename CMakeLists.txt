@@ -1038,6 +1038,7 @@ set(WOWEE_SRC_ADDONS
     src/addons/lua_socket_api.cpp
     src/addons/lua_social_api.cpp
     src/addons/lua_system_api.cpp
+    src/addons/lua_widget_api.cpp
     src/addons/lua_action_api.cpp
     src/addons/toc_parser.cpp
 )

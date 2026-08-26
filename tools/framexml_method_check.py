@@ -39,7 +39,16 @@ import re, pathlib, collections
 # cannot fail.
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-src = (REPO / "src" / "addons" / "lua_engine.cpp").read_text()
+# Two files since 2026-08-26: the widget bindings and the registration that
+# names them moved to lua_widget_api.cpp. Reading only lua_engine.cpp found
+# none of them and reported 217 widget methods as answered by nothing.
+_ENGINE = [REPO / "src" / "addons" / "lua_engine.cpp",
+           REPO / "src" / "addons" / "lua_widget_api.cpp"]
+if not all(p.exists() for p in _ENGINE):
+    print("the widget sources are not where this expects them; the zero below "
+          "would mean the scan broke, not that the gaps closed.")
+    raise SystemExit(1)
+src = "\n".join(p.read_text(errors="ignore") for p in _ENGINE)
 
 # The curated set that answers a no-op.
 block = re.search(r'"__WoweeWidgetMethods = \{\\n"(.*?)"\}\\n"', src, re.S)

@@ -436,3 +436,51 @@ have to move with the registration. Only five helpers are shared, which is the
 part that is better than expected.
 
 182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
+
+## 2026-08-26 — lua_widget_api.cpp
+
+The widget surface is its own translation unit: 262 definitions and 4,586 lines
+- every Region, Frame, Texture, FontString, EditBox, StatusBar, Cooldown,
+Slider, ColorSelect, MessageFrame, ScrollFrame and Tooltip binding, plus the
+registration that installs them. `lua_engine.cpp` goes from 10,933 lines to
+5,067.
+
+The seam is twelve names in `lua_widget_internal.hpp`. That number is the whole
+finding: `widgetIdOf`, `widgetOf`, `engineFrom`, `callScriptOnTable`,
+`pcallScript`, `recordScriptError`, `missingApiNames`, and the five globals
+`registerBaseGlobals` still installs from the engine side. Everything else is
+private to one file or the other.
+
+Getting to twelve took measuring rather than guessing, and the first two
+attempts were wrong in instructive ways. Cutting at the frame-metatable
+boundary looked like a five-helper seam and was really forty-three, because
+`installRegionMethods` binds the whole `lua_Region_*` family onto the texture
+and fontstring metatables too - the Region methods are the shared base of every
+widget type, and a cut there goes straight through them. The honest unit is all
+of it.
+
+The rest was the compiler as an oracle. Overloads collapsed by name produced
+both redefinitions and missing overloads; forward declarations stayed behind
+while their definitions moved; the registration blocks were not seeding the
+dependency closure, so the screen and cursor globals were left orphaned. One
+function, `lua_Cooldown_Clear`, had external linkage and no callers - putting
+it inside the new file's anonymous namespace turned that into an unused-function
+error, so it kept the linkage it had rather than being deleted inside a move.
+
+Verified as movement, not rewrite: the old file and the two new ones compare
+equal as line multisets apart from six lines - four `static` prefixes stripped
+for external linkage, one forward declaration that moved, and one that went
+stale.
+
+Three sweeps then failed, and they were right to. `framexml_method_check` read
+`lua_engine.cpp` as the single source of widget registrations and reported 217
+widget methods as answered by nothing; `tooltip_setter_check` said 25 tooltip
+setters raise; `framexml_presence_test_check` refused to report at all, because
+its floor of 100 shared methods caught its own broken scan. All three were
+scanning a file the code had left. `framexml_provides` - the one shared answer
+to "does the client answer this" - now reads both, and the two direct readers
+were given the same treatment plus an existence check, so a moved file fails
+loudly instead of reporting a clean zero. Afterwards: 1,462 widget methods
+answered and no gaps, 51 of 51 tooltip setters implemented.
+
+182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.

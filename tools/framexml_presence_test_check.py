@@ -79,12 +79,15 @@ def per_instance_methods(src: str) -> set:
 
 
 def main() -> int:
-    engine = REPO / "src" / "addons" / "lua_engine.cpp"
-    if not engine.exists():
-        print("lua_engine.cpp is not where this expects it; the zero below "
-              "would mean the scan broke.")
+    # Two files since 2026-08-26: the widget bindings and the registration
+    # that names them moved to lua_widget_api.cpp.
+    engine = [REPO / "src" / "addons" / "lua_engine.cpp",
+              REPO / "src" / "addons" / "lua_widget_api.cpp"]
+    if not all(p.exists() for p in engine):
+        print("the widget sources are not where this expects them; the zero "
+              "below would mean the scan broke.")
         return 1
-    src = engine.read_text(errors="ignore")
+    src = "\n".join(p.read_text(errors="ignore") for p in engine)
     shared = shared_methods(src)
     per_instance = per_instance_methods(src)
     if len(shared) < 100:

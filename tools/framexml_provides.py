@@ -24,7 +24,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ADDONS = ROOT / "src/addons"
-ENGINE = ADDONS / "lua_engine.cpp"
+
+#: The widget surface, which is two files since 2026-08-26: the bindings and
+#: their registration moved to lua_widget_api.cpp, and a scan that reads only
+#: lua_engine.cpp finds none of them. That is not a quiet wrong answer here -
+#: it reported 217 widget methods as unanswered - but it would be in any check
+#: that asks "is this name bound" without a floor under the count.
+ENGINE_SOURCES = [ADDONS / "lua_engine.cpp", ADDONS / "lua_widget_api.cpp"]
+
+
+def _engine_text() -> str:
+    return "\n".join(p.read_text(encoding="utf-8", errors="ignore")
+                     for p in ENGINE_SOURCES if p.exists())
 
 
 def _sources():
@@ -60,7 +71,7 @@ def widget_methods_provided():
     Separate from globals because they resolve through the widget metatable
     rather than _G, and a name can be one without being the other.
     """
-    src = ENGINE.read_text(encoding="utf-8", errors="ignore")
+    src = _engine_text()
     table = set(re.findall(r'\{(?:\.\w+\s*=\s*)?"([A-Za-z_]\w*)",\s*(?:\.\w+\s*=\s*)?lua_', src))
     # Every method the bootstrap defines on anything, not only on the frame
     # metatable. Matching `mt:` alone missed animMeta and groupMeta, so
@@ -88,7 +99,7 @@ def counting_table():
     they stay in the missing-API report under a "count:" prefix. Binding one
     for real takes it out of that report, which is a loss rather than progress.
     """
-    src = ENGINE.read_text(encoding="utf-8", errors="ignore")
+    src = _engine_text()
     m = re.search(r"local counting = \{(.*?)\}", src, re.S)
     return set(re.findall(r"'(\w+)'", m.group(1))) if m else set()
 
@@ -104,7 +115,7 @@ def noop_widget_methods():
     answered, while its one caller compared a byte count against it and the
     guild event log came out blank.
     """
-    src = ENGINE.read_text(encoding="utf-8", errors="ignore")
+    src = _engine_text()
     real = set(re.findall(r'\{(?:\.\w+\s*=\s*)?"([A-Za-z_]\w*)",\s*(?:\.\w+\s*=\s*)?lua_', src))
     real |= set(re.findall(r'set\("([A-Za-z_]\w*)"', src))
     real |= set(re.findall(r'function\s+\w+\s*:\s*(\w+)\s*\(', src))
