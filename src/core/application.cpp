@@ -108,6 +108,8 @@
 namespace wowee {
 namespace core {
 
+volatile std::sig_atomic_t g_terminationRequested = 0;
+
 namespace {
 
 std::optional<float> movingEntityFloor(rendering::Renderer* renderer,
@@ -1250,7 +1252,7 @@ void Application::run() {
         }
     } watchdogStop{watchdogRunning, watchdogThread};
 
-    while (running && !window->shouldClose()) {
+    while (running && !window->shouldClose() && g_terminationRequested == 0) {
         const auto frameStart = std::chrono::steady_clock::now();
         beatWatchdog();
 
@@ -1885,13 +1887,9 @@ void Application::setState(AppState newState) {
             }
             // Ensure no stale in-world player model leaks into the next login attempt.
             // If we reuse a previously spawned instance without forcing a respawn, appearance (notably hair) can desync.
-            if (addonManager_ && addonsLoaded_) {
-                addonManager_->fireEvent("PLAYER_LEAVING_WORLD");
-                addonManager_->saveAllSavedVariables();
-            }
+            leaveWorldSession();
             npcsSpawned = false;
             playerCharacterSpawned = false;
-            addonsLoaded_ = false;
             if (appearanceComposer_) appearanceComposer_->setWeaponsSheathed(false);
             wasAutoAttacking_ = false;
             if (worldLoader_) worldLoader_->resetLoadedMap();
@@ -2182,7 +2180,37 @@ void Application::processDeferredLogoutToLogin() {
     performLogoutToLogin();
 }
 
+// Leaving the world, by either road.
+//
+// There are two ways out of a world session and they used to share none of
+// this. Returning to character select ran the teardown inline; /logout and a
+// world-server disconnect go straight to the login screen through
+// performLogoutToLogin and so ran none of it. That road therefore never fired
+// PLAYER_LEAVING_WORLD, never wrote SavedVariables - every UI position, every
+// addon setting from the whole session, gone - and left addonsLoaded_ true and
+// the character name set, so the next login started on a Lua state built for
+// the previous character.
+//
+// Idempotent: addonsLoaded_ is the latch, so a logout that passes through
+// character select on its way to the login screen still saves exactly once.
+void Application::leaveWorldSession() {
+    if (addonManager_ && addonsLoaded_) {
+        addonManager_->fireEvent("PLAYER_LEAVING_WORLD");
+        addonManager_->saveAllSavedVariables();
+    }
+    addonsLoaded_ = false;
+
+    // Cleared after the save, so the save still lands in the departing
+    // character's file, and before the next login, so a per-character path can
+    // never be built from the previous character's name.
+    if (addonManager_) addonManager_->setCharacterName("");
+}
+
 void Application::performLogoutToLogin() {
+    // Before the world is torn down below: this needs the addon Lua state and
+    // the character name to still be standing.
+    leaveWorldSession();
+
     LOG_INFO("Logout requested");
 
     // Disconnect TransportManager from WMORenderer before tearing down

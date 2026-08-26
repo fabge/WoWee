@@ -10,6 +10,7 @@
 #include "game/character.hpp"
 #include "game/game_services.hpp"
 #include "pipeline/blp_loader.hpp"
+#include <csignal>
 #include <memory>
 #include <map>
 #include <string>
@@ -36,6 +37,17 @@ namespace audio { enum class VoiceType; class AudioCoordinator; }
 namespace addons { class AddonManager; }
 
 namespace core {
+
+// Set from a SIGINT/SIGTERM handler and read by the main loop, which then
+// shuts down the way a window close would.
+//
+// sig_atomic_t and volatile because a signal handler may do almost nothing:
+// assigning to one of these is on the short list of what is defined, and
+// std::atomic is not. Ctrl-C and an OS quit used to call _Exit straight from
+// the handler, which lost settings, SavedVariables and the WMO floor cache
+// every time.
+extern volatile std::sig_atomic_t g_terminationRequested;
+
 
 // Handler forward declarations
 class NPCInteractionCallbackHandler;
@@ -150,6 +162,11 @@ private:
     void syncRenderInstancesToEntities(float deltaTime);
     void render();
     void performLogoutToLogin();
+
+    // End the current world session: tell the interface the player is leaving,
+    // flush SavedVariables, and drop the per-character Lua state. Both ways out
+    // of the world call this, and it is idempotent.
+    void leaveWorldSession();
     void processDeferredLogoutToLogin();
     /// Records how long one named stage of a frame took.
     ///
