@@ -435,11 +435,20 @@ bool WMOLoader::loadGroup(const std::vector<uint8_t>& groupData,
     while (offset + 8 < groupData.size()) {
         uint32_t chunkId = read<uint32_t>(groupData, offset);
         uint32_t chunkSize = read<uint32_t>(groupData, offset);
-        uint32_t chunkEnd = offset + chunkSize;
 
-        if (chunkEnd > groupData.size()) {
+        // 64-bit for the same reason the root chunk loop above is: offset and
+        // chunkSize both come from the file and are both uint32, so their sum
+        // wraps. A wrapped end is small, passes the bounds check below, and
+        // then `offset = chunkEnd` moves the cursor *backwards* - which is not
+        // an overread but an unbounded loop, on a file the asset pipeline hands
+        // us without ever having validated it.
+        const uint64_t chunkEnd64 = static_cast<uint64_t>(offset) + chunkSize;
+
+        if (chunkEnd64 > groupData.size()) {
             break;
         }
+
+        const uint32_t chunkEnd = static_cast<uint32_t>(chunkEnd64);
 
         if (chunkId == MVER) {
             // Version - skip

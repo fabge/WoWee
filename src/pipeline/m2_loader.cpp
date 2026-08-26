@@ -26,7 +26,42 @@
 #include <algorithm>
 
 namespace wowee {
+
+
 namespace pipeline {
+
+// Every batch that indexes past the model's own indices, emptied.
+//
+// A submesh read from the wrong offset gives a start that no buffer could
+// satisfy, and vkCmdDrawIndexed does not check. One such batch - start
+// 6,290,784 in a 768-index model - was read 25 MB past the end forty-six times
+// and took the GPU with it. Emptied rather than dropped so nothing downstream
+// has to cope with a batch list that changed length.
+//
+// Shared, and called from the end of each path that builds batches, because
+// this client parses two M2 layouts whose skin data does not sit in the same
+// place: the external .skin file, and the skin embedded in a Vanilla or TBC M2.
+// The guard first lived inline in the external path only, which left the
+// embedded path - the one every Vanilla and TBC model takes - reaching the GPU
+// unchecked. Both paths call it now, so a third one is a compile away from
+// being asked to.
+static void emptyBatchesOutsideIndices(M2Model& model) {
+    const uint32_t total = static_cast<uint32_t>(model.indices.size());
+    uint32_t emptied = 0;
+    for (auto& batch : model.batches) {
+        const uint64_t end = static_cast<uint64_t>(batch.indexStart) + batch.indexCount;
+        if (end <= total) continue;
+        batch.indexStart = 0;
+        batch.indexCount = 0;
+        ++emptied;
+    }
+    if (emptied > 0) {
+        core::Logger::getInstance().warning(
+            "  ", emptied, " batch(es) index past the model's ", total,
+            " indices - emptied; this model's submeshes are being read from "
+            "the wrong offset");
+    }
+}
 
 namespace {
 
@@ -1828,6 +1863,8 @@ M2Model M2Loader::load(const std::vector<uint8_t>& m2Data) {
             }
         }
 
+        emptyBatchesOutsideIndices(model);
+
         core::Logger::getInstance().debug("Vanilla M2: embedded skin loaded - ",
             model.indices.size(), " indices, ", model.batches.size(), " batches");
     }
@@ -1947,34 +1984,7 @@ bool M2Loader::loadSkin(const std::vector<uint8_t>& skinData, M2Model& model) {
     // the last of them is built, where every renderer that draws this model
     // shares the check.
     //
-    // Placed after the loop rather than before it, which is where this first
-    // went: the guard ran between the two batch-building paths and so checked
-    // batches that did not exist yet, leaving the skin path - the one character
-    // models take - unguarded.
-    //
-    // A submesh
-    // read from the wrong offset gives a start that no buffer could satisfy,
-    // and vkCmdDrawIndexed does not check. One such batch - start 6,290,784 in
-    // a 768-index model - was read 25 MB past the end forty-six times and took
-    // the GPU with it. Emptied rather than dropped so nothing downstream has to
-    // cope with a batch list that changed length.
-    {
-        const uint32_t total = static_cast<uint32_t>(model.indices.size());
-        uint32_t emptied = 0;
-        for (auto& batch : model.batches) {
-            const uint64_t end = static_cast<uint64_t>(batch.indexStart) + batch.indexCount;
-            if (end <= total) continue;
-            batch.indexStart = 0;
-            batch.indexCount = 0;
-            ++emptied;
-        }
-        if (emptied > 0) {
-            core::Logger::getInstance().warning(
-                "  ", emptied, " batch(es) index past the model's ", total,
-                " indices - emptied; this model's submeshes are being read from "
-                "the wrong offset");
-        }
-    }
+    emptyBatchesOutsideIndices(model);
 
 
         core::Logger::getInstance().debug("  Batches: ", model.batches.size());

@@ -680,6 +680,27 @@ WMORenderer::ModelLoadResult WMORenderer::loadModelIncremental(
         std::unordered_map<BatchKey, GroupResources::MergedBatch, BatchKeyHash> batchMap;
 
         for (const auto& batch : groupRes.batches) {
+            // A MOBA batch that reaches past the group's own indices is not
+            // drawn, for the reason m2_renderer.cpp gives at the identical
+            // guard on M2 submeshes: vkCmdDrawIndexed does not range-check its
+            // firstIndex and indexCount, and a draw that runs off the end of
+            // the index buffer takes the device with it. Same untrusted input
+            // class, same consequence - MOBA is parsed straight out of an
+            // extracted WMO group file - so it gets the same answer.
+            //
+            // Widened, because startIndex and indexCount are both uint32 read
+            // from the file and their sum wraps.
+            const uint64_t batchEnd =
+                static_cast<uint64_t>(batch.startIndex) + batch.indexCount;
+            if (batch.indexCount == 0 || batchEnd > groupRes.indexCount) {
+                if (batch.indexCount != 0) {
+                    LOG_WARNING("WMO ", id, " batch [", batch.startIndex, ", ", batchEnd,
+                                ") is outside its group's ", groupRes.indexCount,
+                                " indices - not drawn");
+                }
+                continue;
+            }
+
             VkTexture* tex = whiteTexture_.get();
             bool hasTexture = false;
 
