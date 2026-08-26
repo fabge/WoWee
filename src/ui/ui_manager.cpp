@@ -358,13 +358,18 @@ void UIManager::shutdown() {
     LOG_INFO("UI manager shutdown");
 }
 
-void UIManager::update([[maybe_unused]] float deltaTime) {
+void UIManager::beginFrame() {
     if (!imguiInitialized) return;
 
-    // Start ImGui frame
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
+}
+
+void UIManager::update([[maybe_unused]] float deltaTime) {
+    // The ImGui frame used to be started here. It is started from the event
+    // pump now - see beginFrame - because this runs after the pump and left
+    // every capture decision in it describing the previous frame.
 }
 
 void UIManager::render(core::AppState appState, auth::AuthHandler* authHandler, game::GameHandler* gameHandler) {

@@ -66,6 +66,12 @@ public:
      * Update UI state
      * @param deltaTime Time since last frame in seconds
      */
+    // Start this frame's ImGui frame.
+    //
+    // Called from the event pump between draining SDL and dispatching what it
+    // drained, because WantCaptureMouse and WantCaptureKeyboard are computed
+    // here and the dispatch decisions depend on them describing this frame.
+    void beginFrame();
     void update(float deltaTime);
 
     /**
