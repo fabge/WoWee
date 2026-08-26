@@ -24,6 +24,12 @@ std::string getConfigRoot();
 // ~/.cache/wowee) elsewhere. The directory is created before it is returned.
 std::string getCacheRoot();
 
+// True when the running executable sits inside a macOS .app bundle. Always
+// false elsewhere. Everything inside the bundle is under the code-signed seal
+// and must be treated as read-only, so this is what the writable-path
+// decisions are made against.
+bool runningFromMacAppBundle();
+
 // Restrict a credential-bearing file to its owner on POSIX. Windows user data
 // inherits the profile directory's ACL, so this is a no-op there. Returns false
 // when a POSIX permission update fails.

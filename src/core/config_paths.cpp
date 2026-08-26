@@ -92,8 +92,14 @@ std::string getConfigRoot() {
         fs::create_directories(root, ec);
         return root;
     }
+    // Never inside a macOS app bundle, whatever is sitting next to the
+    // executable. Portable mode puts config in <exeDir>/config, and in a bundle
+    // that is Wowee.app/Contents/MacOS/config - inside the code-signed seal,
+    // where a settings write either fails or breaks the signature. A
+    // portable.txt that found its way into a bundle is not an instruction worth
+    // honoring, so the per-user root wins outright.
     const std::string exeDir = getExecutableDir();
-    if (!exeDir.empty()) {
+    if (!exeDir.empty() && !runningFromMacAppBundle()) {
         const fs::path portableMarker = fs::path(exeDir) / "portable.txt";
         const fs::path portableDir = fs::path(exeDir) / "config";
         // Either the opt-in marker file, or a config folder created by a prior
@@ -103,6 +109,19 @@ std::string getConfigRoot() {
         }
     }
     return perUserConfigDir();
+}
+
+bool runningFromMacAppBundle() {
+#if defined(__APPLE__)
+    // .../Wowee.app/Contents/MacOS/wowee - all three levels checked, so a plain
+    // directory that happens to be called MacOS is not mistaken for a bundle.
+    const fs::path macosDir(getExecutableDir());
+    return macosDir.filename() == "MacOS" &&
+           macosDir.parent_path().filename() == "Contents" &&
+           macosDir.parent_path().parent_path().extension() == ".app";
+#else
+    return false;
+#endif
 }
 
 std::string getCacheRoot() {
