@@ -1081,12 +1081,11 @@ public:
     //   bits 24-31 = action type (0x00=cast, 0xC0=autocast on, 0x40=autocast off)
     static constexpr int PET_ACTION_BAR_SLOTS = 10;
     uint32_t getPetActionSlot(int idx) const {
-        if (idx < 0 || idx >= PET_ACTION_BAR_SLOTS) return 0;
-        return petActionSlots_[idx];
+        return spellHandler_ ? spellHandler_->getPetActionSlot(idx) : 0;
     }
     // Pet command/react state from SMSG_PET_MODE or SMSG_PET_SPELLS
-    uint8_t getPetCommand() const { return petCommand_; }   // 0=stay,1=follow,2=attack,3=dismiss
-    uint8_t getPetReact()   const { return petReact_; }     // 0=passive,1=defensive,2=aggressive
+    uint8_t getPetCommand() const { return spellHandler_ ? spellHandler_->getPetCommand() : 1; }
+    uint8_t getPetReact()   const { return spellHandler_ ? spellHandler_->getPetReact() : 1; }
     // A pet's own stats and resistances, off the pet unit's fields. Armor is
     // resistance index 0, as it is for the player.
     const std::array<int32_t, 5>& getPetStats() const { return petStats_; }
@@ -1109,10 +1108,13 @@ public:
     uint32_t& petNextLevelExpRef() { return petNextLevelExp_; }
 
     // Spells the pet knows (from SMSG_PET_SPELLS spell list)
-    const std::vector<uint32_t>& getPetSpells() const { return petSpellList_; }
+    const std::vector<uint32_t>& getPetSpells() const {
+        static const std::vector<uint32_t> empty;
+        return spellHandler_ ? spellHandler_->getPetSpells() : empty;
+    }
     // Pet autocast set (spellIds that have autocast enabled)
     bool isPetSpellAutocast(uint32_t spellId) const {
-        return petAutocastSpells_.count(spellId) != 0;
+        return spellHandler_ && spellHandler_->isPetSpellAutocast(spellId);
     }
     // Send CMSG_PET_ACTION to issue a pet command
     void sendPetAction(uint32_t action, uint64_t targetGuid = 0);
@@ -1373,8 +1375,8 @@ public:
 
     // Melee swing callback (for driving animation/SFX)
     // spellId: 0 = regular auto-attack swing, non-zero = melee ability (special attack)
-    using MeleeSwingCallback = std::function<void(uint32_t spellId)>;
-    void setMeleeSwingCallback(MeleeSwingCallback cb) { meleeSwingCallback_ = std::move(cb); }
+    using MeleeSwingCallback = CombatHandler::MeleeSwingCallback;
+    void setMeleeSwingCallback(MeleeSwingCallback cb) { if (combatHandler_) combatHandler_->setMeleeSwingCallback(std::move(cb)); }
 
     // Snap the character to face the camera's current look direction and return the
     // resulting canonical orientation. Used by fishing so the bobber lands in front of
@@ -3521,13 +3523,7 @@ public:
     auto& summonTimeoutSecRef() { return summonTimeoutSec_; }
     auto& bfMgrInvitePendingRef() { return bfMgrInvitePending_; }
 
-    // ── Pet & Stable ─────────────────────────────────────────────────
-    auto& petActionSlotsRef() { return petActionSlots_; }
-    auto& petAutocastSpellsRef() { return petAutocastSpells_; }
-    auto& petCommandRef() { return petCommand_; }
     auto& petGuidRef() { return petGuid_; }
-    auto& petReactRef() { return petReact_; }
-    auto& petSpellListRef() { return petSpellList_; }
     auto& stabledPetsRef() { return stabledPets_; }
     auto& stableMasterGuidRef() { return stableMasterGuid_; }
     auto& stableWindowOpenRef() { return stableWindowOpen_; }
@@ -3564,7 +3560,6 @@ public:
     auto& itemLootCallbackRef() { return itemLootCallback_; }
     auto& knockBackCallbackRef() { return knockBackCallback_; }
     auto& lootWindowCallbackRef() { return lootWindowCallback_; }
-    auto& meleeSwingCallbackRef() { return meleeSwingCallback_; }
     auto& rangedWeaponSwapCallbackRef() { return rangedWeaponSwapCallback_; }
     void suppressNextMeleeSwingAnim() { suppressMeleeSwingAnim_ = true; }
     bool consumeSuppressMeleeSwingAnim() {
@@ -4236,12 +4231,7 @@ private:
     std::vector<AuraSlot> targetAuras;
     std::unordered_map<uint64_t, std::vector<AuraSlot>> unitAurasCache_; // per-unit aura cache
     uint64_t petGuid_ = 0;
-    uint32_t petActionSlots_[10] = {};   // SMSG_PET_SPELLS action bar (10 slots)
-    uint8_t  petCommand_ = 1;            // 0=stay,1=follow,2=attack,3=dismiss
-    uint8_t  petReact_   = 1;            // 0=passive,1=defensive,2=aggressive
     bool     petRenameablePending_ = false;  // set by SMSG_PET_RENAMEABLE, consumed by UI
-    std::vector<uint32_t> petSpellList_; // known pet spells
-    std::unordered_set<uint32_t> petAutocastSpells_;  // spells with autocast on
     std::array<int32_t, 5> petStats_{};
     int32_t petAttackPower_ = 0;
     float petMinDamage_ = 0.0f;
@@ -4739,7 +4729,6 @@ private:
     AppearanceChangedCallback appearanceChangedCallback_;
     PlayerModelRebuildCallback playerModelRebuildCallback_;
     GhostStateCallback ghostStateCallback_;
-    MeleeSwingCallback meleeSwingCallback_;
     FaceCameraProvider faceCameraProvider_;
     RangedWeaponSwapCallback rangedWeaponSwapCallback_;
     bool suppressMeleeSwingAnim_ = false;

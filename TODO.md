@@ -16,10 +16,24 @@ validation policy, including which checks are cheap and which are not.
 
 ## Tier 1 — correctness
 
+### Pet state is not cleared on a character switch
+`src/game/spell_handler.cpp` — `resetAllState`
+
+Noticed while moving the pet state there on 2026-08-26, and deliberately not
+changed in that commit: `GameHandler` never cleared `petSpellList_`,
+`petAutocastSpells_`, `petActionSlots_`, `petCommand_` or `petReact_` on a
+character switch either, so the move preserved the behaviour rather than
+quietly altering it. The question is whether a hunter's pet spell list should
+survive logging into a different character. Almost certainly not - every other
+per-character cache is cleared there. **Reproduce first**, on two characters
+with pets, then clear `pet_` in `resetAllState` with a regression test.
+**~1 hour.**
+
 Bounded, each with a stated failure mode. A regression test is expected with
 each fix; every one of these is testable headlessly.
 
-Empty. The eight items that stood here on 2026-08-25 and the three that
+One item, found on 2026-08-26 and not yet reproduced. The eight that stood here
+on 2026-08-25 and the three that
 outlived them - SavedVariables written beside the addon's own source, the crash
 handler's fixed `/tmp` path, and quest objective lines that named no creature -
 were all fixed on 2026-08-26 and are in `log.md`. The three were still listed
@@ -113,17 +127,27 @@ What worked instead: of those 51 accessors, **29 were used by
 switch. Those 17 moved, and with them the ten spell-domain types that described
 them. No forwarding was left behind.
 
-The next tranche is the same measurement, one step harder:
+A second tranche went on 2026-08-26: the pet cluster - `petActionSlots_`,
+`petCommand_`, `petReact_`, `petSpellList_`, `petAutocastSpells_` - plus
+`meleeSwingCallback_`. All six had *no* mention in GameHandler's own `.cpp` at
+all; it declared them, exposed an `xRef()`, and read them in a getter. The pet
+five became one `SpellHandler::PetState`, and the callback went to
+`CombatHandler` beside the swing timer that raises it.
+
+What is left, hardest last:
 
 - **`actionBar`** — 13 non-reset uses in `GameHandler`'s own packet and callback
   code. Genuinely shared, and the wrong thing to move blindly.
-- **`hasHomeBind_` / `homeBindMapId_`** (4 each), **`earnedAchievements_`** and
-  **`pendingGameObjectInteractGuid_`** (3 each) — each needs its `GameHandler`
-  uses read before deciding.
-- **14 accessors shared with exactly one other handler** — the pet cluster with
-  `CombatHandler`, the skill-line cluster with `InventoryHandler`, the stable
-  cluster with `QuestHandler`. Each is a pair of handlers reaching through a
-  third object for state one of them should own.
+- **`hasHomeBind_` / `homeBindMapId_`** (4 uses each), **`earnedAchievements_`**
+  and **`pendingGameObjectInteractGuid_`** (3 each) — each needs its
+  `GameHandler` uses read before deciding.
+- **8 accessors still shared with exactly one other handler**: the skill-line
+  cluster with `InventoryHandler` (`skillLineNames_`, `skillLineCategories_`,
+  `spellToSkillLine_`, `tempEnchantTimers_`), the stable pair with
+  `QuestHandler` (`stableMasterGuid_`, `stableWindowOpen_`), plus
+  `lastInteractedGoGuid_` and `achievementNameCache_`. Unlike the pet cluster
+  these all have real `GameHandler` uses too, so each is a decision rather than
+  a move.
 
 Only once a handler owns its state does an interface over it mean anything.
 **~1 day per tranche.**

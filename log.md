@@ -524,3 +524,35 @@ shared with exactly one other handler, which is two handlers reaching through a
 third object for state one of them should own.
 
 182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
+
+## 2026-08-26 — the pet cluster leaves GameHandler
+
+The second tranche, and the clearest case yet of state in the wrong class.
+`petActionSlots_`, `petCommand_`, `petReact_`, `petSpellList_`,
+`petAutocastSpells_` and `meleeSwingCallback_` had **no mention at all** in any
+`game_handler*.cpp`. GameHandler declared them, exposed an `xRef()` for each,
+and read them in a getter; the only code that did anything with them was
+`SpellHandler` and `CombatHandler`, reaching through their owner to find each
+other.
+
+The pet five became one `SpellHandler::PetState`. Grouped rather than moved
+loose, so the surface `CombatHandler` shares is a single name instead of five
+accessors, and so the collaboration reads as one handler talking to another
+rather than as both reaching through a third object. `meleeSwingCallback_` went
+to `CombatHandler`, beside the swing timer that raises it, with a
+`fireMeleeSwing()` that `SpellHandler`'s instant-attack paths call.
+
+GameHandler's public API is again unchanged - `getPetSpells`, `getPetCommand`,
+`getPetReact`, `getPetActionSlot`, `isPetSpellAutocast` and
+`setMeleeSwingCallback` all forward. Across both tranches: 478 member
+declarations to 454, 243 `xRef()` accessors to 220, the header 5,030 lines to
+4,887, and `owner_.` in `spell_handler.cpp` 702 to 632.
+
+One thing found and deliberately not fixed here: none of the pet state is
+cleared on a character switch, and GameHandler did not clear it either. The
+move preserved that rather than quietly changing it, and it is now the one
+entry in Tier 1 - a hunter's pet spell list surviving into a different
+character is almost certainly wrong, but it wants reproducing before a
+behaviour change rides along inside a refactor.
+
+182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.

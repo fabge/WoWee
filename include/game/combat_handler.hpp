@@ -144,7 +144,21 @@ public:
     void clearCombatText();
     void removeCombatTextForGuid(uint64_t guid);
 
+    // ---- Melee swing notification ----
+    //
+    // The callback lived on GameHandler behind meleeSwingCallbackRef(), which
+    // only this handler and SpellHandler ever called; GameHandler never fired
+    // it. It belongs with the swing timer that raises it.
+    using MeleeSwingCallback = std::function<void(uint32_t spellId)>;
+    void setMeleeSwingCallback(MeleeSwingCallback cb) { meleeSwingCallback_ = std::move(cb); }
+    /// Raised when a swing lands, by this handler and by SpellHandler's
+    /// instant-attack paths.
+    void fireMeleeSwing(uint32_t spellId) const {
+        if (meleeSwingCallback_) meleeSwingCallback_(spellId);
+    }
+
 private:
+    MeleeSwingCallback meleeSwingCallback_;
     // Last tab-target press (steady-clock ms); a pause restarts the cycle
     // from the nearest enemy instead of resuming a stale rotation.
     uint64_t lastTabTargetMs_ = 0;

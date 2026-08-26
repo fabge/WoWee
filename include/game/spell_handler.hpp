@@ -190,6 +190,36 @@ public:
         return total;
     }
 
+    // ---- Pet state ----
+    //
+    // Held here rather than in GameHandler, which never touched any of it: the
+    // five members were reached only through GameHandler::petXRef(), by this
+    // handler and by CombatHandler. Grouped into one struct so the surface
+    // CombatHandler shares is a single name instead of five loose accessors,
+    // and so the collaboration reads as CombatHandler talking to SpellHandler
+    // rather than as both of them reaching through a third object.
+    struct PetState {
+        static constexpr int kActionBarSlots = 10;
+        uint32_t actionSlots[kActionBarSlots] = {};  // SMSG_PET_SPELLS action bar
+        uint8_t  command = 1;                        // 0=stay,1=follow,2=attack,3=dismiss
+        uint8_t  react   = 1;                        // 0=passive,1=defensive,2=aggressive
+        std::vector<uint32_t> spellList;             // known pet spells
+        std::unordered_set<uint32_t> autocastSpells; // spells with autocast on
+    };
+    [[nodiscard]] PetState& petState() { return pet_; }
+    [[nodiscard]] const PetState& petState() const { return pet_; }
+
+    [[nodiscard]] uint32_t getPetActionSlot(int idx) const {
+        if (idx < 0 || idx >= PetState::kActionBarSlots) return 0;
+        return pet_.actionSlots[idx];
+    }
+    [[nodiscard]] uint8_t getPetCommand() const { return pet_.command; }
+    [[nodiscard]] uint8_t getPetReact() const { return pet_.react; }
+    [[nodiscard]] const std::vector<uint32_t>& getPetSpells() const { return pet_.spellList; }
+    [[nodiscard]] bool isPetSpellAutocast(uint32_t spellId) const {
+        return pet_.autocastSpells.count(spellId) != 0;
+    }
+
     // --- Public API (delegated from GameHandler) ---
     void castSpell(uint32_t spellId, uint64_t targetGuid = 0);
 
@@ -664,6 +694,7 @@ private:
     uint32_t talentWipeCost_ = 0;
 
     // Pet talent respec confirm dialog
+    PetState pet_;
     bool petUnlearnPending_ = false;
     uint32_t petUnlearnCost_ = 0;
 

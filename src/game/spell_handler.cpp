@@ -2020,7 +2020,7 @@ void SpellHandler::handleSpellGo(network::Packet& packet) {
         // ranged shot animation explicitly here.
         uint32_t sid = data.spellId;
         if (spellclass::isRangedWeaponAutoAttack(sid)) {
-            if (owner_.meleeSwingCallbackRef()) owner_.meleeSwingCallbackRef()(sid);
+            if (auto* ch = owner_.getCombatHandler()) ch->fireMeleeSwing(sid);
             owner_.suppressNextMeleeSwingAnim();
             uint64_t projectileTarget = data.targetGuid;
             if (projectileTarget == 0 && !data.hitTargets.empty())
@@ -2040,7 +2040,7 @@ void SpellHandler::handleSpellGo(network::Packet& packet) {
             }
         }
         if (isMeleeAbility) {
-            if (owner_.meleeSwingCallbackRef()) owner_.meleeSwingCallbackRef()(sid);
+            if (auto* ch = owner_.getCombatHandler()) ch->fireMeleeSwing(sid);
             if (auto* ac = owner_.services().audioCoordinator) {
                 if (auto* csm = ac->getCombatSoundManager()) {
                     csm->playWeaponSwing(audio::CombatSoundManager::WeaponSize::MEDIUM, false);
@@ -2706,9 +2706,9 @@ void SpellHandler::handlePetSpells(network::Packet& packet) {
     const size_t remaining = packet.getRemainingSize();
     if (remaining < 8) {
         owner_.petGuidRef() = 0;
-        owner_.petSpellListRef().clear();
-        owner_.petAutocastSpellsRef().clear();
-        memset(owner_.petActionSlotsRef(), 0, sizeof(owner_.petActionSlotsRef()));
+        pet_.spellList.clear();
+        pet_.autocastSpells.clear();
+        memset(pet_.actionSlots, 0, sizeof(pet_.actionSlots));
         LOG_INFO("SMSG_PET_SPELLS: pet cleared");
         owner_.fireAddonEvent("UNIT_PET", {"player"});
         // The pet frame and the pet action bar both rebuild from this one;
@@ -2723,9 +2723,9 @@ void SpellHandler::handlePetSpells(network::Packet& packet) {
     // pet comes back in answer to this and nothing else.
     if (owner_.petGuidRef() != 0) requestPetName(owner_.petGuidRef());
     if (owner_.petGuidRef() == 0) {
-        owner_.petSpellListRef().clear();
-        owner_.petAutocastSpellsRef().clear();
-        memset(owner_.petActionSlotsRef(), 0, sizeof(owner_.petActionSlotsRef()));
+        pet_.spellList.clear();
+        pet_.autocastSpells.clear();
+        memset(pet_.actionSlots, 0, sizeof(pet_.actionSlots));
         LOG_INFO("SMSG_PET_SPELLS: pet cleared (guid=0)");
         owner_.fireAddonEvent("UNIT_PET", {"player"});
         // The pet frame and the pet action bar both rebuild from this one;
@@ -2757,19 +2757,19 @@ void SpellHandler::handlePetSpells(network::Packet& packet) {
         packet.readUInt32();      // duration in ms; zero for a permanent pet
 
         if (!packet.hasRemaining(4)) break;
-        owner_.petReactRef()   = packet.readUInt8();
-        owner_.petCommandRef() = packet.readUInt8();
+        pet_.react   = packet.readUInt8();
+        pet_.command = packet.readUInt8();
         packet.readUInt16();      // flags, unused by the server too
 
         if (!packet.hasRemaining(GameHandler::PET_ACTION_BAR_SLOTS * 4u)) break;
         for (int i = 0; i < GameHandler::PET_ACTION_BAR_SLOTS; ++i) {
-            owner_.petActionSlotsRef()[i] = packet.readUInt32();
+            pet_.actionSlots[i] = packet.readUInt32();
         }
 
         if (!packet.hasRemaining(1)) break;
         uint8_t spellCount = packet.readUInt8();
-        owner_.petSpellListRef().clear();
-        owner_.petAutocastSpellsRef().clear();
+        pet_.spellList.clear();
+        pet_.autocastSpells.clear();
         for (uint8_t i = 0; i < spellCount; ++i) {
             // One uint32, not six bytes: MAKE_UNIT_ACTION_BUTTON puts the spell
             // in the low twenty-four bits and the state in the top byte, the
@@ -2782,18 +2782,18 @@ void SpellHandler::handlePetSpells(network::Packet& packet) {
             const uint32_t spellId = packed & 0x00FFFFFFu;
             const uint8_t  state   = static_cast<uint8_t>(packed >> 24);
             if (spellId == 0) continue;
-            owner_.petSpellListRef().push_back(spellId);
+            pet_.spellList.push_back(spellId);
             // ACT_ENABLED is 0xC1 and ACT_DISABLED 0x81 - 0x40 is the autocast
             // bit. The old test was & 0x0001, which is ACT_PASSIVE's bit.
             if (state & 0x40) {
-                owner_.petAutocastSpellsRef().insert(spellId);
+                pet_.autocastSpells.insert(spellId);
             }
         }
     } while (false);
 
     LOG_INFO("SMSG_PET_SPELLS: petGuid=0x", std::hex, owner_.petGuidRef(), std::dec,
-             " react=", static_cast<int>(owner_.petReactRef()), " command=", static_cast<int>(owner_.petCommandRef()),
-             " spells=", owner_.petSpellListRef().size());
+             " react=", static_cast<int>(pet_.react), " command=", static_cast<int>(pet_.command),
+             " spells=", pet_.spellList.size());
     owner_.fireAddonEvent("UNIT_PET", {"player"});
         // The pet frame and the pet action bar both rebuild from this one;
         // UNIT_PET alone tells them the pet changed but not that its interface
@@ -2821,7 +2821,7 @@ void SpellHandler::dismissPet() {
 
 void SpellHandler::togglePetSpellAutocast(uint32_t spellId) {
     if (owner_.petGuidRef() == 0 || spellId == 0 || owner_.getState() != WorldState::IN_WORLD || !owner_.getSocket()) return;
-    bool currentlyOn = owner_.petAutocastSpellsRef().count(spellId) != 0;
+    bool currentlyOn = pet_.autocastSpells.count(spellId) != 0;
     uint8_t newState = currentlyOn ? 0 : 1;
     network::Packet pkt(wireOpcode(Opcode::CMSG_PET_SPELL_AUTOCAST));
     pkt.writeUInt64(owner_.petGuidRef());
@@ -2829,9 +2829,9 @@ void SpellHandler::togglePetSpellAutocast(uint32_t spellId) {
     pkt.writeUInt8(newState);
     owner_.getSocket()->send(pkt);
     if (newState)
-        owner_.petAutocastSpellsRef().insert(spellId);
+        pet_.autocastSpells.insert(spellId);
     else
-        owner_.petAutocastSpellsRef().erase(spellId);
+        pet_.autocastSpells.erase(spellId);
     LOG_DEBUG("togglePetSpellAutocast: spellId=", spellId, " autocast=", static_cast<int>(newState));
 }
 

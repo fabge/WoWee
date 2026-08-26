@@ -654,7 +654,7 @@ void CombatHandler::handleAttackerStateUpdate(network::Packet& packet) {
         if (owner_.consumeSuppressMeleeSwingAnim()) {
             LOG_DEBUG("Suppressed melee swing anim - ranged shot already triggered");
         } else {
-            if (owner_.meleeSwingCallbackRef()) owner_.meleeSwingCallbackRef()(0);
+            if (meleeSwingCallback_) meleeSwingCallback_(0);
         }
     }
     if (!isPlayerAttacker && owner_.npcSwingCallbackRef()) {
@@ -1194,9 +1194,12 @@ void CombatHandler::handlePetCastFailed(network::Packet& packet) {
 void CombatHandler::handlePetBroken(network::Packet& packet) {
     // Pet bond broken (died or forcibly dismissed) - clear pet state
     owner_.petGuidRef() = 0;
-    owner_.petSpellListRef().clear();
-    owner_.petAutocastSpellsRef().clear();
-    memset(owner_.petActionSlotsRef(), 0, sizeof(owner_.petActionSlotsRef()));
+    if (auto* sh = owner_.getSpellHandler()) {
+        auto& pet = sh->petState();
+        pet.spellList.clear();
+        pet.autocastSpells.clear();
+        std::memset(pet.actionSlots, 0, sizeof(pet.actionSlots));
+    }
     owner_.addSystemChatMessage("Your pet has died.");
     // The same pair SMSG_PET_SPELLS fires, because the same two things have to
     // be redrawn - the pet frame and the pet action bar. Losing the pet
@@ -1212,7 +1215,7 @@ void CombatHandler::handlePetBroken(network::Packet& packet) {
 void CombatHandler::handlePetLearnedSpell(network::Packet& packet) {
     if (packet.hasRemaining(4)) {
         uint32_t spellId = packet.readUInt32();
-        owner_.petSpellListRef().push_back(spellId);
+        if (auto* sh = owner_.getSpellHandler()) sh->petState().spellList.push_back(spellId);
         const std::string& sname = owner_.getSpellName(spellId);
         owner_.addSystemChatMessage("Your pet has learned " + (sname.empty() ? "a new ability." : sname + "."));
         LOG_DEBUG("SMSG_PET_LEARNED_SPELL: spellId=", spellId);
@@ -1224,10 +1227,13 @@ void CombatHandler::handlePetLearnedSpell(network::Packet& packet) {
 void CombatHandler::handlePetUnlearnedSpell(network::Packet& packet) {
     if (packet.hasRemaining(4)) {
         uint32_t spellId = packet.readUInt32();
-        owner_.petSpellListRef().erase(
-            std::remove(owner_.petSpellListRef().begin(), owner_.petSpellListRef().end(), spellId),
-            owner_.petSpellListRef().end());
-        owner_.petAutocastSpellsRef().erase(spellId);
+        if (auto* sh = owner_.getSpellHandler()) {
+            auto& pet = sh->petState();
+            pet.spellList.erase(
+                std::remove(pet.spellList.begin(), pet.spellList.end(), spellId),
+                pet.spellList.end());
+            pet.autocastSpells.erase(spellId);
+        }
         LOG_DEBUG("SMSG_PET_UNLEARNED_SPELL: spellId=", spellId);
     }
     packet.skipAll();
@@ -1245,16 +1251,19 @@ void CombatHandler::handlePetMode(network::Packet& packet) {
             // - this packet arrives for every mode change, and firing on each
             // would relight an indicator that is already lit.
             constexpr uint8_t kCommandAttack = 2;
-            const bool wasAttacking = owner_.petCommandRef() == kCommandAttack;
-            owner_.petCommandRef() = static_cast<uint8_t>(mode & 0xFF);
-            owner_.petReactRef()   = static_cast<uint8_t>((mode >> 8) & 0xFF);
-            const bool nowAttacking = owner_.petCommandRef() == kCommandAttack;
+            auto* sh = owner_.getSpellHandler();
+            if (!sh) return;
+            auto& pet = sh->petState();
+            const bool wasAttacking = pet.command == kCommandAttack;
+            pet.command = static_cast<uint8_t>(mode & 0xFF);
+            pet.react   = static_cast<uint8_t>((mode >> 8) & 0xFF);
+            const bool nowAttacking = pet.command == kCommandAttack;
             if (nowAttacking != wasAttacking && owner_.addonEventCallbackRef()) {
                 owner_.addonEventCallbackRef()(
                     nowAttacking ? "PET_ATTACK_START" : "PET_ATTACK_STOP", {});
             }
-            LOG_DEBUG("SMSG_PET_MODE: command=", static_cast<int>(owner_.petCommandRef()),
-                      " react=", static_cast<int>(owner_.petReactRef()));
+            LOG_DEBUG("SMSG_PET_MODE: command=", static_cast<int>(pet.command),
+                      " react=", static_cast<int>(pet.react));
         }
     }
     packet.skipAll();
