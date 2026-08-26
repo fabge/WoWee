@@ -338,3 +338,65 @@ four times individually. The pump is two passes now: drain SDL and feed ImGui,
 start the frame, then dispatch. It is committed alone, because it changes input
 routing globally and no test here can see it. The four Escape probes stay until
 a play session says it worked; they are the instrumentation for exactly this.
+
+## 2026-08-26 — one library per subsystem
+
+The build listed 419 sources by hand into a single `wowee` target, so a test
+could not link a subsystem: it had to re-enumerate the translation units it
+needed. That is why `tests/CMakeLists.txt` had grown to 2,145 lines, why
+`src/audio/` and `lua_engine.cpp` had no test at all, and why yesterday's
+`QuestHandler` fix shipped without a regression test.
+
+There are now ten STATIC libraries, one per `src/` directory, plus a
+`wowee_common` INTERFACE target holding the include paths, third-party links,
+warning flags and precompiled header that used to hang off `wowee` directly.
+Nothing about how the client compiles changed; what changed is that there is
+somewhere to inherit it from. The client is those libraries plus `src/main.cpp`.
+
+The libraries are declared as a cycle because that is what the symbol graph is:
+every pair references both ways. CMake allows cycles among static libraries and
+repeats the connected component, so this is stated rather than pretended away —
+with the measurement in `TODO.md`, since the asymmetry (`addons`→`game` 502
+symbols against 1 back) says which back-edges are accidental and worth deleting.
+
+Three things fell out of it that were not the point:
+
+`framexml_run` copied four properties off the `wowee` target one at a time, and
+the comment there recorded that the fourth was once missed and broke the tool on
+any Homebrew prefix. It links `wowee_core` now and there is nothing to keep in
+sync. It also inherits `-Werror` for the first time, which found an unused local
+in `tools/framexml_run.cpp`.
+
+`macos_platform.mm` was attached to the executable, not to a library, so any
+target linking a subsystem without also being the client failed on
+`localizedKeyName`. It belongs to `wowee_core`, where its callers are.
+
+147 of 419 objects contribute no symbol to the linked client and nothing
+references them — 141 are the `wowee_*.cpp` open-format writers that belong to
+`asset_extract`. Nothing is broken, because an archive member is pulled where it
+is referenced and platform-gated code still gets its object on that platform.
+Written up in `TODO.md` rather than acted on here.
+
+`test_lua_unit_api` carried 41 stub definitions, 32 of them `GameHandler`
+methods, because every binding guards its handler pointer so none is ever
+called and the linker wants a definition anyway. It links `wowee_addons` now;
+the stubs are gone and the assertions are unchanged.
+
+`test_quest_item_reconcile` is new, and is the first CTest target to exercise a
+`src/game/` handler rather than a header-only pure function. It covers
+yesterday's fix: the server marks a collect quest complete from its update
+fields the moment the item is looted, and the reconcile that fills `itemCounts`
+from the bag used to skip complete quests — so the log drew "Bundle of Furs:
+0/1" on a quest it was simultaneously marking (Complete). Verified by
+reintroducing `if (quest.complete) continue;` and watching it fail.
+
+`test_glm_link_check.py` flagged both new targets. Its premise — that a target
+reaching glm must call `wowee_test_link_glm()` — now has a second and better
+satisfier, since `wowee_common` carries glm to anything linking a subsystem
+library, and the macOS build proves the transitive path works. The sweep was
+taught the second form rather than the targets given a redundant call, and 12
+of its 16 existing helper calls were confirmed still load-bearing first, so the
+change adds a satisfier without blinding it. `sweep_guard`'s pinned pattern
+followed the wording; the ceiling stays at 0.
+
+182 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.

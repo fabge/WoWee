@@ -19,78 +19,65 @@ validation policy, including which checks are cheap and which are not.
 Bounded, each with a stated failure mode. A regression test is expected with
 each fix; every one of these is testable headlessly.
 
-Eight items that stood here on 2026-08-25 were fixed on 2026-08-26 and moved to
-`log.md`. What is left is what was not bounded enough to finish in that pass.
-
-### SavedVariables are written beside the addon's own source
-`src/addons/addon_manager.cpp:464`
-
-`getSavedVariablesPath` returns `addon.basePath + "/" + name + ".lua.saved"`, so
-mutable per-session state is written into the addon directory. For a bundled
-addon on macOS that directory is `Wowee.app/Contents/Resources/addons`, inside
-the code-signed seal, which `AGENTS.md` forbids writing to; for an addon living
-under extracted game data it writes into proprietary input. It works today only
-because those writes happen to be permitted.
-
-The fix is not just a path change: existing `.lua.saved` files have to be found
-in the old location and moved, or every player silently loses their addon
-settings once. Route through `core::getConfigRoot()` with a per-addon
-subdirectory, migrating on first read. **~3 hours, migration included.**
-
-### The crash handler writes to a fixed `/tmp` path
-`src/main.cpp:69`
-
-`/tmp/wowee_debug.log` is shared by every user on the machine and by every
-concurrent client. It is opened with `fopen` from inside a signal handler,
-which is already not async-signal-safe, so this wants resolving to a per-user
-path captured once at startup rather than being built in the handler.
-**~1 hour.**
-
-### Quest objective lines name no creature
-`src/addons/lua_quest_api.cpp:982`
-
-`GetQuestLogLeaderBoard` builds kill objectives as the literal `"Creature
-slain: 0/10"` — a stock client says `"Bristleback Quilboar slain: 0/10"`. The
-objective is unreadable when a quest has three of them, which is exactly when
-it matters. The name needs a creature-name cache keyed on the objective's
-`npcOrGoId`; the item half of the same function already does the equivalent
-lookup through `getItemInfo`. **~3 hours, most of it the cache.**
+Empty. The eight items that stood here on 2026-08-25 and the three that
+outlived them - SavedVariables written beside the addon's own source, the crash
+handler's fixed `/tmp` path, and quest objective lines that named no creature -
+were all fixed on 2026-08-26 and are in `log.md`. The three were still listed
+here after they were fixed; they were checked against the source on 2026-08-26
+and removed.
 
 ## Tier 2 — structural
 
 None of these is urgent. Each taxes every future change in its area.
 
-### No library targets, so subsystems cannot be tested
-`CMakeLists.txt:585`, `:1214`
+### Breaking the cycles between the subsystem libraries
+`CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block
 
-419 sources are listed by hand into one `wowee` target. A test cannot link a
-subsystem; it must re-enumerate the `.cpp` files it needs, which is why
-`tests/CMakeLists.txt` is 2,125 lines for 82 executables, and why `src/audio/`
-(5.3k lines) and `src/addons/lua_engine.cpp` (10,783 lines) have no test at
-all. This is the single biggest drag on adding tests anywhere. **Multi-day.**
+The library targets exist as of 2026-08-26 and the two items that stood here
+before them — "no library targets, so subsystems cannot be tested" and
+"deleting the link stubs in `test_lua_unit_api.cpp`" — are done and in
+`log.md`. What is left is the reason they have to be declared as a cycle.
 
-Concretely, on 2026-08-26: the fix to
-`QuestHandler::reconcileItemObjectivesFromInventory` shipped without a
-regression test because covering it means linking `quest_handler.cpp`,
-`game_handler.cpp` and the 59 translation units behind them. The five existing
-`test_quest_*` targets all test header-only pure functions, which is the shape
-of test this build graph permits and the reason the handler logic has none.
+Every subsystem pair references both ways, so all ten are linked to all ten and
+CMake repeats the connected component on the link line. That is correct and it
+builds, but it means linking one subsystem offers the linker all of them, and a
+new call from any subsystem into any other is invisible rather than a build
+error. Measured 2026-08-26, and the asymmetry says where to start:
 
-### Deleting the link stubs in `test_lua_unit_api.cpp`
-`tests/test_lua_unit_api.cpp`
+| edge | forward | back |
+| --- | --- | --- |
+| `addons` → `game` | 502 | 1 |
+| `ui` → `game` | 211 | 3 |
+| `rendering` → `pipeline` | 59 | 2 |
+| `core` → `ui` | 67 | 30 |
+| `core` ↔ `rendering` | 165 | 17 |
 
-The seam itself is done — `src/addons/` reaches CTest for the first time. But
-the estimate that preceded it was wrong in an instructive way: every binding
-does guard its handler pointer, so nothing is *called*, and the linker wants
-the symbols anyway. `lua_unit_api.cpp` leaves **41 undefined symbols, 32 of
-them `GameHandler` methods**, and the test carries a stub for each.
+The three back-edges of 1, 2 and 3 symbols are almost certainly accidental and
+worth deleting on their own merits; that alone turns three cycles into
+dependencies and lets those libraries be declared honestly. `core ↔ rendering`
+is real and is the same god-object problem as `GameHandler` below.
 
-The stubs are bounded and they fail loudly (a link error, never a wrong
-result), but they are the tax the single-target build charges. They are the
-first thing to delete when subsystem libraries exist, and the number above is
-the concrete measure of how tangled `lua_unit_api.cpp` is with `GameHandler` —
-one file needing 32 methods of it is the god-object item below, stated in a
-number rather than an opinion.
+Do not replace the cycle with a hand-written edge list until the back-edges are
+gone: the measurement above is macOS-only, a missing edge is a link failure on
+GNU ld, and CI builds five platforms. **~half a day for the small back-edges.**
+
+### 147 translation units the client links for nothing
+`CMakeLists.txt` — `WOWEE_SRC_PIPELINE`
+
+Found by the library split on 2026-08-26: with the sources in archives rather
+than compiled straight into the executable, 147 of 419 objects contribute no
+symbol to the linked client, and nothing anywhere in the client references them.
+141 are the `src/pipeline/wowee_*.cpp` open-format writers, which belong to the
+`asset_extract` tool; the other six are `vk_buffer.cpp`, `poi_marker_layer.cpp`,
+`animation_manager.cpp`, `touch_controls.cpp` and the two `chat_markup_*.cpp`,
+whose headers are included but whose out-of-line definitions nothing calls.
+
+Nothing is broken — an archive member is pulled where it is referenced, so the
+Android build still gets `touch_controls.o` where `application.cpp` references
+it, and the client is now smaller by not linking the rest. The open question is
+whether the pipeline writers should move to a target of their own so
+`asset_extract` names them and the client does not compile them at all.
+**~2 hours, and it needs a look at what `asset_extract` actually wants.**
 
 ### A partially-loaded addon still gets no initialisation event
 `src/addons/addon_manager.cpp:1330`, `:1399`
