@@ -2,7 +2,7 @@
 // Moved from ChatPanel::render() inline lambdas (Phase 2.2).
 // Item tooltip rendering extracted to ItemTooltipRenderer (Phase 6.7).
 #include "ui/chat/chat_markup_renderer.hpp"
-#include "addons/lua_api_helpers.hpp"
+#include "ui/addon_bridge.hpp"
 #include "ui/chat/item_tooltip_renderer.hpp"
 #include "ui/ui_colors.hpp"
 #include "ui/inventory_screen.hpp"
@@ -216,7 +216,7 @@ void ChatMarkupRenderer::render(
             // intent.
             if (ImGui::IsItemClicked() && !ImGui::GetIO().KeyShift &&
                 seg.id > 0 && ctx.gameHandler) {
-                addons::openInterfaceQuestLog(*ctx.gameHandler, seg.id);
+                if (ctx.addonBridge) ctx.addonBridge->openQuestLog(seg.id);
             }
             // Shift-click: insert link
             shiftClickInsert(seg, ctx);

@@ -5,7 +5,7 @@
 #include "ui/chat_panel.hpp"
 #include "ui/ui_services.hpp"
 #include "game/game_handler.hpp"
-#include "addons/addon_manager.hpp"
+#include "ui/addon_bridge.hpp"
 #include "core/application.hpp"
 #include "ui/framexml_takeover.hpp"
 #include "ui/chat/chat_utils.hpp"
@@ -21,7 +21,7 @@ class RunCommand : public IChatCommand {
 public:
     ChatCommandResult execute(ChatCommandContext& ctx) override {
         if (ctx.args.empty()) return {.handled = false, .clearInput = false};
-        auto* am = ctx.services.addonManager;
+        auto* am = ctx.services.addonBridge;
         if (am) {
             am->runScript(ctx.args);
         } else {
@@ -38,8 +38,8 @@ class DumpCommand : public IChatCommand {
 public:
     ChatCommandResult execute(ChatCommandContext& ctx) override {
         if (ctx.args.empty()) return {.handled = false, .clearInput = false};
-        auto* am = ctx.services.addonManager;
-        if (am && am->isInitialized()) {
+        auto* am = ctx.services.addonBridge;
+        if (am && am->isRunning()) {
             // Wrap expression in print(tostring(...)) to display the value
             std::string wrapped = "local __v = " + ctx.args +
                 "; if type(__v) == 'table' then "
@@ -65,7 +65,7 @@ public:
 class ReloadCommand : public IChatCommand {
 public:
     ChatCommandResult execute(ChatCommandContext& ctx) override {
-        auto* am = ctx.services.addonManager;
+        auto* am = ctx.services.addonBridge;
         if (am) {
             am->reload();
             am->fireEvent("VARIABLES_LOADED");
@@ -107,7 +107,7 @@ public:
         // target and a fault with one, and from the tree alone they are the
         // same line. print() reaches the log, so the answer lands beside the
         // report it belongs to.
-        if (auto* am = ctx.services.addonManager) {
+        if (auto* am = ctx.services.addonBridge) {
             am->runScript(
                 "local function yn(v) return v and 'yes' or 'no' end\n"
                 "local auras = 0\n"

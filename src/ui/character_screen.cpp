@@ -7,7 +7,7 @@
 #include "core/application.hpp"
 #include "core/config_paths.hpp"
 #include "core/logger.hpp"
-#include "addons/addon_manager.hpp"
+#include "ui/addon_bridge.hpp"
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <algorithm>
@@ -57,7 +57,7 @@ void CharacterScreen::render(game::GameHandler& gameHandler) {
     // Ensure we can render a preview even if the state transition hook didn't
     // inject the AssetManager.
     if (!assetManager_) {
-        assetManager_ = core::Application::getInstance().getAssetManager();
+        assetManager_ = services_.assetManager;
     }
 
     const auto& characters = gameHandler.getCharacters();
@@ -403,7 +403,7 @@ void CharacterScreen::renderDetails(game::GameHandler& gameHandler,
             preview_ = std::make_unique<rendering::CharacterPreview>();
         }
         if (!previewInitialized_) {
-            auto* renderer = core::Application::getInstance().getRenderer();
+            auto* renderer = services_.renderer;
             previewInitialized_ = preview_->initialize(renderer, assetManager_);
             if (!previewInitialized_) {
                 LOG_WARNING("CharacterScreen: failed to init CharacterPreview");
@@ -619,14 +619,17 @@ void CharacterScreen::renderAddonsSheet(float screenW, float screenH) {
     }
     col.gap(px(34));
 
-    auto* am = services_.addonManager;
+    auto* am = services_.addonBridge;
     if (!am) {
         ui_.text(col.at(), "The addon system is not running.", px(kBodySize), theme.pencil);
         ui_.setLayer(PaperLayer::Page);
         return;
     }
 
-    const auto& addons = am->getAddons();
+    // A copy rather than a reference into the addon manager: this asks the
+    // narrow face src/ui was given, which builds the rows it needs. The list is
+    // a few dozen entries drawn once a frame.
+    const std::vector<AddonListEntry> addons = am->listAddons();
     ui_.text(col.at(), "Enabled addons load when you enter the world, or on /reload.",
              smallSize, theme.pencil);
     col.gap(ui_.lineHeight(smallSize) + px(8));
@@ -650,33 +653,29 @@ void CharacterScreen::renderAddonsSheet(float screenW, float screenH) {
         static_cast<int>(addons.size()), rowH, -1,
         [&](int index, ImVec2 rowA, ImVec2 rowB, bool, bool) {
             const auto& addon = addons[static_cast<size_t>(index)];
-            const bool enabled = am->isAddonEnabled(addon.addonName);
+            const bool enabled = addon.enabled;
             const float boxSize = px(17);
             const float cy = (rowA.y + rowB.y) * 0.5f;
 
             // The checkbox is drawn here rather than left to the row's click,
             // so an addon can be turned on without being pointed at exactly.
             bool value = enabled;
-            if (ui_.checkbox(addon.addonName.c_str(),
+            if (ui_.checkbox(addon.name.c_str(),
                              ImVec2(rowA.x + px(8), cy - boxSize * 0.5f), boxSize, nullptr,
                              &value)) {
-                am->setAddonEnabled(addon.addonName, value);
+                am->setAddonEnabled(addon.name, value);
             }
 
             const float textX = rowA.x + px(8) + boxSize + px(12);
-            const std::string title = addon.getTitle();
+            const std::string& title = addon.title;
             ui_.text(ImVec2(textX, rowA.y + px(4)), title.c_str(), px(kBodySize),
                      enabled ? theme.ink : theme.pencil);
 
             std::string sub;
-            if (auto it = addon.directives.find("Version");
-                it != addon.directives.end() && !it->second.empty()) {
-                sub = "v" + it->second;
-            }
-            if (auto it = addon.directives.find("Author");
-                it != addon.directives.end() && !it->second.empty()) {
+            if (!addon.version.empty()) sub = "v" + addon.version;
+            if (!addon.author.empty()) {
                 if (!sub.empty()) sub += "  ";
-                sub += "by " + it->second;
+                sub += "by " + addon.author;
             }
             if (!sub.empty()) {
                 ui_.text(ImVec2(textX, rowA.y + px(4) + px(kBodySize) * 1.15f), sub.c_str(),

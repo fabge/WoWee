@@ -10,7 +10,7 @@
 #include "ui/ui_colors.hpp"
 #include "rendering/vk_context.hpp"
 #include "core/application.hpp"
-#include "addons/addon_manager.hpp"
+#include "ui/addon_bridge.hpp"
 #include "core/coordinates.hpp"
 #include "core/input.hpp"
 #include "rendering/renderer.hpp"
@@ -219,7 +219,7 @@ void ChatPanel::sendChatMessage(game::GameHandler& gameHandler) {
         // /run <lua code>
         if ((cmdLower == "run" || cmdLower == "script") && spacePos != std::string::npos) {
             std::string luaCode = command.substr(spacePos + 1);
-            auto* am = services_.addonManager;
+            auto* am = services_.addonBridge;
             if (am) {
                 am->runScript(luaCode);
             } else {
@@ -232,8 +232,8 @@ void ChatPanel::sendChatMessage(game::GameHandler& gameHandler) {
         // /dump <expression>
         if ((cmdLower == "dump" || cmdLower == "print") && spacePos != std::string::npos) {
             std::string expr = command.substr(spacePos + 1);
-            auto* am = services_.addonManager;
-            if (am && am->isInitialized()) {
+            auto* am = services_.addonBridge;
+            if (am && am->isRunning()) {
                 std::string wrapped = "local __v = " + expr +
                     "; if type(__v) == 'table' then "
                     "  local parts = {} "
@@ -254,12 +254,12 @@ void ChatPanel::sendChatMessage(game::GameHandler& gameHandler) {
 
         // Addon slash commands (SlashCmdList)
         {
-            auto* am = services_.addonManager;
-            if (am && am->isInitialized()) {
+            auto* am = services_.addonBridge;
+            if (am) {
                 std::string slashCmd = "/" + cmdLower;
                 std::string slashArgs;
                 if (spacePos != std::string::npos) slashArgs = command.substr(spacePos + 1);
-                if (am->getLuaEngine()->dispatchSlashCommand(slashCmd, slashArgs)) {
+                if (am->dispatchSlashCommand(slashCmd, slashArgs)) {
                     chatInputBuffer_[0] = '\0';
                     return;
                 }

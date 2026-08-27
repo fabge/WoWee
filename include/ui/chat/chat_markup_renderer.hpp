@@ -13,6 +13,7 @@ namespace game { class GameHandler; }
 namespace pipeline { class AssetManager; }
 namespace ui {
 
+class AddonBridge;
 class InventoryScreen;
 class SpellbookScreen;
 
@@ -21,6 +22,9 @@ class SpellbookScreen;
  */
 struct MarkupRenderContext {
     game::GameHandler*  gameHandler   = nullptr;
+    /// Opens the interface's quest log on a quest link. Null when the addon
+    /// system is not running, in which case the link is drawn and inert.
+    AddonBridge*        addonBridge   = nullptr;
     InventoryScreen*    inventory     = nullptr;
     SpellbookScreen*    spellbook     = nullptr;
     pipeline::AssetManager* assetMgr  = nullptr;
