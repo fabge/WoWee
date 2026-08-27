@@ -613,7 +613,6 @@ set(WOWEE_SRC_CORE
     src/core/world_entry_callback_handler.cpp
     src/core/ui_screen_callback_handler.cpp
     src/core/window.cpp
-    src/core/input.cpp
 )
 
 set(WOWEE_SRC_NETWORK
@@ -631,9 +630,6 @@ set(WOWEE_SRC_AUTH
     src/auth/integrity.cpp
     src/auth/srp.cpp
     src/auth/big_num.cpp
-    src/auth/crypto.cpp
-    src/auth/rc4.cpp
-    src/auth/vanilla_crypt.cpp
 )
 
 set(WOWEE_SRC_AUDIO
@@ -772,7 +768,6 @@ set(WOWEE_SRC_RENDERING
 )
 
 set(WOWEE_SRC_GAME
-    src/game/expansion_profile.cpp
     src/game/update_field_table.cpp
     src/game/game_handler.cpp
     src/game/game_handler_packets.cpp
@@ -811,7 +806,6 @@ set(WOWEE_SRC_GAME
     src/game/faction_hostility.cpp
     src/game/packet_parsers_tbc.cpp
     src/game/packet_parsers_classic.cpp
-    src/game/character.cpp
     src/game/inventory.cpp
 )
 
@@ -1131,21 +1125,71 @@ add_library(wowee_takeover STATIC src/ui/framexml_takeover.cpp)
 target_link_libraries(wowee_takeover PUBLIC wowee_common wowee_base)
 set_target_properties(wowee_takeover PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# ---- wowee_opcodes: the wire protocol's own names ----
+# ---- wowee_input: the keyboard and mouse this frame ----
 #
-# Which opcode number means what, per expansion, loaded from Data/opcodes. Not
-# a subsystem: src/network needs it to name a packet it has just read, and
-# src/game needs it to build one - which made the whole network -> game edge in
-# the library graph, three symbols against twenty-two the other way.
+# SDL scancode state, mouse buttons, and which binding commands are held. It
+# depends on nothing of ours - measured on 2026-08-27, input.cpp had no
+# undefined wowee:: symbol at all - and it is read by src/ui, src/rendering and
+# src/core alike, through a singleton.
 #
-# It belongs to neither. The file stays in src/game because that is where the
-# protocol tables live; only which target compiles it has changed. Same shape
-# as wowee_takeover, and for the same reason.
+# In wowee_core it was ten of the twenty-four symbols on the ui -> core edge and
+# six of the seven on rendering -> core, which made a device abstraction look
+# like a dependency on the composition root. It is not one; it is the bottom of
+# the graph, the same as the logger.
 #
-# Depends on the logger and nothing else.
-add_library(wowee_opcodes STATIC src/game/opcode_table.cpp)
-target_link_libraries(wowee_opcodes PUBLIC wowee_common wowee_base)
-set_target_properties(wowee_opcodes PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Its own target rather than something added to wowee_base for the same reason
+# wowee_takeover is: base means one thing, and per-frame device state is not a
+# logging facade.
+add_library(wowee_input STATIC src/core/input.cpp)
+target_link_libraries(wowee_input PUBLIC wowee_common wowee_base)
+set_target_properties(wowee_input PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---- wowee_crypto: the primitives, not the login protocol ----
+#
+# SHA-1 and HMAC, RC4, and the vanilla header cipher. src/auth needs them for
+# SRP and the integrity check; src/network needs them to encrypt and decrypt
+# every world packet header - which was the whole of the network -> auth edge
+# in the library graph, 8 symbols against 10 the other way.
+#
+# A cipher is not a login handshake, and it is not src/auth's to own. Measured
+# on 2026-08-27, crypto.cpp and vanilla_crypt.cpp depend on nothing of ours at
+# all and rc4.cpp only on the logger. big_num stays in src/auth: it is SRP's
+# arithmetic and nothing outside the handshake asks for it.
+add_library(wowee_crypto STATIC
+    src/auth/crypto.cpp
+    src/auth/rc4.cpp
+    src/auth/vanilla_crypt.cpp
+)
+target_link_libraries(wowee_crypto PUBLIC wowee_common wowee_base)
+set_target_properties(wowee_crypto PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---- wowee_tables: the static tables the client answers from ----
+#
+# Three files, and the same three properties in each: a table keyed by
+# expansion or by race that is read rather than computed, no dependency on
+# anything of ours beyond the logger, and more than one library reading it.
+#
+#   opcode_table.cpp      which opcode number means what, per expansion.
+#                         src/network names a packet it has just read with it
+#                         and src/game builds one with it - the whole of the
+#                         network -> game edge, 3 symbols against 22.
+#   expansion_profile.cpp which expansion is active, and its build and paths.
+#                         Read by src/core, src/game, src/rendering, src/ui
+#                         and src/addons.
+#   character.cpp         which model a race and gender wear. Read by
+#                         src/core, src/game and src/rendering.
+#
+# None of them is a subsystem and none belongs to the library it sat in. The
+# files stay in src/game, because moving them would rename their namespace
+# across every call site; only which target compiles them has changed. Same
+# shape as wowee_takeover, and for the same reason.
+add_library(wowee_tables STATIC
+    src/game/opcode_table.cpp
+    src/game/expansion_profile.cpp
+    src/game/character.cpp
+)
+target_link_libraries(wowee_tables PUBLIC wowee_common wowee_base)
+set_target_properties(wowee_tables PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---- wowee_zones: which zone a point is in, and what plays there ----
 #
@@ -1341,7 +1385,7 @@ set_target_properties(wowee_openformat PROPERTIES POSITION_INDEPENDENT_CODE ON)
 foreach(_sub math core network auth audio pipeline rendering game ui addons)
     string(TOUPPER "${_sub}" _SUB)
     add_library(wowee_${_sub} STATIC ${WOWEE_SRC_${_SUB}})
-    target_link_libraries(wowee_${_sub} PUBLIC wowee_common wowee_base wowee_takeover wowee_opcodes)
+    target_link_libraries(wowee_${_sub} PUBLIC wowee_common wowee_base wowee_takeover wowee_tables wowee_input wowee_crypto)
     set_target_properties(wowee_${_sub} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endforeach()
 
