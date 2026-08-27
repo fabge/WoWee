@@ -11,22 +11,22 @@ new network protocol.
 
 | Layer | Path | LOC | Notes |
 |-------|------|-----|-------|
-| Core loop | `src/core/` | ~16k | Application, Window, Input, Config, Logger, Env |
+| Core loop | `src/core/` | ~20k | Application, Window, Input, Config, Logger, Env |
 | Math | `src/math/` | ~0.2k | glm wrapper |
 | Audio | `src/audio/` | ~5k | miniaudio-based playback |
-| Rendering | `src/rendering/` | ~57k | Vulkan: terrain, models, lighting, sky, water, particles |
-| Pipeline | `src/pipeline/` | ~39k | Asset loading, mesh/texture/skeleton management |
-| UI | `src/ui/` | ~42k | ImGui-based (will be heavily reworked for touch) |
-| Network | `src/network/` | ~1.3k | Transport layer (keep TCP/UDP framing, drop WoW protocol) |
+| Rendering | `src/rendering/` | ~61k | Vulkan: terrain, models, lighting, sky, water, particles |
+| Pipeline | `src/pipeline/` | ~61k | Asset loading, mesh/texture/skeleton management |
+| UI | `src/ui/` | ~34k | FrameXML-driven, over a C++ widget tree (will be heavily reworked for touch) |
+| Network | `src/network/` | ~1.9k | Transport layer (keep TCP/UDP framing, drop WoW protocol) |
 
-**Total engine: ~160k LOC** (before trimming WoW-specific paths within these dirs)
+**Total engine: ~186k LOC** (measured 2026-08-27) (before trimming WoW-specific paths within these dirs)
 
 ## What we throw away
 
 | Layer | Path | LOC | Why |
 |-------|------|-----|-----|
-| Game logic | `src/game/` | ~60k | WoW-specific: combat, classes, items, spells, quests |
-| Addons | `src/addons/` | ~40k | WoW Lua addon system |
+| Game logic | `src/game/` | ~81k | WoW-specific: combat, classes, items, spells, quests |
+| Addons | `src/addons/` | ~46k | WoW Lua addon system |
 | Auth | `src/auth/` | ~2k | SRP6 / WoW login protocol |
 | WoW parsers | within pipeline | ~15k? | BLP, ADT, M2, WMO, DBC format readers |
 | Warden | within game | ? | Blizzard anti-cheat emulation |
@@ -125,4 +125,4 @@ new network protocol.
 - The rendering layer is tightly coupled to the pipeline (asset manager) — extraction
   will need to stub or replace the WoW format parsers
 - Audio uses miniaudio (single-header, easy to keep)
-- Network is thin (~1.3k LOC) — mostly transport, easy to repurpose
+- Network is thin (~1.9k LOC) — mostly transport, easy to repurpose

@@ -1058,6 +1058,24 @@ CHECKS += [
     # writes outside the stack - GetChildren on UIParent, with 267 of them,
     # died in realloc rather than raising. Canaried by removing each of the
     # three guards in turn; all three are reported.
+    # Renderer::shutdown() is a hand-written list of thirty owned subsystems,
+    # and it exists because ~Renderer is too late: a sub-renderer has to free
+    # its VMA allocations before VkContext::shutdown reaches
+    # vmaDestroyAllocator. Five were missing when this was written - four that
+    # freed real Vulkan objects from their destructors instead, and one that
+    # was never released at all - and it held only because Application resets
+    # the renderer on the very next line.
+    ("renderer_shutdown_check.py",
+     r"^(\d+) owned subsystem\(s\) shutdown\(\) never releases", 0,
+     "renderer subsystems nothing releases in shutdown()"),
+    # tools/ is 126 Python sweeps and until 2026-08-27 had no index but the
+    # CHECKS list here, which names about thirty of them. The README's table is
+    # generated from each tool's own docstring, so this is what keeps a tool
+    # added without an entry - or an entry whose tool has moved on - from
+    # quietly making the index wrong, which is worse than not having one.
+    ("tools_readme_check.py",
+     r"^(\d+) tool\(s\) missing from tools/README.md", 0,
+     "tools the README does not list, or lists wrongly"),
     ("lua_stack_room_check.py",
      r"^(\d+) binding\(s\) push per row without asking for the room", 0,
      "bindings pushing a value per row with no room asked for"),

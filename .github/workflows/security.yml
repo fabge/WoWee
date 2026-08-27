@@ -140,7 +140,7 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: |
           if [ -f build/CTestTestfile.cmake ] || [ -d build/tests ]; then
-            ctest --test-dir build --output-on-failure
+            ctest --test-dir build --output-on-failure -j "$(nproc)"
           else
             echo "No tests configured; sanitizer build completed."
           fi

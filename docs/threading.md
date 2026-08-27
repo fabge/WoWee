@@ -13,7 +13,7 @@ follow.
 | 1  | **Main thread**        | `Application::run()` (`main.cpp`)               | Entire session                |
 | 2  | **Async network pump** | `WorldSocket::asyncPumpLoop()` started inside `WorldSocket::connect()` (`world_socket.cpp`) | Connect → disconnect          |
 | 3  | **Terrain workers**    | `TerrainManager::initialize()` spawns the worker pool that runs `workerLoop()` (`terrain_manager.cpp`) | Map load → `stopWorkers()` on shutdown |
-| 4  | **Watchdog**           | Inline lambda `std::thread` started in `Application::run()` (`application.cpp:642`) | After first frame → shutdown  |
+| 4  | **Watchdog**           | Inline lambda `std::thread` started in `Application::run()` (`application.cpp`, `watchdogThread`) | After first frame → shutdown  |
 | 5  | **Fire-and-forget**    | `std::async` / `std::thread(...).detach()` (various) | Task-scoped (bone anim, normal-map gen, warden crypto, world preload, entity model loading) |
 
 ### Thread Responsibilities

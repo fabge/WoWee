@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""Loads the per-expansion opcode tables and compares them.
+
+Imported by the opcode sweeps rather than run: it reports nothing itself.
+"""
 
 from __future__ import annotations
 

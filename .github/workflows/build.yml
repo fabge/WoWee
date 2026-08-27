@@ -97,8 +97,10 @@ jobs:
     - name: Build editor
       run: cmake --build build --target wowee_editor --parallel ${{ matrix.build_jobs }}
 
+    # -j, because the suite is a hundred and eighty small binaries and one
+    # three-minute sweep. Serially it is the longest step in the job.
     - name: Run tests
-      run: cd build && ctest --output-on-failure
+      run: cd build && ctest --output-on-failure -j "$(nproc)"
 
     - name: Package (DEB)
       run: cd build && cpack -G DEB
@@ -175,7 +177,7 @@ jobs:
       run: cmake --build build --parallel "$(sysctl -n hw.logicalcpu)"
 
     - name: Run tests
-      run: cd build && ctest --output-on-failure
+      run: cd build && ctest --output-on-failure -j "$(sysctl -n hw.logicalcpu)"
 
     - name: Configure Developer ID signing
       env:
