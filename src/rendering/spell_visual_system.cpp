@@ -487,8 +487,24 @@ void SpellVisualSystem::playSpellVisual(uint32_t visualId, const glm::vec3& worl
     }
 }
 
+bool advanceSpellMissile(glm::vec3& position, const glm::vec3& target,
+                         float speed, float deltaTime) {
+    const glm::vec3 toTarget = target - position;
+    const float remaining = glm::length(toTarget);
+    const float step = speed * deltaTime;
+    // Already there, or this frame carries it the rest of the way. Either is
+    // an arrival; stepping past the target and turning round is not.
+    if (remaining < 1e-4f || remaining <= step) {
+        position = target;
+        return true;
+    }
+    position += toTarget * (step / remaining);
+    return false;
+}
+
 bool SpellVisualSystem::launchSpellMissile(uint32_t visualId, const glm::vec3& start,
-                                           const glm::vec3& end, float speed) {
+                                           const glm::vec3& end, float speed,
+                                           uint32_t targetInstanceId) {
     if (!m2Renderer_ || visualId == 0 || speed <= 0.0f) return false;
 
     if (!cachedAssetManager_)
@@ -522,6 +538,8 @@ bool SpellVisualSystem::launchSpellMissile(uint32_t visualId, const glm::vec3& s
                                    .isMissile = true,
                                    .travelStart = start,
                                    .travelEnd = end,
+                                   .travelSpeed = speed,
+                                   .targetInstanceId = targetInstanceId,
                                    .impactVisualId = visualId});
     LOG_INFO("SpellVisual: launched missile visualId=", visualId, " instanceId=", instanceId,
              " model=", modelPath, " distance=", glm::length(end - start), " speed=", speed,
@@ -601,9 +619,28 @@ void SpellVisualSystem::update(float deltaTime) {
             m2Renderer_->removeInstance(it->instanceId);
             it = activeSpellVisuals_.erase(it);
         } else if (it->isMissile) {
-            m2Renderer_->setInstancePosition(
-                it->instanceId,
-                glm::mix(it->travelStart, it->travelEnd, it->elapsed / it->duration));
+            // Where the target is being drawn *now*, not where it stood when
+            // the cast landed. A bolt aimed at the launch position lands
+            // beside anything that walked during the flight, and every unit
+            // in combat is walking.
+            if (it->targetInstanceId != 0 && charRenderer) {
+                glm::vec3 targetPos;
+                if (charRenderer->getInstancePosition(it->targetInstanceId, targetPos))
+                    it->travelEnd = targetPos + glm::vec3(0.0f, 0.0f, kSpellMissileAimHeight);
+            }
+            const glm::vec3 aim = it->travelEnd;
+            if (advanceSpellMissile(it->travelStart, aim, it->travelSpeed, deltaTime)) {
+                // Arrived. The impact goes where the missile actually is,
+                // which after homing is the target and not the aim point the
+                // caster picked.
+                if (it->impactVisualId != 0)
+                    arrivedMissiles.emplace_back(it->impactVisualId, it->travelStart);
+                m2Renderer_->removeInstance(it->instanceId);
+                it = activeSpellVisuals_.erase(it);
+                continue;
+            }
+            m2Renderer_->setInstancePose(it->instanceId, it->travelStart,
+                                         spellMissileRotation(it->travelStart, aim));
             ++it;
         } else {
             // Update position for bone-tracked effects - follow the CASTER's

@@ -21,6 +21,7 @@
 #include <cmath>
 #include <limits>
 #include <unordered_set>
+#include <optional>
 
 namespace wowee {
 namespace rendering {
@@ -34,8 +35,21 @@ thread_local std::vector<uint32_t> tl_m2_collisionTriScratch;
 } // namespace m2_internal
 
 void M2Renderer::setInstancePosition(uint32_t instanceId, const glm::vec3& position) {
+    setInstancePose(instanceId, position, std::nullopt);
+}
+
+void M2Renderer::setInstanceRotation(uint32_t instanceId, const glm::vec3& rotation) {
+    auto idxIt = instanceIndexById.find(instanceId);
+    if (idxIt == instanceIndexById.end()) return;
+    setInstancePose(instanceId, instances[idxIt->second].position, rotation);
+}
+
+void M2Renderer::setInstancePose(uint32_t instanceId, const glm::vec3& position,
+                                 std::optional<glm::vec3> rotation) {
     if (!std::isfinite(position.x) || !std::isfinite(position.y) ||
         !std::isfinite(position.z)) return;
+    if (rotation && (!std::isfinite(rotation->x) || !std::isfinite(rotation->y) ||
+                     !std::isfinite(rotation->z))) return;
     auto idxIt = instanceIndexById.find(instanceId);
     if (idxIt == instanceIndexById.end()) return;
     auto& inst = instances[idxIt->second];
@@ -46,6 +60,7 @@ void M2Renderer::setInstancePosition(uint32_t instanceId, const glm::vec3& posit
     const glm::vec3 oldBoundsMax = inst.worldBoundsMax;
 
     inst.position = position;
+    if (rotation) inst.rotation = *rotation;
     inst.updateModelMatrix();
     // Use cachedModel instead of a fresh models.find() - the pointer was set
     // at addInstance and stays valid as long as the instance exists.

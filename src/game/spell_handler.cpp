@@ -412,9 +412,15 @@ bool SpellHandler::launchSpellMissile(uint32_t spellId, uint64_t casterGuid, uin
             characters->getAttachmentTransform(casterInstance, 1, handTransform))
             start = glm::vec3(handTransform[3]);
     }
-    end.z += 1.0f;
+    end.z += rendering::kSpellMissileAimHeight;
 
-    return svs->launchSpellMissile(visualId, start, end, speed);
+    // Handed the target's drawn instance so the missile can follow it. The
+    // fixed `end` above is only the opening aim: it is the target's last
+    // *server* position, which for anything in combat is already behind
+    // where the target is being drawn, and further behind still by the time
+    // a bolt crosses thirty yards.
+    return svs->launchSpellMissile(visualId, start, end, speed,
+                                   owner_.resolveUnitRenderInstance(targetGuid));
 }
 
 void SpellHandler::launchRangedWeaponProjectile(uint32_t spellId, uint64_t targetGuid) {

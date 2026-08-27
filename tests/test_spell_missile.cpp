@@ -15,6 +15,7 @@
 
 using wowee::rendering::kSpellMissileMaxDuration;
 using wowee::rendering::kSpellMissileMinDuration;
+using wowee::rendering::advanceSpellMissile;
 using wowee::rendering::spellMissileDuration;
 using wowee::rendering::spellMissileRotation;
 
@@ -65,4 +66,47 @@ TEST_CASE("a missile points down its own flight path", "[spell][missile]") {
     // ...and one below pitches it down by the same amount.
     const glm::vec3 down = spellMissileRotation(origin, glm::vec3(10.0f, 0.0f, -10.0f));
     REQUIRE(down.y == Catch::Approx(glm::quarter_pi<float>()));
+}
+
+// A missile that homes is the whole point of carrying the target's instance
+// through the launch, and the step is where that happens: the aim point is
+// re-read every frame, so this function is asked about a target that moves.
+TEST_CASE("a missile closes on its target at its own speed", "[spell][missile]") {
+    glm::vec3 pos(0.0f, 0.0f, 0.0f);
+    // 20 units per second, a sixtieth of a second: a third of a unit.
+    REQUIRE_FALSE(advanceSpellMissile(pos, glm::vec3(30.0f, 0.0f, 0.0f), 20.0f, 1.0f / 60.0f));
+    REQUIRE(pos.x == Catch::Approx(20.0f / 60.0f));
+    REQUIRE(pos.y == Catch::Approx(0.0f));
+}
+
+TEST_CASE("a missile follows a target that moves", "[spell][missile]") {
+    // Launched down +x at something thirty out, which then walks ten to the
+    // side. Every step aims at where it is now, so the missile turns rather
+    // than carrying on to the empty ground it was first aimed at - which is
+    // the bug this was written for: the bolt landed beside the wolf.
+    glm::vec3 pos(0.0f, 0.0f, 0.0f);
+    glm::vec3 target(30.0f, 0.0f, 0.0f);
+    for (int frame = 0; frame < 10; ++frame)
+        (void)advanceSpellMissile(pos, target, 20.0f, 1.0f / 60.0f);
+    REQUIRE(pos.y == Catch::Approx(0.0f));
+
+    target = glm::vec3(30.0f, 10.0f, 0.0f);
+    for (int frame = 0; frame < 10; ++frame)
+        (void)advanceSpellMissile(pos, target, 20.0f, 1.0f / 60.0f);
+    // It has started to turn, and it is turning the way the target went.
+    REQUIRE(pos.y > 0.0f);
+}
+
+TEST_CASE("a missile arrives rather than overshooting", "[spell][missile]") {
+    // The step is longer than what is left. Landing on the target and saying
+    // so is right; stepping past it and turning round to come back is not.
+    glm::vec3 pos(0.0f, 0.0f, 0.0f);
+    const glm::vec3 target(1.0f, 0.0f, 0.0f);
+    REQUIRE(advanceSpellMissile(pos, target, 100.0f, 1.0f / 60.0f));
+    REQUIRE(pos.x == Catch::Approx(target.x));
+
+    // And a target it is already standing on is an arrival, not a division by
+    // a length of zero.
+    glm::vec3 same(5.0f, 5.0f, 5.0f);
+    REQUIRE(advanceSpellMissile(same, same, 20.0f, 1.0f / 60.0f));
 }

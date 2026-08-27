@@ -446,6 +446,13 @@ public:
     void renderM2Ribbons(VkCommandBuffer cmd, VkDescriptorSet perFrameSet);
 
     void setInstancePosition(uint32_t instanceId, const glm::vec3& position);
+    /// Turn an instance in place. A homing missile does this every frame.
+    void setInstanceRotation(uint32_t instanceId, const glm::vec3& rotation);
+    /// Both at once, and the one implementation behind the two above: moving
+    /// and turning both refile the instance in the spatial grid, and doing
+    /// that twice for one change is wasted work.
+    void setInstancePose(uint32_t instanceId, const glm::vec3& position,
+                         std::optional<glm::vec3> rotation);
     void setInstanceTransform(uint32_t instanceId, const glm::mat4& transform);
     void setInstanceAnimationFrozen(uint32_t instanceId, bool frozen);
     /// Set the animation sequence by animation ID (e.g. anim::OPEN, anim::CLOSE).

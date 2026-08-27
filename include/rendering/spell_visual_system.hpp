@@ -30,11 +30,25 @@ inline constexpr float kSpellMissileMinDuration = 0.05f;
 /// lands the instant it is cast - and for a distance too small to aim along.
 [[nodiscard]] float spellMissileDuration(float distance, float speed);
 
-/// The euler rotation that points a missile down its own flight path.
+/// The euler rotation that points a missile from `start` towards `end`.
 ///
-/// Missiles fly straight, so this holds for the whole flight, which is why a
-/// launched missile never needs its rotation set again.
+/// A missile that homes turns as its target moves, so this is asked again on
+/// every frame of flight rather than once at launch.
 [[nodiscard]] glm::vec3 spellMissileRotation(const glm::vec3& start, const glm::vec3& end);
+
+/// Advance a missile one frame towards where its target is now.
+///
+/// `position` is moved at `speed` world units per second and answers true once
+/// it is close enough to have arrived - which is the frame the step would carry
+/// it past the target, so a fast missile does not orbit a slow one forever.
+[[nodiscard]] bool advanceSpellMissile(glm::vec3& position, const glm::vec3& target,
+                                       float speed, float deltaTime);
+
+/// How far above a unit's model origin a missile aims, in world units.
+///
+/// The origin is at the feet, and a bolt that lands there reads as hitting the
+/// ground in front of the target rather than the target.
+inline constexpr float kSpellMissileAimHeight = 1.0f;
 
 class SpellVisualSystem {
 public:
@@ -72,8 +86,15 @@ public:
     // Returns true when a missile is in flight, in which case it raises the
     // impact visual at the destination on arrival and the caller must not play
     // that impact itself.
+    //
+    // targetInstanceId is the target's character-renderer instance, or 0 when
+    // it has none. Given one, the missile homes: it re-reads the target's
+    // drawn position every frame and turns to follow it, so a target that
+    // walks during the flight is still hit. Given zero it flies at the fixed
+    // `end`, which is all that can be done for a target with nothing drawn.
     bool launchSpellMissile(uint32_t visualId, const glm::vec3& start,
-                            const glm::vec3& end, float speed);
+                            const glm::vec3& end, float speed,
+                            uint32_t targetInstanceId = 0);
 
     // Launch a physical weapon projectile (arrow, bullet, or thrown item)
     // without invoking the spell visual pipeline.
@@ -103,12 +124,18 @@ private:
         bool isPrecast;  // true for precast effects (removed on cancel/interrupt)
         uint32_t attachmentId;  // character attachment point to track (0=none/static)
         uint32_t attachInstanceId;  // CharacterRenderer instance the attachment belongs to
-        // A missile travels from travelStart to travelEnd over its whole
-        // lifetime and raises impactVisualId when it arrives. Everything else
-        // leaves these zeroed and holds still.
+        // A missile flies from travelStart towards travelEnd at travelSpeed
+        // and raises impactVisualId when it arrives. travelStart is where it
+        // is *now*, advanced every frame, and travelEnd is re-read from
+        // targetInstanceId when there is one - so both move during the
+        // flight. `duration` is a cap rather than the schedule: a missile
+        // chasing a target that outruns it has to expire somewhere.
+        // Everything else leaves these zeroed and holds still.
         bool isMissile = false;
         glm::vec3 travelStart{0.0f};
         glm::vec3 travelEnd{0.0f};
+        float travelSpeed = 0.0f;
+        uint32_t targetInstanceId = 0;
         uint32_t impactVisualId = 0;
     };
 
