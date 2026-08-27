@@ -34,55 +34,54 @@ None of these is urgent. Each taxes every future change in its area.
 ### Breaking the cycles between the subsystem libraries
 `CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block
 
-**18 cycles on 2026-08-26, 10 on 2026-08-27 morning, 5 now.** Measure them with
-`tools/library_cycle_check.py <build-dir>` rather than by hand - the numbers
-below are its output, and a claim that an edge is gone can now be checked.
+**18 cycles on 2026-08-26, 10 on 2026-08-27 morning, 2 now.** Measure them with
+`tools/library_cycle_check.py <build-dir>` rather than by hand.
 
-Five libraries are acyclic outright: `wowee_math`, `wowee_pipeline`,
-`wowee_audio`, `wowee_network` and `wowee_auth` are each in at most one pair.
-
-What is left, by weakest side:
+Eight of the ten libraries are acyclic outright: `math`, `pipeline`, `audio`,
+`network`, `auth`, `rendering`, `game` and `core` are each in at most one pair,
+and both remaining pairs are `src/ui`.
 
 | cycle | weak side | what it is |
 | --- | --- | --- |
-| `rendering` → `game` | **3** | `getPlayerModelPath`, `ExpansionRegistry::getActive`, `getActiveExpansionRegistry` |
-| `rendering` → `core` | 7 | `core::Input`, polled by the camera controller |
-| `network` → `auth` | 8 | genuinely mutual |
-| `ui` → `addons` | 9 | |
-| `ui` → `core` | 24 | |
+| `ui` → `addons` | **9** | `AddonManager` and `LuaEngine` services |
+| `ui` → `core` | 15 | `Application` (5), `Window` (3), `AppearanceComposer` + `helmHidesHair` (3), `localizedKeyName`/`Label` (2), `WorldLoader::mapDisplayName` (1) |
 
-Five went on 2026-08-27, and they came in two shapes.
+Everything removed so far came in two shapes, and both are exhausted for the
+libraries that are now clean:
 
-**Three singletons, fixed by injection.** `Application::instance` reached from
-`src/game` (through an inline in `game_utils.hpp` that made four libraries
-depend on the composition root for one bool), `Input::getInstance` reached from
-`src/addons`, and `interfaceTakingTypedInput` reached from `src/rendering`. Two
-became hand-wired sinks set by `Application` - `LuaEngine::setBindingHeldSink`,
-`game::setActiveExpansionRegistry` - and the third moved into `wowee_takeover`,
-which is where "which of the two interfaces owns this" already lives.
+- **A singleton reached back up through**, fixed by injection.
+  `Application::instance` from `src/game` and `src/rendering`,
+  `Input::getInstance` from `src/addons`, `interfaceTakingTypedInput` from
+  `src/rendering`. Sixteen call sites in `src/rendering` alone were asking the
+  composition root for an `AssetManager` or a `GameHandler`; both are now
+  handed down through `Renderer`, the way `setAudioCoordinator` already was.
+- **A file in the wrong target.** `wowee_tables` (opcode table, expansion
+  profiles, race models), `wowee_zones`, `wowee_input`, `wowee_crypto`. Each
+  is a thing more than one library reads that belonged to none of them, and
+  each depends on nothing of ours beyond the logger.
 
-**Two files in the wrong target.** `OpcodeTable` is the wire protocol, wanted by
-`src/network` to name a packet and `src/game` to build one, and belonging to
-neither; `ZoneManager` reads AreaTable.dbc and needs nothing from `src/game` at
-all, while `src/audio` and `src/rendering` both read it. Each is now its own
-small target - `wowee_opcodes`, `wowee_zones` - the same shape as
-`wowee_takeover`. The files stay where they are; only which target compiles them
-changed.
+What is left is neither, and it is why `src/ui` is last:
 
-What is left is not more of the same:
+- **`ui` → `addons`** is nine real service calls - `AddonManager::reload`,
+  `setAddonEnabled`, `fireEvent`, `runScript`, `LuaEngine::dispatchSlashCommand`,
+  `openInterfaceQuestLog`, `noteClientSettingChanged`, `TocFile::getTitle`.
+  The addon control panel and the chat command dispatcher genuinely drive the
+  addon system. An interface over what `src/ui` needs from it would work, and
+  it is the first honest use for one in this codebase.
+- **`ui` → `core`** has three cheap thirds and one expensive one.
+  `localizedKeyName`/`Label` belong beside the key state in `wowee_input`;
+  `AppearanceComposer` and `helmHidesHair` are character composition and not
+  composition-root work; `WorldLoader::mapDisplayName` is a table. Doing all
+  three leaves the five `Application` calls -
+  `reloadExpansionData`, `setAssetExpansionOverride`, and the three
+  `getRender*ForGuid` - plus `Window`'s three display setters, and those want
+  the UI to be handed a services struct rather than reach for one. **That is
+  the multi-day piece, and it does not pay until it is finished: a pair only
+  closes when its last symbol goes.**
 
-- **`rendering` → `game`** is one real symbol plus two expansion-profile ones.
-  `expansion_profile.cpp` depends on nothing but the logger and would make a
-  clean fourth small target, but on its own it does not remove the pair -
-  `getPlayerModelPath` in `character.cpp` still crosses. Do both or neither.
-- **`rendering` → `core`** is the camera controller polling `core::Input` for
-  keys and binding state. The fix is to tell the camera rather than have it ask,
-  which is a change to how input reaches the renderer.
-- **`ui` → `core`** at 24 and **`ui` → `addons`** at 9 have never been read
-  through. Start by listing them.
-
-The point of reaching zero is that the libraries can then be declared with their
-real edges instead of as a complete graph, and a test can link a genuine subset.
+The point of reaching zero is that the libraries can then be declared with
+their real edges instead of as a complete graph, and a test can link a genuine
+subset.
 
 ### The static-library cycle prints a linker warning on every link
 `CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block

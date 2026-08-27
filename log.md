@@ -940,3 +940,59 @@ in the configuration the client actually ships. Canaried by putting the exact
 3.1.9 gate back and rebuilding: it fails, while upstream's own file stays green.
 
 186 CTest checks.
+
+## 2026-08-27 — eighteen library cycles down to two
+
+The morning took ten mutual pairs to five. The afternoon took five to two, and
+eight of the ten subsystem libraries are now acyclic: `math`, `pipeline`,
+`audio`, `network`, `auth`, `rendering`, `game` and `core`. Both survivors are
+`src/ui`.
+
+**`rendering → core` is gone, and it was the interesting one.** Six of its seven
+symbols were `core::Input`, which is SDL key and mouse state for this frame and
+depends on nothing of ours at all - a device abstraction that looked like a
+dependency on the composition root purely because its file sat in `src/core`. It
+is `wowee_input` now, which also took ten of the twenty-four symbols off
+`ui → core`.
+
+The seventh was `Application::instance`, and it was sixteen call sites across
+five translation units, nearly all asking for an `AssetManager` or a
+`GameHandler`. Both are now handed down through `Renderer` - `setAssetManager`,
+`setGameHandler`, wired by `Application` beside the `setAudioCoordinator` call
+that already did exactly this. `SpellVisualSystem` and `AnimationController` ask
+their renderer; `CharacterPreview` takes the renderer it draws through as an
+argument, which every caller already had on the next line to register with;
+`EmoteRegistry` holds the asset manager it was given, because most of what reads
+it are static lookups with no instance to carry one.
+
+That last change turned up a dead branch. `Renderer::initialize` tried to enrich
+the zone manager's music paths from DBC, and `Application` builds the renderer
+*before* the asset manager exists - so the pointer it read was null every time
+and the branch had never run. The enrich that matters is in `initializeRenderers`,
+which is handed one. Removed rather than left as a branch nothing can take.
+
+**`network → auth` is gone.** SHA-1/HMAC, RC4 and the vanilla header cipher are
+`wowee_crypto` now. `src/auth` needs them for SRP and `src/network` needs them
+for every world packet header; a cipher is not a login handshake and was not
+`src/auth`'s to own. `big_num` stays where it is - it is SRP's arithmetic and
+nothing outside the handshake asks for it.
+
+**`rendering → game` is gone.** `wowee_opcodes` became `wowee_tables` and took
+`expansion_profile.cpp` and `character.cpp` with it: three files with the same
+three properties, which is what makes them one target rather than three. Each is
+a table keyed by expansion or by race that is read rather than computed, each
+depends on nothing of ours beyond the logger, and each is read by more than one
+library. Renaming a target that was four hours old cost nothing and was better
+than a fourth micro-target.
+
+Every one of these left its file where it was. Moving `zone_manager.cpp` or
+`opcode_table.cpp` out of `src/game` would rename its namespace across every
+call site for no gain; only which target compiles them has changed.
+
+What is left is neither shape. `ui → addons` is nine real service calls into the
+addon system, and it is the first honest use for one of the unused interfaces in
+`game_interfaces.hpp`. `ui → core` is fifteen, of which six are a table or
+character composition that belongs elsewhere and nine want the UI handed a
+services struct rather than reaching for the composition root. `TODO.md` has the
+breakdown. Neither pays until it is finished - a pair closes only when its last
+symbol goes.
