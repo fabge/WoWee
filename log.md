@@ -1165,3 +1165,70 @@ has no caller. Nothing constructs a `MarkupRenderContext` anywhere - FrameXML's
 chat replaced it - so the quest-link handler that pulled `openInterfaceQuestLog`
 into the symbol graph is dead code. It is converted along with the rest rather
 than deleted, because deleting it is a separate question from this one.
+
+## Five things from a play session
+
+Reported from the chair, which is where the last three of these could only have
+come from. Four are fixed, one turned out not to be a fault at all, and one is
+still open with a diagnostic pointed at it.
+
+**A bolt that lands beside the wolf.** The missile launched at the target's
+last *server* position and flew to it in a straight line at a fixed duration.
+Both halves are wrong for anything that is moving, and everything in combat is
+moving: the server position is already behind where the target is being drawn,
+and the target then walks for the whole second the bolt is in the air. The
+missile now carries the target's render instance and re-reads its drawn
+position every frame, turning as it goes - `advanceSpellMissile` is that step,
+pure and tested, and `duration` demotes from the schedule to a cap so a missile
+chasing something faster than itself still expires. `M2Renderer` gained
+`setInstanceRotation` and `setInstancePose`; a homing missile has to turn, and
+turning refiles the instance in the spatial grid exactly as moving does, so
+they are one implementation rather than two.
+
+**No way into chat by slash on a German keyboard.** `OPENCHATSLASH` is bound to
+`SLASH`, which names the key right of `PERIOD`. On a German board that key
+types `-` and the slash is on shift-7, so the binding could not fire and there
+was no key at all that opened chat by slash. It is the *character* that opens
+chat, not a key position, so `SDL_TEXTINPUT` carrying `/` - with no edit box
+listening - now reports the command pressed. Every layout that can type a slash
+reaches it, whatever it has to hold down. `Input::noteBindingCommandPressed` is
+the press with no matching release that needs, so nothing is left held.
+
+**A wolf running backwards.** A move arrives with one orientation for the whole
+of it: a single bearing for a path that may curve through a dozen waypoints and
+turn back on itself, and `updateMovement` never touched facing again. Down the
+return leg of a patrol that draws a creature running backwards with the run
+cycle playing forwards. `Entity` now turns along the way it actually travelled
+this frame, smoothed so a waypoint corner reads as a turn. Three callers say
+`holdFacing`: a player's relayed movement (their own client reported that
+orientation, and strafing and backpedalling both move one way while facing
+another), a passenger on a transport (world-space travel there is the boat's
+motion, not theirs), and spline facing types 3 and 4, which name a facing to
+hold.
+
+**The Rockbiter icon beside the minimap was the question, not the bug.** That
+is `TempEnchant1`, and it belongs exactly where it was - the tooltip in the
+report is `TempEnchantButton_OnEnter` doing `SetInventoryItem`, so the screenshot
+is the feature working. What was wrong is underneath it: `GetWeaponEnchantInfo`
+answered expiration zero, on the reasoning that the frame reads it only to write
+a countdown. Zero is not nil in Lua, so `TemporaryEnchantFrame_OnUpdate` wrote
+"0" under the icon, then compared that zero against `BUFF_WARNING_TIME` and put
+the button into the about-to-expire flash - a thirty-minute imbue pulsing for its
+whole life. `SMSG_ITEM_ENCHANT_TIME_UPDATE` carries the real remaining time and
+this client already files it per weapon slot, so it is answered now, and nil
+where the server has not sent one. Nil is the answer FrameXML is written for:
+no countdown, and no flash either.
+
+**The objectives tracker's collapse button is still open.** Every part of it
+that can be checked without a screen is correct, and `framexml_run` says so:
+the button exists, is enabled, is mouse-enabled, has its `OnClick`, lays out at
+16x16, answers `hitTest` at its own centre, and a synthetic press and release
+through `dispatchMouse` collapses the tracker - `userCollapsed=true`,
+`collapsed=true`, lines hidden. So the failure is upstream of all of it: in a
+real session the click is not reaching the widget tree. Two diagnostics that
+were already there could not say which: one reported a hit as a widget *id*,
+which needs a debugger to turn back into a frame, and the other said a click
+was "over this client's own window" without naming the window. Both now name
+names, and the second also says which frame the interface would have been
+offered - because the reply to that line is always "but there is nothing of
+mine there", and the window that disagrees is the answer.
