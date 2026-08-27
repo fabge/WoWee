@@ -10,6 +10,7 @@
 #include "game/chat_handler.hpp"
 #include "game/transport_manager.hpp"
 #include "game/movement_handler.hpp"
+#include "game/spell_handler.hpp"
 #include "core/logger.hpp"
 #include "core/coordinates.hpp"
 #include "network/world_socket.hpp"
@@ -981,6 +982,11 @@ EntityController::UnitFieldUpdateResult EntityController::applyUnitFieldsOnUpdat
     uint32_t oldHealth = unit->getHealth();
     bool petExperienceChanged = false;
     bool petStatsChanged = false;
+    // The pet's own numbers live with the rest of the pet state in
+    // SpellHandler, so they are cleared with it on a character switch.
+    // GameHandler used to hold them, and nothing cleared them at all.
+    SpellHandler::PetState* pet = owner_.getSpellHandler()
+                                      ? &owner_.getSpellHandler()->petState() : nullptr;
     for (const auto& [key, val] : block.fields) {
         if (key == ufi.health) {
             unit->setHealth(val);
@@ -1194,44 +1200,44 @@ EntityController::UnitFieldUpdateResult EntityController::applyUnitFieldsOnUpdat
                 owner_.otherPlayerMountCallbackRef()(block.guid, val);
             }
             unit->setMountDisplayId(val);
-        } else if (ufi.attackPower != 0xFFFF && key == ufi.attackPower &&
+        } else if (pet && ufi.attackPower != 0xFFFF && key == ufi.attackPower &&
                    block.guid == owner_.petGuidRef()) {
-            owner_.petAttackPowerRef() = static_cast<int32_t>(val);
+            pet->attackPower = static_cast<int32_t>(val);
             petStatsChanged = true;
-        } else if (ufi.minDamage != 0xFFFF && key == ufi.minDamage &&
+        } else if (pet && ufi.minDamage != 0xFFFF && key == ufi.minDamage &&
                    block.guid == owner_.petGuidRef()) {
             // A float, sent as its bits like every other float field.
-            std::memcpy(&owner_.petMinDamageRef(), &val, 4);
+            std::memcpy(&pet->minDamage, &val, 4);
             petStatsChanged = true;
-        } else if (ufi.maxDamage != 0xFFFF && key == ufi.maxDamage &&
+        } else if (pet && ufi.maxDamage != 0xFFFF && key == ufi.maxDamage &&
                    block.guid == owner_.petGuidRef()) {
-            std::memcpy(&owner_.petMaxDamageRef(), &val, 4);
+            std::memcpy(&pet->maxDamage, &val, 4);
             petStatsChanged = true;
-        } else if (ufi.stat0 != 0xFFFF && key >= ufi.stat0 && key < ufi.stat0 + 5 &&
+        } else if (pet && ufi.stat0 != 0xFFFF && key >= ufi.stat0 && key < ufi.stat0 + 5 &&
                    block.guid == owner_.petGuidRef()) {
             // The pet's own five, not the player's. The paperdoll's pet tab
             // reads them through UnitStat("pet"), which used to answer from the
             // player - so a hunter's pet listed its owner's Strength.
-            owner_.petStatsRef()[key - ufi.stat0] = static_cast<int32_t>(val);
+            pet->stats[key - ufi.stat0] = static_cast<int32_t>(val);
             petStatsChanged = true;
-        } else if (ufi.resistances != 0xFFFF && key >= ufi.resistances &&
+        } else if (pet && ufi.resistances != 0xFFFF && key >= ufi.resistances &&
                    key < ufi.resistances + 7 && block.guid == owner_.petGuidRef()) {
             // Armor is index zero and the six schools follow it, the same shape
             // as the player's.
-            owner_.petResistancesRef()[key - ufi.resistances] = static_cast<int32_t>(val);
+            pet->resistances[key - ufi.resistances] = static_cast<int32_t>(val);
             petStatsChanged = true;
-        } else if (ufi.petXp != 0xFFFF && key == ufi.petXp &&
+        } else if (pet && ufi.petXp != 0xFFFF && key == ufi.petXp &&
                    block.guid == owner_.petGuidRef()) {
             // Only the player's own pet. Every unit carries these fields and
             // only one of them has an experience bar to draw.
-            if (owner_.petExperienceRef() != val) {
-                owner_.petExperienceRef() = val;
+            if (pet->experience != val) {
+                pet->experience = val;
                 petExperienceChanged = true;
             }
-        } else if (ufi.petNextLevelXp != 0xFFFF && key == ufi.petNextLevelXp &&
+        } else if (pet && ufi.petNextLevelXp != 0xFFFF && key == ufi.petNextLevelXp &&
                    block.guid == owner_.petGuidRef()) {
-            if (owner_.petNextLevelExpRef() != val) {
-                owner_.petNextLevelExpRef() = val;
+            if (pet->nextLevelExp != val) {
+                pet->nextLevelExp = val;
                 petExperienceChanged = true;
             }
         } else if (key == ufi.npcFlags) { unit->setNpcFlags(val); }

@@ -48,6 +48,43 @@ TEST_CASE("a character switch clears the previous character's pet", "[spell][pet
     CHECK(handler.getPetReact() == 1);     // defensive
 }
 
+TEST_CASE("a character switch clears the previous pet's stats too", "[spell][pet]") {
+    // The other half of the same fault, found on 2026-08-27. The pet's own
+    // numbers - stats, resistances, attack power, damage range, experience -
+    // were GameHandler's, which declared them, exposed an xRef() and read them
+    // in a getter and never mentioned them in any of its own translation
+    // units. Nothing cleared them, so a hunter's pet attack power was still
+    // readable from a mage, and the paperdoll's pet tab would draw it.
+    GameServices services{};
+    GameHandler handler(services);
+    SpellHandler& spells = *handler.getSpellHandler();
+
+    auto& pet = spells.petState();
+    pet.stats = {10, 20, 30, 40, 50};
+    pet.resistances = {100, 1, 2, 3, 4, 5, 6};
+    pet.attackPower = 314;
+    pet.minDamage = 12.5f;
+    pet.maxDamage = 25.0f;
+    pet.experience = 900;
+    pet.nextLevelExp = 1000;
+
+    REQUIRE(handler.getPetAttackPower() == 314);
+    REQUIRE(handler.getPetStats()[0] == 10);
+    REQUIRE(handler.getPetResistances()[0] == 100);  // armour is index zero
+
+    spells.resetAllState();
+
+    CHECK(handler.getPetAttackPower() == 0);
+    CHECK(handler.getPetMinDamage() == 0.0f);
+    CHECK(handler.getPetMaxDamage() == 0.0f);
+    CHECK(handler.getPetExperience() == 0);
+    CHECK(handler.getPetNextLevelExp() == 0);
+    CHECK(handler.getPetStats()[0] == 0);
+    CHECK(handler.getPetStats()[4] == 0);
+    CHECK(handler.getPetResistances()[0] == 0);
+    CHECK(handler.getPetResistances()[6] == 0);
+}
+
 TEST_CASE("an out-of-range pet action slot answers zero rather than reading past the bar",
           "[spell][pet]") {
     GameServices services{};

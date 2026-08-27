@@ -205,6 +205,24 @@ public:
         uint8_t  react   = 1;                        // 0=passive,1=defensive,2=aggressive
         std::vector<uint32_t> spellList;             // known pet spells
         std::unordered_set<uint32_t> autocastSpells; // spells with autocast on
+
+        // The pet's own numbers, off the pet unit's update fields. Armor is
+        // resistance index 0, as it is for the player.
+        //
+        // Here rather than in GameHandler for the reason the five above are:
+        // nothing but SMSG_PET_* and the pet unit's fields ever writes them,
+        // and nothing cleared them on a character switch. GameHandler declared
+        // them, exposed an xRef() and read them in a getter, and its own
+        // translation units never mentioned them once - so a hunter's pet
+        // attack power was still readable after logging into a mage. In here
+        // they are zeroed with the rest by resetAllState.
+        std::array<int32_t, 5> stats{};
+        std::array<int32_t, 7> resistances{};
+        int32_t attackPower = 0;
+        float   minDamage = 0.0f;
+        float   maxDamage = 0.0f;
+        uint32_t experience = 0;
+        uint32_t nextLevelExp = 0;
     };
     [[nodiscard]] PetState& petState() { return pet_; }
     [[nodiscard]] const PetState& petState() const { return pet_; }
@@ -214,6 +232,13 @@ public:
         return pet_.actionSlots[idx];
     }
     [[nodiscard]] uint8_t getPetCommand() const { return pet_.command; }
+    [[nodiscard]] const std::array<int32_t, 5>& getPetStats() const { return pet_.stats; }
+    [[nodiscard]] const std::array<int32_t, 7>& getPetResistances() const { return pet_.resistances; }
+    [[nodiscard]] int32_t getPetAttackPower() const { return pet_.attackPower; }
+    [[nodiscard]] float getPetMinDamage() const { return pet_.minDamage; }
+    [[nodiscard]] float getPetMaxDamage() const { return pet_.maxDamage; }
+    [[nodiscard]] uint32_t getPetExperience() const { return pet_.experience; }
+    [[nodiscard]] uint32_t getPetNextLevelExp() const { return pet_.nextLevelExp; }
     [[nodiscard]] uint8_t getPetReact() const { return pet_.react; }
     [[nodiscard]] const std::vector<uint32_t>& getPetSpells() const { return pet_.spellList; }
     [[nodiscard]] bool isPetSpellAutocast(uint32_t spellId) const {

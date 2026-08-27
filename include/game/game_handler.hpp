@@ -1088,25 +1088,25 @@ public:
     uint8_t getPetCommand() const { return spellHandler_ ? spellHandler_->getPetCommand() : 1; }
     uint8_t getPetReact()   const { return spellHandler_ ? spellHandler_->getPetReact() : 1; }
     // A pet's own stats and resistances, off the pet unit's fields. Armor is
-    // resistance index 0, as it is for the player.
-    const std::array<int32_t, 5>& getPetStats() const { return petStats_; }
-    const std::array<int32_t, 7>& getPetResistances() const { return petResistances_; }
-    std::array<int32_t, 5>& petStatsRef() { return petStats_; }
-    std::array<int32_t, 7>& petResistancesRef() { return petResistances_; }
+    // resistance index 0, as it is for the player. Held by SpellHandler with
+    // the rest of the pet state, so a character switch clears them.
+    const std::array<int32_t, 5>& getPetStats() const {
+        static const std::array<int32_t, 5> none{};
+        return spellHandler_ ? spellHandler_->getPetStats() : none;
+    }
+    const std::array<int32_t, 7>& getPetResistances() const {
+        static const std::array<int32_t, 7> none{};
+        return spellHandler_ ? spellHandler_->getPetResistances() : none;
+    }
 
     // What the pet hits for, and with how much attack power.
-    int32_t getPetAttackPower() const { return petAttackPower_; }
-    float getPetMinDamage() const { return petMinDamage_; }
-    float getPetMaxDamage() const { return petMaxDamage_; }
-    int32_t& petAttackPowerRef() { return petAttackPower_; }
-    float& petMinDamageRef() { return petMinDamage_; }
-    float& petMaxDamageRef() { return petMaxDamage_; }
+    int32_t getPetAttackPower() const { return spellHandler_ ? spellHandler_->getPetAttackPower() : 0; }
+    float getPetMinDamage() const { return spellHandler_ ? spellHandler_->getPetMinDamage() : 0.0f; }
+    float getPetMaxDamage() const { return spellHandler_ ? spellHandler_->getPetMaxDamage() : 0.0f; }
 
     // A hunter pet's experience, off the pet unit's own fields.
-    uint32_t getPetExperience() const { return petExperience_; }
-    uint32_t getPetNextLevelExp() const { return petNextLevelExp_; }
-    uint32_t& petExperienceRef() { return petExperience_; }
-    uint32_t& petNextLevelExpRef() { return petNextLevelExp_; }
+    uint32_t getPetExperience() const { return spellHandler_ ? spellHandler_->getPetExperience() : 0; }
+    uint32_t getPetNextLevelExp() const { return spellHandler_ ? spellHandler_->getPetNextLevelExp() : 0; }
 
     // Spells the pet knows (from SMSG_PET_SPELLS spell list)
     const std::vector<uint32_t>& getPetSpells() const {
@@ -4233,13 +4233,6 @@ private:
     std::unordered_map<uint64_t, std::vector<AuraSlot>> unitAurasCache_; // per-unit aura cache
     uint64_t petGuid_ = 0;
     bool     petRenameablePending_ = false;  // set by SMSG_PET_RENAMEABLE, consumed by UI
-    std::array<int32_t, 5> petStats_{};
-    int32_t petAttackPower_ = 0;
-    float petMinDamage_ = 0.0f;
-    float petMaxDamage_ = 0.0f;
-    std::array<int32_t, 7> petResistances_{};
-    uint32_t petExperience_ = 0;
-    uint32_t petNextLevelExp_ = 0;
 
     // ---- Pet Stable ----
     bool stableWindowOpen_    = false;
