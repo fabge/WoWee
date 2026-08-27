@@ -46,8 +46,7 @@ public:
     void processPendingEntry();
 
     // Map name utilities
-    static const char* mapIdToName(uint32_t mapId);
-    static const char* mapDisplayName(uint32_t mapId);
+
 
     // Background preloading - warms AssetManager file cache
     void startWorldPreload(uint32_t mapId, const std::string& mapName,

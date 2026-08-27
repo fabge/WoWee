@@ -1,4 +1,5 @@
 #include "core/world_entry_callback_handler.hpp"
+#include "game/map_names.hpp"
 #include "core/coordinates.hpp"
 #include "core/entity_spawner.hpp"
 #include "core/world_loader.hpp"
@@ -427,7 +428,7 @@ void WorldEntryCallbackHandler::setupCallbacks() {
             mapName = worldLoader_->getMapNameById(mapId);
         }
         if (mapName.empty()) {
-            mapName = WorldLoader::mapIdToName(mapId);
+            mapName = game::mapWdtName(mapId);
         }
         if (mapName.empty()) mapName = "Azeroth";
 

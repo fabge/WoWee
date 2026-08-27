@@ -600,10 +600,9 @@ set(WOWEE_SRC_MATH
 set(WOWEE_SRC_CORE
     src/core/application.cpp
     src/core/entity_spawner.cpp
+    src/core/render_locator.cpp
     src/core/entity_spawner_player.cpp
     src/core/entity_spawner_processing.cpp
-    src/core/appearance_composer.cpp
-    src/core/helm_visual.cpp
     src/core/world_loader.cpp
     src/core/npc_interaction_callback_handler.cpp
     src/core/audio_callback_handler.cpp
@@ -612,7 +611,6 @@ set(WOWEE_SRC_CORE
     src/core/transport_callback_handler.cpp
     src/core/world_entry_callback_handler.cpp
     src/core/ui_screen_callback_handler.cpp
-    src/core/window.cpp
 )
 
 set(WOWEE_SRC_NETWORK
@@ -810,6 +808,7 @@ set(WOWEE_SRC_GAME
 )
 
 set(WOWEE_SRC_UI
+    src/ui/ui_services.cpp
     src/ui/settings_schema.cpp
     src/ui/ui_manager.cpp
     src/ui/ui_upload_budget.cpp
@@ -874,6 +873,7 @@ set(WOWEE_SRC_UI
 
 set(WOWEE_SRC_ADDONS
     src/addons/addon_manager.cpp
+    src/addons/addon_bridge.cpp
     src/addons/lua_engine.cpp
     src/addons/lua_handler_globals.cpp
     src/addons/lua_unit_api.cpp
@@ -1020,8 +1020,8 @@ set(WOWEE_HEADERS
 set(WOWEE_MACOS_SOURCES)
 if(APPLE)
     enable_language(OBJCXX)
+    # Compiled into wowee_platform, beside the key state whose names it spells.
     set(WOWEE_MACOS_SOURCES src/core/macos_platform.mm)
-    list(APPEND WOWEE_SRC_CORE ${WOWEE_MACOS_SOURCES})
 endif()
 
 set(WOWEE_PLATFORM_SOURCES)
@@ -1125,24 +1125,55 @@ add_library(wowee_takeover STATIC src/ui/framexml_takeover.cpp)
 target_link_libraries(wowee_takeover PUBLIC wowee_common wowee_base)
 set_target_properties(wowee_takeover PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# ---- wowee_input: the keyboard and mouse this frame ----
+# ---- wowee_platform: the machine under the client ----
 #
 # SDL scancode state, mouse buttons, and which binding commands are held. It
 # depends on nothing of ours - measured on 2026-08-27, input.cpp had no
 # undefined wowee:: symbol at all - and it is read by src/ui, src/rendering and
 # src/core alike, through a singleton.
 #
-# In wowee_core it was ten of the twenty-four symbols on the ui -> core edge and
-# six of the seven on rendering -> core, which made a device abstraction look
-# like a dependency on the composition root. It is not one; it is the bottom of
-# the graph, the same as the logger.
+# With it, the platform's own bits: on macOS, the localized name of a key and
+# the switch that turns off press-and-hold accents.
+#
+# In wowee_core this was ten of the twenty-four symbols on the ui -> core edge
+# and six of the seven on rendering -> core, which made a device abstraction
+# look like a dependency on the composition root. It is not one; it is the
+# bottom of the graph, the same as the logger.
 #
 # Its own target rather than something added to wowee_base for the same reason
-# wowee_takeover is: base means one thing, and per-frame device state is not a
-# logging facade.
-add_library(wowee_input STATIC src/core/input.cpp)
-target_link_libraries(wowee_input PUBLIC wowee_common wowee_base)
-set_target_properties(wowee_input PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# wowee_takeover is: base means one thing, and the machine under the client is
+# not a logging facade.
+add_library(wowee_platform STATIC src/core/input.cpp ${WOWEE_MACOS_SOURCES})
+target_link_libraries(wowee_platform PUBLIC wowee_common wowee_base)
+set_target_properties(wowee_platform PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---- wowee_window: the SDL window and the surface on it ----
+#
+# Split from wowee_core because src/ui drives the display settings -
+# setFullscreen, applyResolution, setVsync - and those three were the last
+# symbols on the ui -> core edge that were not a reach for Application.
+#
+# It depends on wowee_rendering, for the VkContext it creates on the surface,
+# so it is given only to the two libraries that need it. src/rendering does not:
+# measured on 2026-08-27 it referenced no Window symbol at all, which is what
+# makes this possible without trading one cycle for another.
+add_library(wowee_window STATIC src/core/window.cpp)
+target_link_libraries(wowee_window PUBLIC wowee_common wowee_base wowee_platform)
+set_target_properties(wowee_window PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---- wowee_appearance: what a character looks like ----
+#
+# AppearanceComposer builds a character's visible geosets and textures from
+# their inventory and CharSections; helmHidesHair answers whether a helm hides
+# the hair under it. Both are read by src/core, src/rendering and src/ui, and
+# neither is composition-root work - they sat in src/core because that is where
+# the entity spawner that first needed them lives.
+add_library(wowee_appearance STATIC
+    src/core/appearance_composer.cpp
+    src/core/helm_visual.cpp
+)
+target_link_libraries(wowee_appearance PUBLIC wowee_common wowee_base)
+set_target_properties(wowee_appearance PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---- wowee_crypto: the primitives, not the login protocol ----
 #
@@ -1178,6 +1209,9 @@ set_target_properties(wowee_crypto PROPERTIES POSITION_INDEPENDENT_CODE ON)
 #                         and src/addons.
 #   character.cpp         which model a race and gender wear. Read by
 #                         src/core, src/game and src/rendering.
+#   map_names.cpp         a map id's friendly name and its WDT directory. Read
+#                         by src/core and src/ui; the friendly one was the last
+#                         non-Application symbol on the ui -> core edge.
 #
 # None of them is a subsystem and none belongs to the library it sat in. The
 # files stay in src/game, because moving them would rename their namespace
@@ -1187,6 +1221,7 @@ add_library(wowee_tables STATIC
     src/game/opcode_table.cpp
     src/game/expansion_profile.cpp
     src/game/character.cpp
+    src/game/map_names.cpp
 )
 target_link_libraries(wowee_tables PUBLIC wowee_common wowee_base)
 set_target_properties(wowee_tables PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -1385,7 +1420,7 @@ set_target_properties(wowee_openformat PROPERTIES POSITION_INDEPENDENT_CODE ON)
 foreach(_sub math core network auth audio pipeline rendering game ui addons)
     string(TOUPPER "${_sub}" _SUB)
     add_library(wowee_${_sub} STATIC ${WOWEE_SRC_${_SUB}})
-    target_link_libraries(wowee_${_sub} PUBLIC wowee_common wowee_base wowee_takeover wowee_tables wowee_input wowee_crypto)
+    target_link_libraries(wowee_${_sub} PUBLIC wowee_common wowee_base wowee_takeover wowee_tables wowee_platform wowee_crypto)
     set_target_properties(wowee_${_sub} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endforeach()
 
@@ -1394,6 +1429,20 @@ endforeach()
 # as well would declare a cycle between the two for no reason.
 foreach(_zone_user audio rendering game ui)
     target_link_libraries(wowee_${_zone_user} PUBLIC wowee_zones)
+endforeach()
+
+# wowee_window depends on wowee_rendering, so like wowee_zones it goes only to
+# the libraries that read it - handing it to wowee_rendering would declare a
+# cycle between the two for nothing, and src/rendering does not use Window.
+target_link_libraries(wowee_window PUBLIC wowee_rendering)
+foreach(_window_user core ui)
+    target_link_libraries(wowee_${_window_user} PUBLIC wowee_window)
+endforeach()
+
+# The same shape: appearance reads src/game and src/pipeline.
+target_link_libraries(wowee_appearance PUBLIC wowee_game wowee_pipeline)
+foreach(_appearance_user core rendering ui)
+    target_link_libraries(wowee_${_appearance_user} PUBLIC wowee_appearance)
 endforeach()
 
 # The headers, attached to one library so IDEs and `install` still see them.
