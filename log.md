@@ -904,3 +904,39 @@ What is left is not more of the same. `rendering -> core` is the camera
 controller polling `core::Input`, which wants telling rather than asking;
 `ui -> core` at 24 and `ui -> addons` at 9 have never been read through;
 `network -> auth` is genuinely mutual crypto. `TODO.md` has the list.
+
+## 2026-08-27 — upstream's arm64 crash fix, and the test that could not see it
+
+Merged `eb0f0386b` from upstream: `pthread_jit_write_protect_np` traps a process
+without `com.apple.security.cs.allow-jit` rather than failing, and 3.1.9 gated
+the `JitWriteWindow` on arm64 macOS while gating the mapping it guards on macOS
+*and* no Unicorn. Release builds have Unicorn, so no MAP_JIT page existed, the
+window was pure liability, and the first Warden module the server sent took the
+process out. Both gates read `WOWEE_MAP_JIT` now. Reported upstream as #131.
+
+This machine's build has Unicorn (`/opt/homebrew/lib/libunicorn.dylib`), so the
+copy installed earlier today carried that crash. Rebuilt and reinstalled.
+
+The merge was clean; the only local conflict surface was `.github/workflows/build.yml`,
+where our `-j` on the ctest steps and their entitlements argument sat in
+different hunks.
+
+**Upstream's regression test does not reach this build.** `HAVE_UNICORN` is an
+INTERFACE compile definition on `wowee_common`, and `test_jit_write` links only
+`catch2_main` - so it compiles as though there were no Unicorn while the client
+it guards has one. Checked by running it: on this machine its new case takes the
+`SUCCEED("the module image is mapped MAP_JIT here")` arm, and
+`CHECK_FALSE(JitWriteWindow::required())` - the assertion that actually catches
+the crash - never runs.
+
+Adding `wowee_common` to that target is not the fix. The two mechanism cases in
+the same file mmap MAP_JIT themselves and need the window compiled in; with the
+client's definitions the window compiles away, the `memset` raises SIGBUS and
+the binary dies at exit 138. Tried it, and that is what happens.
+
+So `tests/test_jit_mapping_agreement.cpp` is a separate target that does link
+`wowee_common` and maps nothing at all. It asks only whether the two gates agree
+in the configuration the client actually ships. Canaried by putting the exact
+3.1.9 gate back and rebuilding: it fails, while upstream's own file stays green.
+
+186 CTest checks.

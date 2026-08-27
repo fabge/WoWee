@@ -197,6 +197,19 @@ in six weeks) and rewrites `src/addons/lua_engine.cpp` — where our patches liv
 — several hundred times a quarter. Every week they stay local raises the merge
 cost.
 
+The one with a live cause behind it, added 2026-08-27:
+
+0. **`test_jit_write` cannot see the build it guards.** Upstream's `eb0f0386b`
+   fixed a crash that took out every arm64 Mac at login and covered it with a
+   case in `tests/test_jit_write.cpp`. That target links only `catch2_main`,
+   and `HAVE_UNICORN` is an INTERFACE definition on `wowee_common` - so the
+   test compiles as though the build had no Unicorn while every release build
+   has one, takes the `SUCCEED` arm, and never runs the assertion. Our
+   `tests/test_jit_mapping_agreement.cpp` is the same check in a target that
+   does link `wowee_common`, canaried against the 3.1.9 gate. Small, isolated,
+   and it makes a fix they have just shipped actually testable. Deferred with
+   the rest while PRs are on hold.
+
 Suggested order, each its own PR:
 
 1. **Writable-path and credential fixes** — `ad5d005ac`, `7f8602bb1`,
