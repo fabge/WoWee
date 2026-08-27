@@ -2192,6 +2192,19 @@ target_link_libraries(test_spell_missile PRIVATE catch2_main wowee_rendering)
 add_test(NAME spell_missile COMMAND test_spell_missile)
 register_test_target(test_spell_missile)
 
+# ── test_entity_facing ──────────────────────────────────────
+# Which way a moving creature faces. Entity is header-only interpolation; the
+# one thing it reaches for is the Catmull-Rom spline a waypoint path is
+# evaluated on, which is compiled in beside it rather than pulling in a
+# subsystem library for two symbols - test_spline does the same.
+add_executable(test_entity_facing test_entity_facing.cpp
+    ${CMAKE_SOURCE_DIR}/src/math/spline.cpp)
+target_link_libraries(test_entity_facing PRIVATE catch2_main)
+target_include_directories(test_entity_facing PRIVATE ${CMAKE_SOURCE_DIR}/include)
+wowee_test_link_glm(test_entity_facing)
+add_test(NAME entity_facing COMMAND test_entity_facing)
+register_test_target(test_entity_facing)
+
 # ── test_character_switch_reset ──────────────────────────────────
 # What the previous character leaves behind. The same fault has shipped three
 # times in three clusters - the pet's spells, the pet's stats, and eight player

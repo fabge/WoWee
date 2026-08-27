@@ -124,10 +124,12 @@ public:
     }
 
     // Multi-segment path movement (Catmull-Rom spline interpolation)
-    void startMoveAlongPath(const std::vector<std::array<float, 3>>& path, float destO, float totalDuration) {
+    void startMoveAlongPath(const std::vector<std::array<float, 3>>& path, float destO,
+                            float totalDuration, bool holdFacing = false) {
         if (path.empty()) return;
         if (path.size() == 1 || totalDuration <= 0.0f) {
-            startMoveTo(path.back()[0], path.back()[1], path.back()[2], destO, totalDuration);
+            startMoveTo(path.back()[0], path.back()[1], path.back()[2], destO, totalDuration,
+                        holdFacing);
             return;
         }
         // Build cumulative distances for proportional time assignment.
@@ -165,6 +167,7 @@ public:
         moveDuration_ = totalDuration;
         moveElapsed_ = 0.0f;
         orientation = destO;
+        holdFacing_ = holdFacing;
         isMoving_ = true;
         usePathMode_ = true;
         // Velocity for dead-reckoning after path completes
@@ -180,7 +183,8 @@ public:
     }
 
     // Movement interpolation (syncs entity position with renderer during movement)
-    void startMoveTo(float destX, float destY, float destZ, float destO, float durationSec) {
+    void startMoveTo(float destX, float destY, float destZ, float destO, float durationSec,
+                     bool holdFacing = false) {
         usePathMode_ = false;
         activeSpline_.reset();
         if (durationSec <= 0.0f) {
@@ -232,11 +236,14 @@ public:
         moveDuration_ = durationSec;
         moveElapsed_ = 0.0f;
         orientation = destO;
+        holdFacing_ = holdFacing;
         isMoving_ = true;
     }
 
     void updateMovement(float deltaTime) {
         if (!isMoving_) return;
+        const float prevX = x;
+        const float prevY = y;
         moveElapsed_ += deltaTime;
         if (moveElapsed_ < moveDuration_) {
             if (usePathMode_ && activeSpline_) {
@@ -270,6 +277,40 @@ public:
                 isMoving_ = false;
             }
         }
+        faceAlongTravel(prevX, prevY, deltaTime);
+    }
+
+    /// Turn to face the way this frame actually moved.
+    ///
+    /// The orientation a move arrives with describes the whole move - one
+    /// bearing for a path that may curve through a dozen waypoints and double
+    /// back on itself. Held for the whole flight it draws a creature sliding
+    /// sideways, or running backwards down the return leg of its patrol, while
+    /// the run cycle plays forwards. Following the travel direction instead
+    /// costs the bearing nothing where the path is straight, which is the case
+    /// the arriving orientation already got right.
+    ///
+    /// Not done when the move carries a facing of its own: a creature ordered
+    /// to face a target or an angle means to hold that facing, and backing
+    /// away from something while watching it is a real thing creatures do.
+    void faceAlongTravel(float prevX, float prevY, float deltaTime) {
+        if (holdFacing_) return;
+        const float dx = x - prevX;
+        const float dy = y - prevY;
+        // Below this the direction is noise rather than a heading - a creature
+        // standing still still drifts a little under interpolation.
+        constexpr float kMinTravelSq = 1e-6f;
+        if (dx * dx + dy * dy < kMinTravelSq) return;
+        // Canonical yaw, which this codebase measures as atan2(-dy, dx).
+        const float target = std::atan2(-dy, dx);
+        float diff = target - orientation;
+        constexpr float kPi = 3.14159265358979323846f;
+        while (diff > kPi) diff -= 2.0f * kPi;
+        while (diff < -kPi) diff += 2.0f * kPi;
+        // Turn towards it rather than snapping, so a sharp waypoint corner
+        // reads as the creature turning and not as the model changing facing
+        // between two frames.
+        orientation += diff * std::min(1.0f, deltaTime * 10.0f);
     }
 
     [[nodiscard]] bool isEntityMoving() const { return isMoving_; }
@@ -328,6 +369,8 @@ protected:
 
     // Movement interpolation state
     bool isMoving_ = false;
+    // The move named a facing to hold, so travel direction does not set one.
+    bool holdFacing_ = false;
     bool usePathMode_ = false;
     float moveStartX_ = 0, moveStartY_ = 0, moveStartZ_ = 0;
     float moveEndX_ = 0, moveEndY_ = 0, moveEndZ_ = 0;

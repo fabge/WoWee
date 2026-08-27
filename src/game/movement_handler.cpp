@@ -1234,7 +1234,11 @@ void MovementHandler::handleOtherPlayerMovement(network::Packet& packet) {
     const bool isJumpOpcode  = (wireOp == wireOpcode(Opcode::MSG_MOVE_JUMP));
 
     const float entityDuration = isStopOpcode ? 0.0f : (durationMs / 1000.0f);
-    entity->startMoveTo(canonical.x, canonical.y, canonical.z, canYaw, entityDuration);
+    // A player's own client reported this orientation, and it is the truth
+    // about where they are looking: strafing and backpedalling both move one
+    // way while facing another, so the travel direction must not overwrite it.
+    entity->startMoveTo(canonical.x, canonical.y, canonical.z, canYaw, entityDuration,
+                        /*holdFacing=*/true);
 
     if (owner_.creatureMoveCallbackRef()) {
         const uint32_t notifyDuration = isStopOpcode ? 0u : durationMs;
@@ -1612,6 +1616,11 @@ void MovementHandler::handleMonsterMove(network::Packet& packet) {
             }
         }
 
+        // Facing types 3 and 4 name a facing the creature is to hold - a
+        // target to watch, or a fixed angle. Every other type leaves facing to
+        // the path, and the entity turns along it as it goes.
+        const bool holdFacing = (data.moveType == 3 || data.moveType == 4);
+
         // Build full path: start → waypoints → destination (all in canonical coords)
         if (!data.waypoints.empty()) {
             glm::vec3 startCanonical = core::coords::serverToCanonical(
@@ -1627,10 +1636,10 @@ void MovementHandler::handleMonsterMove(network::Packet& packet) {
                 path.push_back({wpCanonical.x, wpCanonical.y, wpCanonical.z});
             }
             path.push_back({destCanonical.x, destCanonical.y, destCanonical.z});
-            entity->startMoveAlongPath(path, orientation, data.duration / 1000.0f);
+            entity->startMoveAlongPath(path, orientation, data.duration / 1000.0f, holdFacing);
         } else {
             entity->startMoveTo(destCanonical.x, destCanonical.y, destCanonical.z,
-                                orientation, data.duration / 1000.0f);
+                                orientation, data.duration / 1000.0f, holdFacing);
         }
 
         if (owner_.creatureMoveCallbackRef()) {
@@ -1784,7 +1793,11 @@ void MovementHandler::handleMonsterMoveTransport(network::Packet& packet) {
         }
 
         owner_.setTransportAttachment(moverGuid, entity->getType(), transportGuid, destLocalCanonical, false, 0.0f);
-        entity->startMoveTo(destWorld.x, destWorld.y, destWorld.z, facingAngle, duration / 1000.0f);
+        // World-space travel here is mostly the transport's own motion, so it
+        // says nothing about which way the passenger is facing. The angle
+        // worked out above, in transport-local space, is the one that does.
+        entity->startMoveTo(destWorld.x, destWorld.y, destWorld.z, facingAngle,
+                            duration / 1000.0f, /*holdFacing=*/true);
 
         if (entity->getType() == ObjectType::UNIT && owner_.creatureMoveCallbackRef())
             owner_.creatureMoveCallbackRef()(moverGuid, destWorld.x, destWorld.y, destWorld.z, duration);
