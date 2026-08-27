@@ -1155,8 +1155,19 @@ void WidgetTree::collectDrawOrder() {
         //
         // Not gated on holding text. The caret is what says which box is
         // listening, and an empty box still has to show it.
+        //
+        // A cooldown frame paints its own sweep, exactly as a status bar paints
+        // its own fill, and it has nothing else: FrameXML declares
+        // `<Cooldown name="$parentCooldown">` with no backdrop and no texture.
+        // So it was dropped here as a container and drawCooldown never ran -
+        // every cooldown in the game was invisible on the button and readable
+        // only in the tooltip, which is where the seconds come from a different
+        // path. Gated on a cooldown actually running, the way the status-bar
+        // test below is gated on having a fill: an idle one really does have
+        // nothing to paint.
         if (w.kind == WidgetKind::Frame && !w.hasBackdrop && !w.isStatusBar &&
             !w.isEditBox && w.externalTexture == 0 &&
+            !(w.isCooldown && w.cooldownDuration > 0.0) &&
             !(w.isMessageFrame && !w.messages.empty()) &&
             !(w.isTooltip && !w.tooltipLines.empty())) continue;
         if (w.rectW <= 0.0f || w.rectH <= 0.0f) continue;

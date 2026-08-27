@@ -93,8 +93,14 @@ answer was two lines of the log the player had already produced:
     WidgetInput: release on WatchFrameCollapseExpandButton - the frame is disabled
 
 The click was never the problem. **A chain that checks out statically can still
-fail at runtime, and the log is how you find out which link.** Ask for a session
-with the log rather than guessing past that point.
+fail at runtime, and the log is how you find out which link.**
+
+**Read it yourself. Do not ask the player to send it, or to paste anything out
+of it** - it is a file on this machine at a known path, and asking for it turns
+a two-second read into a round trip. The only thing worth asking for is a
+*session*: "play, do the thing that goes wrong, then quit" - and after that the
+log is there to be opened. `~/.wowee/missing_api.txt` sits beside it and records
+what the interface asked for that this client does not answer.
 
 Four things to know about it:
 

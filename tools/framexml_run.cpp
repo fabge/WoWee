@@ -713,10 +713,12 @@ int main(int argc, char** argv) {
             // just started drawing again.
             else if (w->kind == wowee::ui::WidgetKind::Frame && !w->hasBackdrop &&
                      !w->isStatusBar && !w->isEditBox && w->externalTexture == 0 &&
+                     !(w->isCooldown && w->cooldownDuration > 0.0) &&
                      !(w->isMessageFrame && !w->messages.empty()) &&
                      !(w->isTooltip && !w->tooltipLines.empty()))
                 why = "a frame with nothing of its own to paint (no backdrop, no "
-                      "bar, no messages, no tooltip lines) - a container";
+                      "bar, no running cooldown, no messages, no tooltip lines) - "
+                      "a container";
             else if (w->rectW <= 0.0f || w->rectH <= 0.0f) why = "no width or no height";
             else if (w->kind == wowee::ui::WidgetKind::Texture &&
                      w->texturePath.empty() && !w->solidColor &&

@@ -2192,6 +2192,14 @@ target_link_libraries(test_spell_missile PRIVATE catch2_main wowee_rendering)
 add_test(NAME spell_missile COMMAND test_spell_missile)
 register_test_target(test_spell_missile)
 
+# ── test_cooldown_draw_order ────────────────────────────────
+# A cooldown frame reaching the draw order, so its sweep is painted. Pure
+# widget-tree layout: no device, no ImGui, no game data.
+add_executable(test_cooldown_draw_order test_cooldown_draw_order.cpp)
+target_link_libraries(test_cooldown_draw_order PRIVATE catch2_main wowee_ui)
+add_test(NAME cooldown_draw_order COMMAND test_cooldown_draw_order)
+register_test_target(test_cooldown_draw_order)
+
 # ── test_font_string_measure ────────────────────────────────
 # A font string measured against the text it holds now, rather than the text
 # the last layout pass saw. Needs an ImGui context, which it builds itself with

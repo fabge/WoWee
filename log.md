@@ -1362,3 +1362,35 @@ The upstream-refresh snippet drops from `--parallel $(sysctl -n hw.logicalcpu)`
 to `-j4`, with a note to build the narrowest target and validate once at the
 end. This is the machine the client is played on and a full `-j8` rebuild makes
 it slow to use - which is a real cost of the validation loop, not a preference.
+
+## Cooldowns were never drawn, because a cooldown frame is a container
+
+Reported as "the cooldown of casts is not shown in the icon, it only shows in
+seconds when hovering". Every link checked out: the client fires
+ACTIONBAR_UPDATE_COOLDOWN, GetActionCooldown returns a start on GetTime's clock
+and drawCooldown measures against appTimeSeconds which is the same clock,
+`ActionButton1Cooldown:GetObjectType()` really is "Cooldown", and
+CooldownFrame_SetTimer runs without error. The chain was intact and nothing was
+drawn.
+
+The draw order is what dropped it. A `Frame` with no backdrop, no status bar,
+no edit box and no external texture is a container and is skipped - and
+FrameXML declares every action button's cooldown as `<Cooldown
+name="$parentCooldown">`, which is exactly that shape. It has something to
+paint, its own sweep, and nothing in that test knew. So `drawCooldown` was
+never reached for any cooldown in the game, and the only place a cooldown was
+visible was the tooltip, which counts seconds down a different path - which is
+why it read as a display quirk rather than a missing draw.
+
+Exempt now, gated on a cooldown actually running, which is how the status bar
+beside it is written: a bar is exempt when it has a fill, a cooldown when it
+has a sweep. `tests/test_cooldown_draw_order.cpp` holds both halves - a running
+cooldown is drawn, an ordinary frame is still a container - and was canaried by
+removing the exemption. `framexml_run` keeps a second copy of the same rule for
+its `--drawn:` explanation and was updated with it; the file's own comment
+warns that the rule is written twice.
+
+Found by reading the draw-order filter rather than by another play session,
+after a note from the player that the log is on this machine and does not need
+sending. That is now in `AGENTS.md`: read it, do not ask for it. The only thing
+worth asking for is a session.
