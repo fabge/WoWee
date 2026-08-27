@@ -73,10 +73,6 @@ public:
         if (gameHandler_) openInterfaceQuestLog(*gameHandler_, questId);
     }
 
-    void noteSettingChanged(const std::string& key, const std::string& value) override {
-        noteClientSettingChanged(key, value);
-    }
-
 private:
     AddonManager& manager_;
     game::GameHandler* gameHandler_ = nullptr;

@@ -1232,3 +1232,52 @@ was "over this client's own window" without naming the window. Both now name
 names, and the second also says which frame the interface would have been
 offered - because the reply to that line is always "but there is nothing of
 mine there", and the window that disagrees is the answer.
+
+## The settings that reverted on every restart, and why the sweep went quiet
+
+`framexml_settings_control_check` had been reporting six failures, and it was
+right about all six: view distance, mouse speed, friendly nameplates, ground
+clutter, invert mouse and autoloot were written to `settings.cfg` and never to
+the CVar store, which is applied over that file at start-up - so every one of
+them was undone by a CVar nobody had touched, on every start.
+
+The cause is `0a7880aa1`, from the day before. `SettingsPanel::setSettingValue`
+ended in an unconditional `addons::noteClientSettingChanged(...)`; the cycle
+work turned it into `if (services_.addonBridge) services_.addonBridge->
+noteSettingChanged(...)`. In the client that pointer is wired, so the client
+kept working - and `framexml_run` builds a real settings panel and hands it
+`UIServices{}`, every member null. The check written to watch exactly this
+promise therefore stopped watching it and started failing, which is the good
+outcome of the two available.
+
+**The lesson is not "wire the harness".** It is that the ninth symbol did not
+belong on that bridge. Eight of the nine really are questions for the addon
+system - run this Lua, dispatch this slash command, list the addons. Telling
+the CVar store that a setting moved is a write to a key-value map that lives in
+`src/core`, and routing it through an interface implemented in `src/addons`
+made a side effect conditional on a pointer that can be null. So
+`ClientCVarBinding`, `kClientCVars`, `findClientCVar` and
+`noteClientSettingChanged` moved to `core/cvar_store.hpp`, beside the store
+they write, and the panel calls it outright again. `cvar_store.hpp` was
+already the precedent: its own header says it lives in `wowee_base` because
+`src/game` and `src/rendering` reading CVars was the whole of two back-edges.
+No new library edge; `AddonBridge` is down to eight methods.
+
+`g_applyingCVarToSetting` moved with it as `core::ApplyingCVarToSetting`, an
+RAII guard rather than a bare flag set and cleared around a call.
+`settingNumberText` and `settingIsOn` moved out of `ui/settings_schema.hpp`
+into `core/setting_text.hpp`, because the store now has to spell a converted
+value exactly as the panel would and a third copy is a third thing to disagree;
+the schema header names them back into `wowee::ui` so no call site moved.
+
+Two things about the checking are worth keeping. The sweep that caught this
+needs the extracted interface, so it skips on every CI runner - the regression
+would have reached five platforms unseen. `tests/test_cvar_setting_mirror.cpp`
+is the same promise asked of the one function that keeps it, needs nothing but
+a config root, and runs everywhere; canaried by making the mirror return early,
+which fails three of its four cases. And `posix_only_check` caught the `setenv`
+in its first draft, which is the sweep doing its job on the sweep's own fix.
+
+Three sweeps read the rows out of the file as text rather than keeping a copy,
+so all three were repointed. `cvar_slider_range_fit` reads both files now: the
+table moved and the hand-written `key == "..."` branches beside it did not.

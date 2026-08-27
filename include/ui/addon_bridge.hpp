@@ -9,11 +9,20 @@
 // the two cycles left in the library graph.
 //
 // The traffic is real: the chat box runs Lua and dispatches slash commands, the
-// addon panel lists and toggles addons, /reload reloads them, a quest link opens
-// the interface's quest log, and a settings control tells the CVar store that a
-// setting it drives moved. None of it is a reach for the composition root, so
-// none of it is fixed by injection: what src/ui needs is a *narrower* thing than
-// AddonManager, which is exactly what an interface is for.
+// addon panel lists and toggles addons, /reload reloads them, and a quest link
+// opens the interface's quest log. None of it is a reach for the composition
+// root, so none of it is fixed by injection: what src/ui needs is a *narrower*
+// thing than AddonManager, which is exactly what an interface is for.
+//
+// The ninth is not here, and the reason is worth keeping. The settings panel
+// telling the CVar store that a setting moved was routed through this bridge
+// too, and that was wrong: it is not a question for the addon system, it is a
+// write to a key-value map that lives in src/core. Behind an optional pointer
+// it became a side effect that could silently not happen, and it did - the
+// harness that watches it passes an empty service set. It moved next to the
+// store, in core/cvar_store.hpp, and the panel calls it outright. A cycle is
+// broken by finding the layer a symbol belongs in, and only where that layer
+// really is the interface does it become a method here.
 //
 // Declared here, in src/ui, because src/ui owns the requirement. Implemented in
 // src/addons, which already depends on src/ui for fifty other symbols, and wired
@@ -67,14 +76,7 @@ public:
     /// Open the interface's quest log at one quest, as a quest link does.
     virtual void openQuestLog(uint32_t questId) = 0;
 
-    /// Tell the CVar store that a setting a CVar drives has moved elsewhere.
-    ///
-    /// Six settings are driven by a Blizzard control and three of those also
-    /// have a control in this client's own window; the store is applied over
-    /// the settings file at start-up, so without this a change made here was
-    /// undone at the next start by a CVar nobody had touched.
-    virtual void noteSettingChanged(const std::string& key,
-                                    const std::string& value) = 0;
+
 };
 
 } // namespace wowee::ui

@@ -2192,6 +2192,16 @@ target_link_libraries(test_spell_missile PRIVATE catch2_main wowee_rendering)
 add_test(NAME spell_missile COMMAND test_spell_missile)
 register_test_target(test_spell_missile)
 
+# ── test_cvar_setting_mirror ────────────────────────────────
+# A setting reaching the CVar a Blizzard control drives. The FrameXML sweep
+# that drives the real panel covers this too, and skips wherever the extracted
+# interface is absent - which is every CI runner, so this one is the arm that
+# actually runs there. wowee_base carries the store and the bindings.
+add_executable(test_cvar_setting_mirror test_cvar_setting_mirror.cpp)
+target_link_libraries(test_cvar_setting_mirror PRIVATE catch2_main wowee_base)
+add_test(NAME cvar_setting_mirror COMMAND test_cvar_setting_mirror)
+register_test_target(test_cvar_setting_mirror)
+
 # ── test_entity_facing ──────────────────────────────────────
 # Which way a moving creature faces. Entity is header-only interpolation; the
 # one thing it reaches for is the Catmull-Rom spline a waypoint path is

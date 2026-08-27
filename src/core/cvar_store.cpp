@@ -6,6 +6,9 @@
 
 #include "core/config_paths.hpp"
 #include "core/logger.hpp"
+#include "core/setting_text.hpp"
+
+#include <cstdlib>
 
 #include <algorithm>
 #include <filesystem>
@@ -121,6 +124,81 @@ std::string storedCVarValue(const std::string& key, const std::string& fallback)
         if (k == wanted) return line.substr(eq + 1);
     }
     return fallback;
+}
+
+
+
+// NOLINTBEGIN(modernize-use-designated-initializers) - read as text by
+// tools/settings_without_a_control.py, tools/cvar_slider_range_fit.py and
+// tools/framexml_settings_control_check.py,
+// which match {"cvar", "setting"} to find which settings a Blizzard slider
+// drives. Naming the fields makes both of them see an empty table.
+constexpr ClientCVarBinding kClientCVars[] = {
+    {"farclip",              "viewdistance"},
+    // Mouse Sensitivity. Its shipped range is 0.5 to 1.5, a multiplier around
+    // 1.0, and this client's sensitivity is an amount that runs 0.05 to 1.0 -
+    // so passed through unchanged the slowest setting that slider offered was
+    // two and a half times this client's default. Its range is redefined in
+    // kCVarRanges rather than converted here, which is what farclip and
+    // cameraYawMoveSpeed do, and it has to be: Mouse Look Speed writes this
+    // same setting through that route, so a scale on this one alone would have
+    // the two sliders disagree about the value they share.
+    {"mousespeed",           "mousespeed"},
+    {"showclock",            "minimapclock"},
+    {"nameplateshowfriends", "friendlyplates"},
+    // Deliberately not gxWindow. It is answered further down, from the store
+    // first and the window only as a default - RestartGx applies it after the
+    // panel has written it, so between the tick and the Okay the stored value
+    // is the truth and the window is still showing the old state. A binding
+    // here would sit above the store and hand RestartGx back what it was about
+    // to set.
+    // 64 doodads is the most Blizzard's slider asks for and 1.5 is the most
+    // this client draws, so one of theirs is 1.5/64 of ours.
+    {"groundeffectdensity",  "groundclutter", 1.5 / 64.0},
+    {"sound_sfxvolume",      "effectsvolume"},
+    // Three that were each written out four times over - a getter and a setter
+    // on LuaServices, a lambda in Application, and a branch in each of GetCVar
+    // and SetCVar - because the client had no key for them when they were
+    // added. It has now, so they are rows like the rest.
+    {"gxvsync",              "vsync"},
+    {"mouseinvertpitch",     "invertmouse"},
+    // The client keeps this one and pushes it at the game handler each frame,
+    // so writing the setting is what makes the checkbox stick across a session
+    // as well as within one. The branch it replaces wrote the handler directly
+    // and never saved.
+    {"autolootdefault",      "autoloot"},
+};
+// NOLINTEND(modernize-use-designated-initializers)
+
+const ClientCVarBinding* findClientCVar(const std::string& lowerName) {
+    for (const auto& b : kClientCVars) {
+        if (lowerName == b.cvar) return &b;
+    }
+    return nullptr;
+}
+
+namespace {
+bool g_applyingCVarToSetting = false;
+}  // namespace
+
+ApplyingCVarToSetting::ApplyingCVarToSetting() { g_applyingCVarToSetting = true; }
+ApplyingCVarToSetting::~ApplyingCVarToSetting() { g_applyingCVarToSetting = false; }
+
+void noteClientSettingChanged(const std::string& settingKey, const std::string& value) {
+    if (g_applyingCVarToSetting) return;
+    for (const auto& binding : kClientCVars) {
+        if (settingKey != binding.setting) continue;
+        // Back into the CVar's own units, the same conversion GetCVar makes.
+        const std::string text =
+            binding.scale != 1.0
+                ? settingNumberText(std::atof(value.c_str()) / binding.scale)
+                : value;
+        auto it = cvarStore().find(binding.cvar);
+        if (it != cvarStore().end() && it->second == text) return;
+        cvarStore()[binding.cvar] = text;
+        saveStoredCVars();
+        return;
+    }
 }
 
 }  // namespace wowee::core

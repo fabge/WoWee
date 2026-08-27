@@ -36,32 +36,6 @@ One, from the play session on 2026-08-27:
    went into narrowing it this far and every remaining candidate needs the
    screen. Half an hour once the line is in hand.
 
-2. **A setting changed in this client's own window is undone at the next
-   start, for the six that a CVar also drives.** `framexml_settings_control_check.py`
-   has been reporting six since at least `83d0cebd0` - checked by stashing, so
-   it is not from the 2026-08-27 play-session fixes - and it is right:
-   `farclip`, `mousespeed`, `nameplateshowfriends`, `groundeffectdensity`,
-   `mouseinvertpitch` and `autolootdefault`. The two directions are not
-   symmetric. `SetCVar` writes the store *and* the setting, so CVar → setting
-   works and the sweep counts eighteen of those. Nothing goes the other way:
-   `SettingsPanel::setSettingValue` is the one path every control and
-   `WoweeSetSetting` come through, and it writes only `settings.cfg`. The store
-   is applied over that file at start-up, so the CVar - still at its unset zero -
-   wins, and view distance, mouse speed, friendly nameplates, ground clutter,
-   invert mouse and autoloot all revert.
-
-   The fix is to mirror a written setting back into the store for any key with a
-   `kClientCVars` row, at `setSettingValue` since everything comes through it.
-   The awkward part is where the table lives: it is in
-   `src/addons/lua_system_api.cpp`, `setSettingValue` is in `src/ui`, and
-   `wowee_ui → wowee_addons` is an edge the graph does not have and must not
-   gain. `src/core/cvar_store.cpp` is the home both sides already depend on -
-   which also means moving the sweep's parser, since it reads the rows out of
-   the file rather than keeping a copy. Half a day with that move included.
-
-   **The sweep is left failing rather than re-pinned.** Moving the ceiling to
-   six would hide a fault the player meets every time they restart.
-
 The pet-state item found on 2026-08-26 was fixed the same day with a
 regression test. The eight that stood here on 2026-08-25 and the three that
 outlived them - SavedVariables written beside the addon's own source, the crash

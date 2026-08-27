@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PANEL = ROOT / "src/ui/settings_panel.cpp"
 SCHEMA = ROOT / "src/ui/settings_schema.cpp"
-CVARS = ROOT / "src/addons/lua_system_api.cpp"
+CVARS = ROOT / "src/core/cvar_store.cpp"
 
 # Reachable by nothing, on purpose. Each names the file that says why.
 KNOWN = {
@@ -29,7 +29,7 @@ KNOWN = {
     "waterrefraction": "not a choice: the shoreline and underwater work assume it "
                        "(settings_schema.cpp)",
     "brightness": "driven by the video panel's brightness slider through SetGamma "
-                  "(lua_system_api.cpp)",
+                  "(cvar_store.cpp)",
 }
 
 # Floors, so a regex that stops matching reports an empty world rather than a

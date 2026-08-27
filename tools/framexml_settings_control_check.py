@@ -517,7 +517,7 @@ error("QQ" .. string.format("SETTINGS %d ~ %d ~ %d ~ %d ~ %d ~ %d ~ %d ~ %d ~ %d
 
 def clientCVarPairs():
     """The cvar -> setting rows of kClientCVars, so the probe is not a copy."""
-    source = (ROOT / "src/addons/lua_system_api.cpp").read_text()
+    source = (ROOT / "src/core/cvar_store.cpp").read_text()
     at = source.find("kClientCVars[] = {")
     if at == -1:
         return []

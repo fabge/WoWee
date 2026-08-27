@@ -1077,74 +1077,10 @@ static void pushCvarDefault(lua_State* L, const std::string& n) {
 }
 
 
-/// The CVars whose value is a client setting.
-///
-/// FrameXML's Video and Interface panels are bound to CVar names. The values
-/// behind these names are settings this client already had - they simply had
-/// never been introduced, so the panels wrote to a store nothing read and the
-/// controls did nothing.
-///
-/// A row here, a key in Application's bridge, and the control works. The
-/// alternative - which the entries below this table still are - is a getter and
-/// a setter on LuaServices, a lambda in Application, and a branch in each of
-/// GetCVar and SetCVar, four places per option.
-struct ClientCVarBinding {
-    const char* cvar;      ///< lower case, as both sides fold it
-    const char* setting;   ///< the key Application's bridge answers to
-    /// What the setting reads when the CVar reads one, where the two are not
-    /// counting the same thing.
-    ///
-    /// Almost always they are: a volume is 0 to 1 on both sides, a checkbox is
-    /// 0 or 1. Ground clutter is not. Blizzard's Ground Density slider counts
-    /// doodads and runs 16 to 64; this client's setting is a proportion and
-    /// runs 0 to 1.5. Handing one straight to the other put 64 into a field
-    /// that stops at 1.5, so every position of that slider - all seven of them
-    /// - came out as the most clutter the client will draw, and stayed there:
-    /// the value written to the config was clamped back down on the next load,
-    /// which made it permanent.
-    double scale = 1.0;
-};
-
-// NOLINTBEGIN(modernize-use-designated-initializers) - read as text by
-// tools/settings_without_a_control.py and tools/cvar_slider_range_fit.py,
-// which match {"cvar", "setting"} to find which settings a Blizzard slider
-// drives. Naming the fields makes both of them see an empty table.
-constexpr ClientCVarBinding kClientCVars[] = {
-    {"farclip",              "viewdistance"},
-    // Mouse Sensitivity. Its shipped range is 0.5 to 1.5, a multiplier around
-    // 1.0, and this client's sensitivity is an amount that runs 0.05 to 1.0 -
-    // so passed through unchanged the slowest setting that slider offered was
-    // two and a half times this client's default. Its range is redefined in
-    // kCVarRanges rather than converted here, which is what farclip and
-    // cameraYawMoveSpeed do, and it has to be: Mouse Look Speed writes this
-    // same setting through that route, so a scale on this one alone would have
-    // the two sliders disagree about the value they share.
-    {"mousespeed",           "mousespeed"},
-    {"showclock",            "minimapclock"},
-    {"nameplateshowfriends", "friendlyplates"},
-    // Deliberately not gxWindow. It is answered further down, from the store
-    // first and the window only as a default - RestartGx applies it after the
-    // panel has written it, so between the tick and the Okay the stored value
-    // is the truth and the window is still showing the old state. A binding
-    // here would sit above the store and hand RestartGx back what it was about
-    // to set.
-    // 64 doodads is the most Blizzard's slider asks for and 1.5 is the most
-    // this client draws, so one of theirs is 1.5/64 of ours.
-    {"groundeffectdensity",  "groundclutter", 1.5 / 64.0},
-    {"sound_sfxvolume",      "effectsvolume"},
-    // Three that were each written out four times over - a getter and a setter
-    // on LuaServices, a lambda in Application, and a branch in each of GetCVar
-    // and SetCVar - because the client had no key for them when they were
-    // added. It has now, so they are rows like the rest.
-    {"gxvsync",              "vsync"},
-    {"mouseinvertpitch",     "invertmouse"},
-    // The client keeps this one and pushes it at the game handler each frame,
-    // so writing the setting is what makes the checkbox stick across a session
-    // as well as within one. The branch it replaces wrote the handler directly
-    // and never saved.
-    {"autolootdefault",      "autoloot"},
-};
-// NOLINTEND(modernize-use-designated-initializers)
+// The CVar <-> setting bindings moved to core/cvar_store.hpp on 2026-08-27,
+// next to the store they write. See noteClientSettingChanged there for why.
+using core::ClientCVarBinding;
+using core::findClientCVar;
 
 /// What another CVar currently reads as, for the settings that only mean
 /// something in pairs. The store first, then the default, which is the same
@@ -1155,21 +1091,7 @@ std::string cvarValueOr(lua_State* L, const char* name, const char* fallback) {
     return fallback;
 }
 
-/// Set while a CVar is being applied to the setting it drives.
-///
-/// The store already holds the value in that direction, and echoing it back
-/// rewrites it with whatever survives the trip: ground clutter is kept as a
-/// whole percent, so a Ground Density of 24 came back as 23.893333 and the
-/// store no longer said what the player picked - nor any position that slider
-/// can be put in.
-static bool g_applyingCVarToSetting = false;
 
-const ClientCVarBinding* findClientCVar(const std::string& lowerName) {
-    for (const auto& b : kClientCVars) {
-        if (lowerName == b.cvar) return &b;
-    }
-    return nullptr;
-}
 
 static int lua_GetCVar(lua_State* L) {
     const char* name = luaL_checkstring(L, 1);
@@ -1502,7 +1424,7 @@ static void applyCVarSideEffects(lua_State* L, const std::string& key,
         if (auto* svc = getLuaServices(L); svc && svc->setClientSetting) {
             // The store is the source here, so what the setting does with the
             // value must not come back and overwrite it.
-            g_applyingCVarToSetting = true;
+            const core::ApplyingCVarToSetting applying;
             if (binding->scale != 1.0) {
                 svc->setClientSetting(binding->setting,
                                       ui::settingNumberText(std::atof(value.c_str()) *
@@ -1510,7 +1432,6 @@ static void applyCVarSideEffects(lua_State* L, const std::string& key,
             } else {
                 svc->setClientSetting(binding->setting, value);
             }
-            g_applyingCVarToSetting = false;
         }
     }
     // The four the client owns go to its settings, which then apply and save.
@@ -1548,23 +1469,6 @@ static void applyCVarSideEffects(lua_State* L, const std::string& key,
     }
 }
 
-
-void noteClientSettingChanged(const std::string& settingKey, const std::string& value) {
-    if (g_applyingCVarToSetting) return;
-    for (const auto& binding : kClientCVars) {
-        if (settingKey != binding.setting) continue;
-        // Back into the CVar's own units, the same conversion GetCVar makes.
-        const std::string text =
-            binding.scale != 1.0
-                ? ui::settingNumberText(std::atof(value.c_str()) / binding.scale)
-                : value;
-        auto it = core::cvarStore().find(binding.cvar);
-        if (it != core::cvarStore().end() && it->second == text) return;
-        core::cvarStore()[binding.cvar] = text;
-        core::saveStoredCVars();
-        return;
-    }
-}
 
 void applyStoredCVarSideEffects(lua_State* L) {
     for (const auto& [key, value] : core::cvarStore()) {

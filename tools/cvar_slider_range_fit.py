@@ -67,6 +67,10 @@ from cpp_number import number  # noqa: E402  (same)
 ROOT = Path(__file__).resolve().parent.parent
 FRAMEXML = ROOT / "Data/interface/framexml"
 API = ROOT / "src/addons/lua_system_api.cpp"
+# The kClientCVars rows moved next to the store they write on 2026-08-27.
+# The hand-written `key == "..."` branches that also drive a setting did
+# not, so both files are read.
+CVARS = ROOT / "src/core/cvar_store.cpp"
 PANEL = ROOT / "src/ui/settings_panel.cpp"
 
 
@@ -123,7 +127,7 @@ def sliderRanges():
 
 def bindings():
     """cvar -> (setting key, scale), from kClientCVars."""
-    text = API.read_text()
+    text = CVARS.read_text()
     at = text.find("kClientCVars[] = {")
     if at == -1:
         return {}
@@ -163,9 +167,10 @@ def sharedSettings():
     """
     text = API.read_text()
     out = {}
-    at = text.find("kClientCVars[] = {")
+    cvarText = CVARS.read_text()
+    at = cvarText.find("kClientCVars[] = {")
     if at != -1:
-        body = text[at:text.find("};", at)]
+        body = cvarText[at:cvarText.find("};", at)]
         for m in re.finditer(r'\{(?:\.\w+\s*=\s*)?"([a-z0-9_]+)",\s*(?:\.\w+\s*=\s*)?"([a-z0-9_]+)"', body):
             out.setdefault(m.group(2), []).append(m.group(1))
     for m in re.finditer(r'key == "([a-z0-9_]+)"[\s\S]{0,400}?setClientSetting\(\s*"([a-z0-9_]+)"',

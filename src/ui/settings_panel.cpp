@@ -7,7 +7,7 @@
 #include "ui/graphics_presets.hpp"
 #include "ui/settings_panel.hpp"
 #include "ui/settings_schema.hpp"
-#include "ui/addon_bridge.hpp"
+#include "core/cvar_store.hpp"
 #include "ui/display_modes.hpp"
 #include "ui/inventory_screen.hpp"
 #include "ui/chat_panel.hpp"
@@ -1365,7 +1365,16 @@ bool SettingsPanel::setSettingValue(const std::string& key, const std::string& v
     // And the CVar store, for the settings a Blizzard control also drives. It
     // is applied over the settings file at start-up, so without this a change
     // made here was undone at the next start by a CVar nobody had touched.
-    if (services_.addonBridge) services_.addonBridge->noteSettingChanged(key, settingValue(key));
+    //
+    // Called outright. For a day this went through services_.addonBridge, and
+    // a pointer that can be null is a side effect that can silently not
+    // happen: framexml_run builds a real settings panel with an empty service
+    // set, so the sweep written to watch exactly this stopped watching it, and
+    // view distance, mouse speed, friendly nameplates, ground clutter, invert
+    // mouse and autoloot went back to reverting on restart. Mirroring a value
+    // into a key-value store needs nothing from the addon system, so it no
+    // longer asks it.
+    core::noteClientSettingChanged(key, settingValue(key));
     // Anything a preset covers, changed by hand, means these settings are no
     // longer that preset. applyGraphicsPreset does not come through here - it
     // assigns the fields itself - so there is nothing for this to fight with.
