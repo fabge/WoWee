@@ -469,6 +469,9 @@ public:
     /// Spell.dbc RangeIndex resolved via SpellRange.dbc, in yards. Melee ("Combat
     /// Range") is 5; self-only is 0; negative means SpellRange.dbc was unavailable.
     [[nodiscard]] float getSpellMaxRange(uint32_t spellId) const;
+    /// Spell.dbc Speed, in yards per second: how fast the spell's missile art
+    /// travels. Zero for everything that lands the instant it is cast.
+    [[nodiscard]] float getSpellMissileSpeed(uint32_t spellId) const;
     /// True for "Self Only" range spells (shouts, self-buffs): they always land on
     /// the caster, so they take no explicit target and skip melee range checks.
     [[nodiscard]] bool isSelfCastSpell(uint32_t spellId) const;
@@ -600,6 +603,14 @@ private:
     // Play the impact visual effect at the target's position.
     void triggerImpactVisual(uint32_t spellId, uint64_t targetGuid);
     void launchRangedWeaponProjectile(uint32_t spellId, uint64_t targetGuid);
+
+    /// Throw the spell's missile art from caster to target.
+    ///
+    /// True when a missile is in flight, in which case the impact visual is
+    /// raised where it lands and the caller must not raise it itself. False
+    /// for every spell that arrives the instant it is cast - Spell.dbc gives
+    /// those a missile speed of zero.
+    bool launchSpellMissile(uint32_t spellId, uint64_t casterGuid, uint64_t targetGuid);
     void refreshRestorationFromPlayerAuras();
     void stopRestorationPresentation();
 

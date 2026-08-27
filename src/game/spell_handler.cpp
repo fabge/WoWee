@@ -385,6 +385,38 @@ void SpellHandler::triggerImpactVisual(uint32_t spellId, uint64_t targetGuid) {
     svs->playSpellVisual(visualId, targetPos, /*useImpactKit=*/true);
 }
 
+bool SpellHandler::launchSpellMissile(uint32_t spellId, uint64_t casterGuid, uint64_t targetGuid) {
+    if (casterGuid == 0 || targetGuid == 0 || casterGuid == targetGuid) return false;
+    auto* renderer = owner_.services().renderer;
+    if (!renderer) return false;
+    auto* svs = renderer->getSpellVisualSystem();
+    if (!svs) return false;
+
+    const uint32_t visualId = resolveSpellVisualId(spellId);
+    if (visualId == 0) return false;
+    const float speed = getSpellMissileSpeed(spellId);
+    if (speed <= 0.0f) return false;
+
+    glm::vec3 start;
+    glm::vec3 end;
+    if (!resolveUnitPosition(casterGuid, start)) return false;
+    if (!resolveUnitPosition(targetGuid, end)) return false;
+
+    // Leave the caster's hand where the art is held, and aim at the target's
+    // middle rather than its feet. Both positions are at ground level here.
+    start.z += 1.0f;
+    if (auto* characters = renderer->getCharacterRenderer()) {
+        glm::mat4 handTransform(1.0f);
+        const uint32_t casterInstance = owner_.resolveUnitRenderInstance(casterGuid);
+        if (casterInstance != 0 &&
+            characters->getAttachmentTransform(casterInstance, 1, handTransform))
+            start = glm::vec3(handTransform[3]);
+    }
+    end.z += 1.0f;
+
+    return svs->launchSpellMissile(visualId, start, end, speed);
+}
+
 void SpellHandler::launchRangedWeaponProjectile(uint32_t spellId, uint64_t targetGuid) {
     if (targetGuid == 0) targetGuid = owner_.getTargetGuid();
     auto* renderer = owner_.services().renderer;
@@ -2202,11 +2234,15 @@ void SpellHandler::handleSpellGo(network::Packet& packet) {
                     }
                 }
             }
-            // Impact visual at each hit target
+            // Impact visual at each hit target. A spell with a missile
+            // speed throws its art at the target instead, and the impact
+            // follows when it lands - the impact used to fire the instant the
+            // cast completed, so a Lightning Bolt was a ball at the target
+            // with nothing between it and the caster.
             for (const auto& tgt : data.hitTargets) {
-                if (tgt != 0) {
-                    triggerImpactVisual(data.spellId, tgt);
-                }
+                if (tgt == 0) continue;
+                if (launchSpellMissile(data.spellId, data.casterUnit, tgt)) continue;
+                triggerImpactVisual(data.spellId, tgt);
             }
         }
     }
@@ -3173,6 +3209,12 @@ void SpellHandler::loadSpellNameCache() const {
     const uint32_t rangeIdxField = spellL ? spellL->field("RangeIndex") : 0xFFFFFFFF;
     const uint32_t targetAuraStateField = spellL ? spellL->field("TargetAuraState") : 0xFFFFFFFF;
     const uint32_t spellVisualIdField = spellL ? spellL->field("SpellVisualID") : 0xFFFFFFFF;
+    // Spell.dbc Speed sits immediately after RangeIndex in every expansion this
+    // client reads, so a layout copy that predates the name still resolves it.
+    // Without a speed nothing is known to travel and no missile is launched.
+    uint32_t speedField = spellL ? spellL->field("Speed") : 0xFFFFFFFF;
+    if (speedField == 0xFFFFFFFF && rangeIdxField != 0xFFFFFFFF)
+        speedField = rangeIdxField + 1;
     // Read off the file's own shape. Only TBC's layout named these two, so on
     // WotLK, Classic and Turtle every cooldown this client worked out for itself
     // came back zero - which is most of them, since the server sends a cooldown
@@ -3245,6 +3287,8 @@ void SpellHandler::loadSpellNameCache() const {
             // SpellVisualID: references SpellVisual.dbc for cast/impact M2 effects
             if (spellVisualIdField != 0xFFFFFFFF && spellVisualIdField < dbc->getFieldCount())
                 entry.spellVisualId = dbc->getUInt32(i, spellVisualIdField);
+            if (speedField != 0xFFFFFFFF && speedField < fieldCount)
+                entry.missileSpeed = dbc->getFloat(i, speedField);
             if (recoveryField != 0xFFFFFFFF && recoveryField < fieldCount)
                 entry.recoveryMs = dbc->getUInt32(i, recoveryField);
             if (categoryRecoveryField != 0xFFFFFFFF && categoryRecoveryField < fieldCount)
@@ -3636,6 +3680,13 @@ float SpellHandler::getSpellMaxRange(uint32_t spellId) const {
     loadSpellNameCache();
     auto it = owner_.spellNameCacheRef().find(spellId);
     return (it != owner_.spellNameCacheRef().end()) ? it->second.maxRange : -1.0f;
+}
+
+float SpellHandler::getSpellMissileSpeed(uint32_t spellId) const {
+    if (spellId == 0) return 0.0f;
+    loadSpellNameCache();
+    auto it = owner_.spellNameCacheRef().find(spellId);
+    return (it != owner_.spellNameCacheRef().end()) ? it->second.missileSpeed : 0.0f;
 }
 
 bool SpellHandler::isSpellKnownToClient(uint32_t spellId) const {

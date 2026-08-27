@@ -2164,3 +2164,12 @@ add_executable(test_spell_pet_state test_spell_pet_state.cpp)
 target_link_libraries(test_spell_pet_state PRIVATE catch2_main wowee_game)
 add_test(NAME spell_pet_state COMMAND test_spell_pet_state)
 register_test_target(test_spell_pet_state)
+
+# ── test_spell_missile ──────────────────────────────────────
+# The flight time and heading of a spell's missile. Pure arithmetic out of the
+# spell visual system, so it needs no device; it links wowee_rendering for the
+# two definitions.
+add_executable(test_spell_missile test_spell_missile.cpp)
+target_link_libraries(test_spell_missile PRIVATE catch2_main wowee_rendering)
+add_test(NAME spell_missile COMMAND test_spell_missile)
+register_test_target(test_spell_missile)
