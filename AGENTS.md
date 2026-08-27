@@ -24,10 +24,18 @@ A routine upstream refresh is:
 git fetch upstream --prune
 git switch master
 git merge upstream/master
-cmake --build build-review --parallel "$(sysctl -n hw.logicalcpu)"
-ctest --test-dir build-review --output-on-failure -j "$(sysctl -n hw.logicalcpu)"
+cmake --build build-review -j4
+ctest --test-dir build-review --output-on-failure -j4
 git push origin master
 ```
+
+`-j4` rather than every logical core, deliberately. This is the machine the
+client is played on, and a full `-j8` rebuild makes it noticeably slow to use.
+Build the narrowest target that answers the question - `cmake --build
+build-review --target test_x` - rather than the whole tree, batch edits and
+validate once at the end, and only run the release build and installer when
+there is something to actually play. Say when a check is being skipped and why;
+skipping quietly is the thing to avoid, not skipping.
 
 Resolve conflicts by preserving the current upstream architecture and reapplying only behavior our fork still needs. If upstream independently fixes one of our patches, drop the redundant local change rather than preserving it for historical reasons.
 
@@ -71,6 +79,88 @@ Our fork deliberately keeps mutable state outside the macOS application bundle:
 The app changes its working directory to `Contents/Resources` because assets are resolved relatively. That directory is inside the code-signed seal and must be treated as read-only even when Unix permissions technically permit writing. New logs, caches, diagnostics, screenshots, generated state, and ImGui state must use an explicit per-user path.
 
 Do not restore the old `Data/fonts` symlink or disable `blizzard_tokenui`; both were workarounds for WoWee 2.x and are obsolete with the FrameXML-based 3.x client.
+
+# Debugging from a play session
+
+`~/Library/Logs/Wowee/wowee.log` is the fastest route to a cause for anything
+reported from the chair, and it is readable directly - there is nothing to set
+up. Read it before theorising. On 2026-08-27 a morning went into narrowing "the
+objectives tracker's collapse button does not answer a click" through static
+analysis and the headless runner, all of which said the button was fine; the
+answer was two lines of the log the player had already produced:
+
+    WidgetInput: press at (1301.38,581.041) hit WatchFrameCollapseExpandButton
+    WidgetInput: release on WatchFrameCollapseExpandButton - the frame is disabled
+
+The click was never the problem. **A chain that checks out statically can still
+fail at runtime, and the log is how you find out which link.** Ask for a session
+with the log rather than guessing past that point.
+
+Four things to know about it:
+
+- **A release build logs at WARNING and above** (`kDefaultMinLevelValue`, on
+  `NDEBUG`), so the installed client's log carries no `LOG_INFO` at all - and
+  the installed client is what a bug report comes from. A diagnostic meant to
+  be read by a person has to be `LOG_WARNING`. Several useful lines were
+  invisible for exactly this reason: the activity sound manager reports its
+  chosen voice profile and clip counts, which is the whole answer to "the jump
+  grunt is gone", and it was an info line nobody could see. `WOWEE_LOG_LEVEL=info`
+  raises it for one run when more is genuinely wanted; do not rely on that for
+  a line a player is expected to produce.
+- **Truncated on every start** (`std::ios::trunc`), so a log is one session. Ask
+  for it before the next launch.
+- **Name names, not ids.** A line that says `hit=37` needs a debugger to turn
+  back into a frame and is worthless in a report. The widget input lines print
+  frame names for this reason.
+- **Emit one line per outcome, so silence is itself a signal.** The Escape
+  chain in `Application` is the model: every branch says which one ran, so no
+  line at all means the key never arrived, which is a different fault in a
+  different place. A diagnostic that goes quiet in the state it exists to
+  report is worse than none.
+
+The headless counterpart is `framexml_run`, which loads the real FrameXML with
+the real emitter and no window:
+
+```bash
+cmake -S . -B build-review -DWOWEE_BUILD_FRAMEXML_RUN=ON
+cmake --build build-review --target framexml_run -j4
+./build-review/bin/framexml_run Data '--lua:__WoweeWarn("x=" .. tostring(x))'
+```
+
+`--lua:` runs a chunk (use `__WoweeWarn`, not `print`), `--drawn:NAME` reports
+whether a frame is drawn and its resolved rect, `--hit:X,Y` runs the real hit
+test, `--mouse:X,Y,L` presses and releases, and `--fire:` raises an event.
+
+`--hit` and `--mouse` take **window pixels from the top-left**, while `--drawn`
+reports the widget tree's own space: origin bottom-left, y upward, and divided
+by the UI scale. Converting a rect from one to the other is
+`winX = treeX * scale` and `winY = 1080 - treeY * scale`, where the runner's
+height is 1080 and the scale is `1080 / UIParent:GetHeight()` - typically
+1.40625, not 1. Getting this wrong reports "nothing" for a frame that is
+plainly there and reads as a broken hit test; it wasted two rounds on
+2026-08-27. It answers "is this wired up at all" in seconds. It does not
+answer "why does this not happen in the client" - it has no game handler, and
+`GameScreen` is handed an empty `UIServices`, so anything reached through an
+injected pointer is inert there. Which is the next entry.
+
+## Two rules this fork paid for
+
+- **Do not put a side effect behind an optional injected pointer.** A pointer
+  that can be null is a side effect that can silently not happen.
+  `SettingsPanel::setSettingValue` ended in an unconditional call telling the
+  CVar store a setting had moved; routing it through `services_.addonBridge`
+  meant it stopped happening in the harness that exists to watch it, and six
+  settings reverted on every restart for a day. Cycle-breaking finds the layer
+  a symbol belongs in - it does not license moving one behind an interface
+  because an interface happens to be nearby.
+- **A font string's size is only as fresh as its last measurement.** The layout
+  pass measures once a frame and caches against the text it measured, so
+  anything that writes text and asks how big it is in the same breath gets the
+  previous answer. `ui::sizeFontString` exists to be asked, and the widget
+  accessors behind every rect and text getter now ask - but code that reaches a
+  `Widget` directly still has to. Two FrameXML layouts do exactly this
+  (`WorldMapQuestFrame_UpdateQuests`, `WatchFrame`'s quest handler) and both
+  were wrong because of it.
 
 # How the client is put together
 

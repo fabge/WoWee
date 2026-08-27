@@ -1334,3 +1334,31 @@ declining in silence now says whether the audio engine is up, how many clips
 loaded and which voice profile was chosen; and target set/clear are a warning
 pair, so "I killed it and cannot deselect it" can be read as either the clear
 never running or something setting the target straight back.
+
+## AGENTS.md learns how to read a play session
+
+The log's path was already in `AGENTS.md`; nothing said how to use it, and this
+session spent a morning on a question two lines of it answered. So the file now
+carries a "Debugging from a play session" section: read the log before
+theorising, a chain that checks out statically can still fail at runtime, and
+the four properties that decide whether a diagnostic is worth writing - a
+release build logs at WARNING and above so `LOG_INFO` never reaches an
+installed client's log, the file is truncated per run, a line must name frames
+rather than ids, and every branch should say which one ran so that silence is
+itself a signal.
+
+`framexml_run`'s flags are written down beside it, including the coordinate
+conversion between `--hit`/`--mouse` (window pixels, top-left) and `--drawn`
+(tree space, bottom-left, divided by the UI scale). Getting that wrong reports
+"nothing" for a frame that is plainly there, which reads as a broken hit test;
+it cost two rounds today.
+
+Two rules the fork has now paid for are recorded with it: do not put a side
+effect behind an optional injected pointer, and a font string's size is only as
+fresh as its last measurement. Both are this week's bugs stated as the rule that
+would have prevented them.
+
+The upstream-refresh snippet drops from `--parallel $(sysctl -n hw.logicalcpu)`
+to `-j4`, with a note to build the narrowest target and validate once at the
+end. This is the machine the client is played on and a full `-j8` rebuild makes
+it slow to use - which is a real cost of the validation loop, not a preference.
