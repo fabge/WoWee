@@ -90,38 +90,6 @@ The real fix is the cycles above: with a DAG, CMake does not repeat anything.
 3.24, which is a compatibility decision for five CI platforms rather than a
 tidy-up. **Do not paper over it; it goes away when the cycles do.**
 
-### 147 translation units the client links for nothing
-`CMakeLists.txt` — `WOWEE_SRC_PIPELINE`
-
-Found by the library split on 2026-08-26: with the sources in archives rather
-than compiled straight into the executable, 147 of 419 objects contribute no
-symbol to the linked client, and nothing anywhere in the client references them.
-141 are the `src/pipeline/wowee_*.cpp` open-format writers, which belong to the
-`asset_extract` tool; the other six are `vk_buffer.cpp`, `poi_marker_layer.cpp`,
-`animation_manager.cpp`, `touch_controls.cpp` and the two `chat_markup_*.cpp`,
-whose headers are included but whose out-of-line definitions nothing calls.
-
-Nothing is broken — an archive member is pulled where it is referenced, so the
-Android build still gets `touch_controls.o` where `application.cpp` references
-it, and the client is now smaller by not linking the rest. The open question is
-whether the pipeline writers should move to a target of their own so
-`asset_extract` names them and the client does not compile them at all.
-**~2 hours, and it needs a look at what `asset_extract` actually wants.**
-
-### A partially-loaded addon still gets no initialisation event
-`src/addons/addon_manager.cpp:1330`, `:1399`
-
-Half of this was fixed on 2026-08-26: a failed load-on-demand addon is tracked
-in `lodFailed_` and no longer reports success to every caller after the first.
-What remains is the addon itself — it gets neither `ADDON_LOADED` nor
-`frameXmlNoteAddOnLoaded`, so its frames are on screen, never initialised, and
-the takeover safety net still reads it as not loaded.
-
-Firing both on a partial load is one line and probably wrong: `ADDON_LOADED`
-tells FrameXML the addon is ready, and for a half-run addon it is not. Decide
-whether the honest answer is to fire them anyway, or to tear the partial frames
-back down. **~2 hours, and it needs the decision first.**
-
 ### `GameHandler` is a god object, and the interfaces are not the fix
 `include/game/game_handler.hpp`, `include/game/game_interfaces.hpp`
 
@@ -167,47 +135,36 @@ What is left, hardest last:
 Only once a handler owns its state does an interface over it mean anything.
 **~1 day per tranche.**
 
-### Spell missiles do not travel
-`src/rendering/spell_visual_system.cpp:116`, `:147`
-
-Reported from play on 2026-08-26: a Shaman's Lightning Bolt is a glowing ball
-at the target with nothing between caster and target. Confirmed - it is not
-normal, and the machinery to fix it is already there.
-
-`SpellVisual.dbc`'s `MissileModel` is read only as a *fallback path* when a
-spell has no CastKit or ImpactKit, so it is used as a stationary model rather
-than launched. `playPhysicalProjectile(model, texture, start, end, duration,
-spin)` already flies arrows, bullets and thrown weapons along exactly this
-shape, and is documented as being outside the spell visual pipeline.
-
-The work is: read `MissileModel` as a missile rather than a fallback, take the
-travel speed from `Spell.dbc`'s missile speed field, launch from the caster's
-hand attachment to the target on SMSG_SPELL_GO, and fire the existing impact
-visual on arrival instead of immediately. Frostbolt, Fireball and every wand
-shot are the same gap. **~1 day, and it needs a play session to judge.**
-
 ### The render graph exists but is vestigial
 `src/rendering/renderer.cpp`, `src/rendering/render_graph.cpp`
 
-One of the three lists is done as of 2026-08-26: pipeline rebuilds go through
-`PipelineRegistry` and `render_pipeline_registry_check.py` fails the build if a
-type declaring `recreatePipelines()` is never registered. That was the failure
-worth killing first - a missing entry left a pipeline bound to a destroyed
-render pass and cost a lost device, with no warning anywhere.
+Two of the three lists are dealt with as of 2026-08-27.
 
-What is left is the larger half:
+Pipeline rebuilds go through `PipelineRegistry`, and
+`render_pipeline_registry_check.py` fails the build if a type declaring
+`recreatePipelines()` is never registered. That was the failure worth killing
+first - a missing entry left a pipeline bound to a destroyed render pass and
+cost a lost device, with no warning anywhere.
 
-- `Renderer` still holds ~35 hand-wired subsystem members, referenced through
-  the frame rather than through any interface (`m2Renderer` alone appears 66
-  times), so a registry cannot touch most of it.
+`shutdown()` is **not** a registry and should not become one. It was checked
+instead: `renderer_shutdown_check.py` requires every `std::unique_ptr` member of
+`Renderer` to be `.reset()` there. Ten were wrong when the sweep was written -
+five never released, five that had never held anything - and all ten are fixed.
+The reasoning is in the sweep's own docstring and in `log.md`: teardown order is
+load-bearing and documented in place, and `x.reset()` is already
+machine-readable, so a registry would have hidden the ordering and checked
+nothing the sweep does not.
+
+What is left is the one piece that was always the multi-day one:
+
+- `Renderer` still holds 30 hand-wired subsystem members, referenced through the
+  frame rather than through any interface (`m2Renderer` alone appears 66 times),
+  so a registry cannot touch most of it.
 - `RenderGraph` registers 5 passes while the real frame is sequenced
   imperatively. Until the graph is authoritative it is a second description of
   the frame that nothing checks against the first.
-- `shutdown()` is still an enumeration, and is the obvious next registry.
 
-Take `shutdown()` next: it is the same shape as the pipeline one and the sweep
-generalises. Making the graph authoritative is the multi-day piece and should
-not start until the lifecycle lists are gone. **Multi-day.**
+Making the graph authoritative is the work. **Multi-day.**
 
 ### Remove the four Escape probes
 `src/core/application.cpp:1548`, `:1579`, `:1616`, `:1632`
@@ -249,13 +206,5 @@ Suggested order, each its own PR:
   local server checkout (`WOWEE_SERVER_SRC`), 1 wants assets. Pointing
   `WOWEE_SERVER_SRC` at an AzerothCore clone would light up seven
   packet-agreement sweeps that have never run on this machine.
-- `docs/threading.md:16`, `docs/plan-modernization.md` and
-  `docs/plan-new-mmo.md:19` cite line numbers and sizes that have moved.
-  `plan-new-mmo.md` describes `src/ui/` as "~42k, ImGui-based"; it is 31k and
-  FrameXML-driven. Stale plans are worse than none.
-- No ctest invocation passes `-j`. (The Windows jobs now run their tests: the
-  earlier note here said they configured without `-DWOWEE_BUILD_TESTS=ON`,
-  which was wrong — the option defaults to ON, so they were building every test
-  target and simply never running one.)
-- `tools/` has 141 files and no README; the only index is the `CHECKS` list
-  inside `sweep_guard.py`.
+- `docs/threading.md` and `docs/plan-modernization.md` may still cite line
+  numbers that have moved; `plan-new-mmo.md`'s were re-measured on 2026-08-27.

@@ -729,3 +729,132 @@ still hand-wired members. What is done is that one of the three lists cannot
 silently go stale any more.
 
 184 tests, all passing, every sweep at its ceiling, both FrameXML arms clean.
+
+## 2026-08-27 — spell missiles travel
+
+A Shaman's Lightning Bolt was a glowing ball at the target with nothing between
+it and the caster. Reported from play, and the machinery to fix it was already
+in the tree.
+
+`SpellVisual.dbc` has a `MissileModel` column - `Spells\LightningBolt_Missile`
+for visual 173, `Spells\Frostbolt` for 13 - and this client read it only as a
+*fallback path*, used when a spell had neither a CastKit nor an ImpactKit. So
+it was drawn standing still, at the caster or at the target, and nothing was
+ever launched. For Lightning Bolt it was not drawn at all: it has both kits, so
+the fallback never fired and the impact ball was the whole of the effect.
+
+Three things were missing and all three are in:
+
+* `MissileModel` is loaded into its own map rather than as a stand-in for the
+  other two. It is no longer a cast fallback - it is not art the caster wears.
+* The travel speed comes from `Spell.dbc`'s `Speed`, in yards per second:
+  Lightning Bolt 20, Fireball 24, Frostbolt 28, and 0 for everything instant,
+  which is how a spell with a missile is told from one without. The column is
+  not named in any of the four `dbc_layouts.json` files, so all four now name
+  it, and the reader falls back to `RangeIndex + 1` - which is where it sits in
+  every expansion this client reads - for a layout copy that predates the name.
+* On SMSG_SPELL_GO the missile is launched from the caster's right-hand
+  attachment to each hit target, and the impact visual fires when it *arrives*
+  rather than the instant the cast completes. A missile that launches suppresses
+  the immediate impact; one that does not (no missile model, no speed, target in
+  the caster's own position) leaves the old behaviour exactly as it was.
+
+Frostbolt, Fireball and every wand shot are the same gap and the same fix.
+
+`spellMissileDuration` and `spellMissileRotation` are pure, so
+`tests/test_spell_missile.cpp` covers the arithmetic without a device: distance
+over speed, the clamp at both ends, the zero-speed refusal, and the four
+headings. The rest needs a play session to judge.
+
+Along the way the three copies of "read this M2, parse it, upload it, remember
+that it failed" became one `acquireEffectModel`. The precast, cast and impact
+paths had a copy each, differing only in log wording.
+
+## 2026-08-27 — the client stops compiling the asset pipeline's output side
+
+Found by the library split of 2026-08-26: 147 of the client's 419 objects
+contributed no symbol to the linked binary. 142 of them were the
+`src/pipeline/wowee_*.cpp` open-format writers - the emitters that turn
+extracted Blizzard data into this project's own formats. The client only ever
+*reads* what they produce.
+
+They are now `wowee_openformat`, `EXCLUDE_FROM_ALL`, and `wowee_editor` links it
+instead of listing all 142 sources a second time. Four stay in `wowee_pipeline`
+because the client does read through them - `wowee_model`, `wowee_building`,
+`wowee_collision`, `wowee_terrain_loader` - and those are also the ones
+`asset_extract` names.
+
+Building the editor for the first time in a while turned up a dead private field
+in `tools/editor/editor_ui.hpp` that `-Werror` rejects. Deleted. The editor is an
+on-demand target, so nothing local had built it since the field was orphaned.
+
+## 2026-08-27 — five renderer subsystems nobody released, and five that were never anything
+
+`Renderer::shutdown()` exists because `~Renderer` is too late: `Application` says
+so where it calls it - a sub-renderer has to free its VMA allocations before
+`VkContext::shutdown()` reaches `vmaDestroyAllocator`. The list is hand-written
+and was thirty-five entries long. Ten of them were wrong.
+
+`MountDust`, `ChargeEffect`, `QuestMarkerRenderer` and `LevelUpEffect` each free
+real Vulkan objects and did it from their destructors alone, so they came down
+*after* shutdown had finished rather than inside it. `LightingManager` was never
+released at all. It held only because `Application` resets the renderer on the
+very next line - one statement away from a use-after-free of the allocator, with
+nothing anywhere saying so.
+
+The other five were the opposite fault. `skybox`, `celestial`, `starField`,
+`clouds` and `lensFlare` were declared as owning pointers, assigned `nullptr` at
+initialize and assigned `nullptr` again at shutdown, and never held anything.
+The real objects belong to `SkySystem` and the accessors already went through it.
+Deleted.
+
+`renderer_shutdown_check.py` pins this at zero: every `std::unique_ptr` member of
+`Renderer` must be `.reset()` in `shutdown()`. Canaried by removing
+`zoneManager.reset()` and watching it report.
+
+This is deliberately a sweep over the enumeration and *not* a registry like
+`PipelineRegistry`, which is what `TODO.md` proposed. The pipeline rebuild list
+had no order to keep and no way to be read from outside, so a registry was the
+only way to check it. Teardown is the other way round: the order is load-bearing
+and documented in place - SpellVisualSystem before M2Renderer, AnimationController
+before the renderers it references - and `x.reset()` is already machine-readable.
+A registry would have moved that ordering somewhere less visible and checked
+nothing this does not.
+
+## 2026-08-27 — a half-loaded addon gets its initialisation event
+
+The other half of the load-on-demand fix of 2026-08-26. A partially-loaded addon
+was tracked as failed and reported as failed, but got neither `ADDON_LOADED` nor
+`frameXmlNoteAddOnLoaded` - so its frames were on screen, never initialised, and
+the takeover safety net still read it as not loaded and kept drawing this
+client's own copy over the top.
+
+Fires both now. Withholding `ADDON_LOADED` reads well - an addon that half-ran is
+not ready - but it does not undo the frames the addon already put on screen; it
+guarantees they are never wired to anything. `Blizzard_TalentUI` builds its tabs
+there and `Blizzard_TimeManager` reads its saved alarm there. It is also what the
+real client does: a Lua error in one of an addon's files is reported and the
+addon carries on loading. The caller still learns the truth - `loadAddon` returns
+false and `loadAddOnByName` turns that into `CORRUPT`.
+
+## 2026-08-27 — tools/ has an index that cannot go stale
+
+126 Python sweeps, eight subdirectories, and the only index of any of it was the
+`CHECKS` list inside `sweep_guard.py`, which names about thirty. Someone asking
+"is there already a sweep for this?" had `ls` and the file names.
+
+`tools/README.md` now has one, and the table is generated from each tool's own
+docstring first line, so a tool whose purpose changes updates its own entry.
+`tools_readme_check.py` is pinned at zero in `sweep_guard`: a tool added without
+an entry, or an entry whose tool has moved on, fails the build.
+`--write` regenerates the block; everything outside the two markers is prose.
+
+A hand-written index would have been worse than none - it would answer correctly
+until the next tool was added, and a reader who trusts an index that has quietly
+dropped four sweeps writes the fifth copy of one of them.
+
+Also: the three CI `ctest` steps that ran serially now pass `-j`. The suite is a
+hundred and eighty small binaries and one three-minute sweep; serially it was the
+longest step in two of the jobs. And `docs/plan-new-mmo.md`'s line counts, which
+were 2025's, were re-measured - `src/ui/` is 34k and FrameXML-driven, not "~42k,
+ImGui-based".

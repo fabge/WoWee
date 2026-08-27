@@ -117,6 +117,7 @@ Since 2026-08-26 the client is not one target. It is `src/main.cpp` linked again
 - `wowee_common` — an INTERFACE target holding the include paths, third-party links, warning flags and precompiled header. Everything that compiles client code inherits it, so there is one answer to "how is this built" rather than one per target.
 - `wowee_base` — the logger, the app clock, the memory monitor, the writable-path rules and the CVar store. **It depends on nothing of ours, and that is the property to protect**: anything added there becomes reachable from every subsystem at once.
 - `wowee_takeover` — the policy deciding, per UI element, whether this client or FrameXML owns it. Five of the ten libraries consult it.
+- `wowee_openformat` — the `src/pipeline/wowee_*.cpp` writers that turn extracted Blizzard data into this project's own formats. `EXCLUDE_FROM_ALL`, and only `wowee_editor` links it: the client reads what they produce and never calls them, and compiling them into it was 142 objects that contributed no symbol.
 
 **A test should link a subsystem library, not re-enumerate translation units.** `target_link_libraries(test_x PRIVATE wowee_game)` and let the linker work out what it needs; the older targets in `tests/CMakeLists.txt` name `.cpp` files by hand because there was nothing to link, and they go stale. `wowee_common` carries glm, so a target that links a subsystem needs no `wowee_test_link_glm()` call.
 
@@ -137,7 +138,7 @@ Measured on this machine, 2026-08-25:
 | Step | Time |
 | --- | --- |
 | Incremental build after an edit | 4s to ~1 min, depending on the file |
-| `tools/validate.sh --quick` (182 tests, no `sweep_guard`) | ~15s |
+| `tools/validate.sh --quick` (184 tests, no `sweep_guard`) | ~15s |
 | `sweep_guard` alone (92 sweeps, run in parallel) | ~3 min |
 | `tools/validate.sh` (everything) | ~4 min |
 | Release configure and build from scratch | ~5 min |
@@ -151,7 +152,7 @@ Measured on this machine, 2026-08-25:
 - The release build, the app bundle and the install are for when the change should reach the installed client — when it is asked for, or when a play session needs it. They are not part of validating a change.
 - Do not re-run an expensive step to confirm something an earlier run in the same session already showed.
 
-The current suite has 183 CTest checks. Two FrameXML compilation checks skip in a public checkout because the repository cannot contain Blizzard interface data; `tools/validate.sh` reports the FrameXML arms as skipped there rather than failing. The FrameXML checks must report zero failed compilations, zero unparsed XML files, and zero unbuilt elements. Gameplay, rendering, movement, packet, or FrameXML lifecycle changes also require a manual smoke test against the configured ChromieCraft WotLK server.
+The current suite has 185 CTest checks. Two FrameXML compilation checks skip in a public checkout because the repository cannot contain Blizzard interface data; `tools/validate.sh` reports the FrameXML arms as skipped there rather than failing. The FrameXML checks must report zero failed compilations, zero unparsed XML files, and zero unbuilt elements. Gameplay, rendering, movement, packet, or FrameXML lifecycle changes also require a manual smoke test against the configured ChromieCraft WotLK server.
 
 Do not dismiss a failing custom sweep as noise. The repository's tools encode many previously observed silent failures. Determine whether a failure is a real regression, missing proprietary test data, a missing optional server checkout, or a harness path assumption before changing a pinned ceiling.
 
