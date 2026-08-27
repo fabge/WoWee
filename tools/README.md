@@ -113,6 +113,7 @@ hand - fix the tool's docstring and run `tools/tools_readme_check.py --write`.
 | `framexml_lookup_names_check.py` | Frames this client looks up by name that the interface does not declare. | pinned by sweep_guard |
 | `framexml_lua_override_check.py` | C bindings for a name FrameXML defines itself, which therefore never run. | pinned by sweep_guard |
 | `framexml_measure_after_move.py` | Where the interface moves something and measures it in the same breath. | run by tools_run_check |
+| `framexml_measure_after_settext.py` | Where the interface writes a string and measures it in the same breath. | run by tools_run_check |
 | `framexml_method_check.py` | Widget methods FrameXML calls that answer nil - and so raise when called. | pinned by sweep_guard |
 | `framexml_missing_api_triage.py` | Sort a session's missing-API report into the ones worth acting on. | run by tools_run_check |
 | `framexml_nil_arithmetic.py` | Values from a binding that can be nil, used where nil raises. | run by tools_run_check |

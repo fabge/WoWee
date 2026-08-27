@@ -1424,3 +1424,25 @@ is worth more than the fixture line - see `TODO.md` item 2. The tracker's
 default filter drops every watched quest whose log header does not match the
 zone text exactly, with no fallback, and a tracker that hides everything is
 indistinguishable from a broken one.
+
+## A sweep for the class, not the instance
+
+`framexml_measure_after_settext.py`, the text twin of
+`framexml_measure_after_move.py` and the same story told about strings: where
+the interface writes text and measures it in the same breath. Twenty-one sites
+across the interface, and two of them were today's bugs - the world map's quest
+blocks and WatchFrame's quest handler.
+
+It reports the sites as a population rather than as faults, because after the
+fix they all answer correctly; what it fails on is the thing they depend on
+going away. It reads `measuredWidgetOf` and `textWidgetOf` out of
+`lua_widget_api.cpp` and checks that both still ask `sizeFontString` before
+answering a size. Canaried by deleting one of those calls, which names the
+accessor and says that all twenty-one sites are back to being answered for
+their previous text. An empty population also fails: a matcher that has gone
+blind reads exactly like a clean tree, which is the rule `sweep_guard` already
+enforces on every sweep it runs.
+
+This is the shape worth repeating. Both of today's measurement bugs were
+instances of one pattern, and a sweep for the pattern would have found both
+before either was reported - where a test for either would have found neither.
