@@ -506,6 +506,47 @@ int main(int argc, char** argv) {
                     gh.setSelectedQuestLogIndex(1);
                 }
             }
+            // Something on the action bar, and one of it on cooldown.
+            //
+            // Without this every ActionButton is hidden - ActionButton_Update
+            // shows a button only where HasAction says there is one - so
+            // nothing about the bar could be asked at all: not whether an icon
+            // is drawn, not whether a keybind label is right, and not whether a
+            // cooldown sweep is painted. That last one shipped broken for the
+            // life of the client and was found by reading the draw order rather
+            // than by asking here, which is the gap this closes.
+            //
+            // Slot 0 is ready and slot 1 is thirty seconds into a minute, so
+            // both halves of GetActionCooldown are exercised: a slot with no
+            // cooldown and a slot with one running.
+            // A clock that has been running a while, which is what a real
+            // session's is. CooldownFrame_SetTimer takes its start only when
+            // `start > 0`, and start is `GetTime() - elapsed` - so at 0.7
+            // seconds after launch, which is when this harness asks, any
+            // cooldown already part-way through has a negative start and the
+            // sweep is hidden rather than shown. Ten minutes in is enough for
+            // every such subtraction to land where it would in play.
+            wowee::core::advanceTestClock(600.0);
+
+            {
+                auto& bar = gh.actionBarRef();
+                bar[0].type = wowee::game::ActionBarSlot::SPELL;
+                bar[0].id = 133;   // Fireball
+                bar[1].type = wowee::game::ActionBarSlot::SPELL;
+                bar[1].id = 116;   // Frostbolt
+                bar[1].cooldownTotal = 60.0f;
+                bar[1].cooldownRemaining = 30.0f;
+            }
+
+            // Every quest in the log watched, which is what puts lines in the
+            // objectives tracker. An unwatched log leaves WatchFrame empty, and
+            // an empty tracker hides its own header - so "is the collapse
+            // button enabled" had no state to be asked in, which is why that
+            // question needed a play session to answer.
+            if (auto* qh = gh.getQuestHandler()) {
+                for (const auto& q : qh->questLogRef()) gh.setQuestTracked(q.questId, true);
+            }
+
             if (auto* engine = mgr.getLuaEngine()) engine->setGameHandler(&gh);
             // And an entity, because a character alone is not a unit.
             //

@@ -1394,3 +1394,33 @@ Found by reading the draw-order filter rather than by another play session,
 after a note from the player that the log is on this machine and does not need
 sending. That is now in `AGENTS.md`: read it, do not ask for it. The only thing
 worth asking for is a session.
+
+## The harness gets an action bar, and the cooldown fix gets a real check
+
+Two additions to `framexml_run --player`, both data on the `GameHandler` it
+already builds. Two action bar slots, one ready and one thirty seconds into a
+minute, and every quest in the log watched.
+
+The bar was the point. Without an action on it `ActionButton_Update` hides
+every button, so nothing about the bar could be asked at all - and the cooldown
+sweep that shipped broken for the life of the client was found by reading the
+draw-order filter rather than by asking here. It is asked now: with the slots
+filled, `ActionButton2Cooldown` reports DRAWN through the real
+`ActionButton_UpdateCooldown` path, which is the fix checked end to end rather
+than against a frame invented for the test.
+
+Getting there turned up a third thing the harness needed. `CooldownFrame_SetTimer`
+takes its start only when `start > 0`, and start is `GetTime() - elapsed`; the
+runner asks 0.7 seconds after launch, so any cooldown already part-way through
+had a negative start and was hidden. `advanceTestClock(600)` puts the clock ten
+minutes in, where every such subtraction lands as it would in play. Worth
+knowing generally: a harness that starts at t=0 is not a neutral starting
+position, it is an unusual one.
+
+A zone was tried too and taken out rather than shipped: setting
+`worldStateZoneId_` does not make `GetRealZoneText()` answer, because the name
+comes through AreaTable and the harness does not resolve it. What that exposed
+is worth more than the fixture line - see `TODO.md` item 2. The tracker's
+default filter drops every watched quest whose log header does not match the
+zone text exactly, with no fallback, and a tracker that hides everything is
+indistinguishable from a broken one.

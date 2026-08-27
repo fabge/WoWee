@@ -149,6 +149,37 @@ answer "why does this not happen in the client" - it has no game handler, and
 `GameScreen` is handed an empty `UIServices`, so anything reached through an
 injected pointer is inert there. Which is the next entry.
 
+## Where bugs actually come from
+
+Counted on 2026-08-27, over nine bugs fixed in one day: **seven came from
+Fabian playing**, one came from a sweep - which was catching a regression
+introduced the day before - and **none came from the 182 tests**.
+
+That is not a complaint about the net. 182 tests and 129 sweeps are very good
+at stopping a thing from breaking twice, which is the job they have. But they
+find almost nothing new, so "add more tests" is not the answer to "find bugs";
+they are different jobs. The lever is to make each play session yield more, not
+to replace the session.
+
+Two things follow. Sweep for the *class* rather than the instance - the stale
+measurement fixed on 2026-08-27 was a pattern (`SetText(...)` then `GetHeight()`
+on the same object in one function) and a text-level sweep for it would have
+found both instances before either was reported. And keep the headless runner
+able to reach real state, because most of what goes wrong is a wrong value
+rather than a wrong picture: that day's bugs were a boolean (a button left
+disabled), a widget missing from a list (every cooldown), a number (a text
+height), a float (a creature's facing) and a string that never reached a map
+(six settings). None of those needed eyes. They needed the client driven far
+enough to reach the state.
+
+**The harness is not a second client.** `framexml_run` is honest because it
+links the same libraries the client does, so an answer that differs from the
+client's is a bug in the client. Whatever state it is given must stay *data* -
+a struct of starting values - and never become a second implementation of game
+logic. Writing packet handling or spell rules into the harness is the signal to
+stop: at that point it drifts, and it starts producing bugs of its own. There
+is deliberately no server simulator and no scripted play-through here.
+
 ## Two rules this fork paid for
 
 - **Do not put a side effect behind an optional injected pointer.** A pointer

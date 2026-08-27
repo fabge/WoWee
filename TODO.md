@@ -36,6 +36,25 @@ One, from the play session on 2026-08-27:
    went into narrowing it this far and every remaining candidate needs the
    screen. Half an hour once the line is in hand.
 
+2. **The objectives tracker's default filter hides every quest whose log
+   header does not match `GetRealZoneText()` exactly.** `watchframe.lua` drops a
+   watched quest unless `LOCAL_MAP_QUESTS` holds it, that table is copied from
+   `CURRENT_MAP_QUESTS`, and this client rebuilds that by matching each quest's
+   zone header against `GetRealZoneText()` (`addon_manager.cpp`, the
+   `WatchFrame_GetCurrentMapQuests` shim). Any disagreement between the two
+   names - a subzone, a localisation, a header the log did not resolve - drops
+   *every* quest, which lays out no lines, reports no pixels used, and leaves
+   the tracker collapsed with its expand button disabled. That is the exact
+   symptom reported on 2026-08-27 and its intermittency fits: it would work in
+   one zone and not another.
+
+   Not yet proven to be that player's cause - their tracker did show lines -
+   so this wants confirming against a session before it is fixed. What is
+   certain is that the shim has no fallback: if the match fails there is no
+   "show it anyway", and a tracker that hides everything looks broken rather
+   than filtered. `framexml_run --player` reaches the state (its quest sits
+   under "Miscellaneous" and is filtered out), which is where to start.
+
 The pet-state item found on 2026-08-26 was fixed the same day with a
 regression test. The eight that stood here on 2026-08-25 and the three that
 outlived them - SavedVariables written beside the addon's own source, the crash
