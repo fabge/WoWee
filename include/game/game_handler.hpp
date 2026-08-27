@@ -254,6 +254,16 @@ public:
      * @param characterGuid GUID of character to log in with
      */
     void selectCharacter(uint64_t characterGuid);
+
+    /// Clear everything the previous character left behind.
+    ///
+    /// Called by selectCharacter, and public so it can be tested without one -
+    /// selectCharacter needs a socket, and what this clears has twice turned
+    /// out to be less than it should. Anything per-character that is only ever
+    /// written from an update field has to be cleared here: a field is sent
+    /// when the server has a value for it, so a character with none of a thing
+    /// is never told it is zero, and keeps the previous character's.
+    void resetStateForCharacterSwitch();
     void setActiveCharacterGuid(uint64_t guid) { activeCharacterGuid_ = guid; }
     uint64_t getActiveCharacterGuid() const { return activeCharacterGuid_; }
     const Character* getActiveCharacter() const;

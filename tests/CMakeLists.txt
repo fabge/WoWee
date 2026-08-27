@@ -2191,3 +2191,13 @@ add_executable(test_spell_missile test_spell_missile.cpp)
 target_link_libraries(test_spell_missile PRIVATE catch2_main wowee_rendering)
 add_test(NAME spell_missile COMMAND test_spell_missile)
 register_test_target(test_spell_missile)
+
+# ── test_character_switch_reset ──────────────────────────────────
+# What the previous character leaves behind. The same fault has shipped three
+# times in three clusters - the pet's spells, the pet's stats, and eight player
+# fields - because selectCharacter needs a socket and nothing could test what it
+# cleared. The clearing is resetStateForCharacterSwitch now, and this tests it.
+add_executable(test_character_switch_reset test_character_switch_reset.cpp)
+target_link_libraries(test_character_switch_reset PRIVATE catch2_main wowee_game)
+add_test(NAME character_switch_reset COMMAND test_character_switch_reset)
+register_test_target(test_character_switch_reset)

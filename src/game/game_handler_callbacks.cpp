@@ -571,6 +571,32 @@ void GameHandler::selectCharacter(uint64_t characterGuid) {
     // Store player GUID
     playerGuid = characterGuid;
 
+    resetStateForCharacterSwitch();
+
+    // Build CMSG_PLAYER_LOGIN packet
+    auto packet = PlayerLoginPacket::build(characterGuid);
+
+    // Send packet
+    socket->send(packet);
+
+    setState(WorldState::ENTERING_WORLD);
+    LOG_INFO("CMSG_PLAYER_LOGIN sent, entering world...");
+}
+
+/// Everything the previous character left behind.
+///
+/// Sixty lines that used to sit inline in selectCharacter, which cannot be
+/// called without a socket - so nothing could test what this clears, and what
+/// it clears has now twice turned out to be less than it should. The pet
+/// cluster survived a switch until 2026-08-26; the pet stats and eight player
+/// fields survived until 2026-08-27.
+///
+/// The fault is always the same shape and it is worth stating once: an update
+/// field is sent when the server has a value for it, so a character who has
+/// none of a thing is never told it is zero. Anything per-character that is
+/// only ever written from a packet has to be cleared here, or it is the
+/// previous character's for as long as the new one never earns one.
+void GameHandler::resetStateForCharacterSwitch() {
     // Reset per-character state so previous character data doesn't bleed through
     inventory = Inventory();
     onlineItems_.clear();
@@ -600,6 +626,27 @@ void GameHandler::selectCharacter(uint64_t characterGuid) {
     playerRangedCritPct_ = -1.0f;
     std::fill(std::begin(playerSpellCritPct_), std::end(playerSpellCritPct_), -1.0f);
     std::fill(std::begin(playerCombatRatings_), std::end(playerCombatRatings_), -1);
+    // Eight more that are the previous character's and were surviving the
+    // switch, found on 2026-08-27 by asking which entity_controller-only
+    // member this block does not name. The same fault as the pet stats, and it
+    // survives for the same reason: an update field is sent when it is set, so
+    // a character who has none of these is never told they are zero. A mage
+    // after a druid kept the druid's shapeshift form, a character with no title
+    // wore the previous one's, and the rested XP, honor and arena points on the
+    // screen were somebody else's.
+    playerHonorPoints_ = 0;
+    playerArenaPoints_ = 0;
+    playerRestedXp_ = 0;
+    playerManaRegen_ = 0.0f;
+    playerManaRegenCasting_ = 0.0f;
+    chosenTitleBit_ = -1;
+    shapeshiftFormId_ = 0;
+    // And the boat the *previous* character was standing on. This one keeps a
+    // transport alive for a few seconds after the server stops mentioning it,
+    // so a stale guid here is a new character riding a transport they are
+    // nowhere near.
+    playerTransportStickyGuid_ = 0;
+    playerTransportStickyTimer_ = 0.0f;
     if (spellHandler_) spellHandler_->resetAllState();
     if (auto* renderer = services_.renderer) {
         if (auto* camera = renderer->getCameraController()) camera->setIntoxication(0.0f);
@@ -638,15 +685,6 @@ void GameHandler::selectCharacter(uint64_t characterGuid) {
     lastTargetGuid = 0;
     tabCycleStale = true;
     entityController_->clearAll();
-
-    // Build CMSG_PLAYER_LOGIN packet
-    auto packet = PlayerLoginPacket::build(characterGuid);
-
-    // Send packet
-    socket->send(packet);
-
-    setState(WorldState::ENTERING_WORLD);
-    LOG_INFO("CMSG_PLAYER_LOGIN sent, entering world...");
 }
 
 void GameHandler::handleLoginSetTimeSpeed(network::Packet& packet) {
