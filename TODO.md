@@ -105,47 +105,61 @@ tidy-up. **Do not paper over it; it goes away when the cycles do.**
 ### `GameHandler` is a god object, and the interfaces are not the fix
 `include/game/game_handler.hpp`, `include/game/game_interfaces.hpp`
 
-Still 461 members and 226 `xRef()` accessors after the first pass of
-2026-08-26. What that pass established is that the plan recorded here was
-wrong, so it is worth writing down before the next one:
+**212 `xRef()` accessors** and ~4,880 header lines after three tranches. The
+plan originally recorded here was wrong and is worth keeping written down: an
+interface whose methods hand out `std::unordered_map<...>&` is `GameHandler`
+with a vtable, and the five interfaces in `game_interfaces.hpp` are still
+unused.
 
-`SpellHandler` names **114** distinct members of its owner, and **51** of those
-are `xRef()` accessors returning a mutable reference to `GameHandler`'s private
-state. Putting an interface in front of that decouples nothing - an interface
-whose methods hand out `std::unordered_map<...>&` is `GameHandler` with a
-vtable. The five interfaces in `game_interfaces.hpp` are still unused, and they
-are not what unblocks this.
+What works instead is measuring which accessor is used by exactly one other
+file, and moving the state there. Measured 2026-08-27:
 
-What worked instead: of those 51 accessors, **29 were used by
-`spell_handler.cpp` and nowhere else**, and 17 of those had no other mention in
-`GameHandler` at all beyond the accessor and a line clearing them on character
-switch. Those 17 moved, and with them the ten spell-domain types that described
-them. No forwarding was left behind.
+| sole external user | accessors |
+| --- | --- |
+| `entity_controller.cpp` | 48 |
+| `movement_handler.cpp` | 22 |
+| `social_handler.cpp` | 18 |
+| `inventory_handler.cpp` | 14 |
+| `spell_handler.cpp` | 12 |
+| `combat_handler.cpp` | 12 |
+| `chat_handler.cpp` | 6 |
+| `quest_handler.cpp` | 5 |
 
-A second tranche went on 2026-08-26: the pet cluster - `petActionSlots_`,
-`petCommand_`, `petReact_`, `petSpellList_`, `petAutocastSpells_` - plus
-`meleeSwingCallback_`. All six had *no* mention in GameHandler's own `.cpp` at
-all; it declared them, exposed an `xRef()`, and read them in a getter. The pet
-five became one `SpellHandler::PetState`, and the callback went to
-`CombatHandler` beside the swing timer that raises it.
+Only **one** accessor is used by no other file at all
+(`rangedWeaponSwapCallbackRef`), so deleting dead surface is not the lever -
+relocation is.
 
-What is left, hardest last:
+Of `entity_controller.cpp`'s 48, twenty-four have **zero** mentions anywhere in
+`GameHandler`'s own translation units: it declares them, exposes an `xRef()`,
+reads them in a getter, and never touches them again. That is the exact shape
+of the pet cluster, and it is where the next tranche should start.
 
-- **`actionBar`** — 13 non-reset uses in `GameHandler`'s own packet and callback
-  code. Genuinely shared, and the wrong thing to move blindly.
-- **`hasHomeBind_` / `homeBindMapId_`** (4 uses each), **`earnedAchievements_`**
-  and **`pendingGameObjectInteractGuid_`** (3 each) — each needs its
-  `GameHandler` uses read before deciding.
-- **8 accessors still shared with exactly one other handler**: the skill-line
-  cluster with `InventoryHandler` (`skillLineNames_`, `skillLineCategories_`,
-  `spellToSkillLine_`, `tempEnchantTimers_`), the stable pair with
-  `QuestHandler` (`stableMasterGuid_`, `stableWindowOpen_`), plus
-  `lastInteractedGoGuid_` and `achievementNameCache_`. Unlike the pet cluster
-  these all have real `GameHandler` uses too, so each is a decision rather than
-  a move.
+The seven pet-stat members went that way on 2026-08-27, and finding them found
+a bug: nothing cleared them on a character switch, so a hunter's pet attack
+power was still readable from a mage. They are in `SpellHandler::PetState` now,
+where `resetAllState` already reaches, with a regression test.
 
-Only once a handler owns its state does an interface over it mean anything.
-**~1 day per tranche.**
+Two clusters are left in that 48, and they are not the same:
+
+- **~20 player stat members** - `playerCritPct_`, `playerDodgePct_`,
+  `playerMeleeAP_`, `playerXp_`, `playerCombatRatings_` and the rest of the
+  character sheet's numbers. Written only by `entity_controller`, read only
+  through `GameHandler` getters. Check what resets them before moving: the
+  pet-stat fault was found exactly that way.
+- **12 callbacks** - `creatureSpawnCallback_`, `npcDeathCallback_`,
+  `playerSpawnCallback_` and so on. Fired only by `entity_controller`, but
+  **set from 15 places across `src/core` and `src/ui`**. Moving them means
+  either adding `getEntityController()` and changing all 15, or leaving
+  forwarding setters behind - and forwarding is what the earlier tranches went
+  out of their way to avoid. `GameHandler` being the registration point for
+  these is arguably an interface rather than an accident. Decide before moving.
+
+Also still open: **`actionBar`** (13 non-reset uses in `GameHandler`'s own
+packet and callback code - genuinely shared), and `hasHomeBind_`,
+`homeBindMapId_`, `earnedAchievements_`, `pendingGameObjectInteractGuid_`,
+`stableMasterGuid_`, `stableWindowOpen_`, `achievementNameCache_` and the
+skill-line cluster, all of which measure as used only inside `GameHandler`'s own
+files plus at most one handler. **~1 day per tranche.**
 
 ### The render graph exists but is vestigial
 `src/rendering/renderer.cpp`, `src/rendering/render_graph.cpp`

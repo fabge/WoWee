@@ -996,3 +996,34 @@ character composition that belongs elsewhere and nine want the UI handed a
 services struct rather than reaching for the composition root. `TODO.md` has the
 breakdown. Neither pays until it is finished - a pair closes only when its last
 symbol goes.
+
+## 2026-08-27 — the other half of the pet-state bug
+
+The pet cluster that moved to `SpellHandler` on 2026-08-26 was the pet's action
+bar, stance and spell list. Its stats were left behind, and they had the same
+fault: `GameHandler` declared `petStats_`, `petResistances_`, `petAttackPower_`,
+`petMinDamage_`, `petMaxDamage_`, `petExperience_` and `petNextLevelExp_`,
+exposed an `xRef()` for each, read each in a getter - and mentioned none of them
+in any of its own translation units. Nothing cleared them on a character switch,
+so a hunter's pet attack power was still readable from a mage and the paperdoll's
+pet tab would draw it.
+
+They are fields of `SpellHandler::PetState` now, where `resetAllState` already
+zeroes the whole struct, and `entity_controller` writes them through it. The
+regression test that covers the first half covers these too.
+
+Found by measuring, not by reading: for every `xRef()` accessor on `GameHandler`,
+which files outside its own translation units use it. Only one accessor
+(`rangedWeaponSwapCallbackRef`) has no external user at all, so deleting dead
+surface is not the lever - 48 of them are used by `entity_controller.cpp` and
+nothing else, and twenty-four of those have zero mentions in `GameHandler`'s own
+`.cpp` files. `TODO.md` has the table and what is left in it.
+
+Two clusters in that 48 were deliberately *not* moved. The ~20 player stat
+members want their reset path checked first - that is how this bug was found.
+The 12 spawn and death callbacks are fired only by `entity_controller` but set
+from fifteen places across `src/core` and `src/ui`, so moving them means either
+changing all fifteen or leaving forwarding setters behind, and forwarding is
+what the earlier tranches went out of their way to avoid. `GameHandler` being
+the registration point for those is arguably an interface rather than an
+accident.
