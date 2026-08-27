@@ -231,11 +231,6 @@ private:
     std::unique_ptr<TerrainManager> terrainManager;
     std::unique_ptr<PerformanceHUD> performanceHUD;
     std::unique_ptr<WaterRenderer> waterRenderer;
-    std::unique_ptr<Skybox> skybox;
-    std::unique_ptr<Celestial> celestial;
-    std::unique_ptr<StarField> starField;
-    std::unique_ptr<Clouds> clouds;
-    std::unique_ptr<LensFlare> lensFlare;
     std::unique_ptr<Weather> weather;
     std::unique_ptr<Lightning> lightning;
     std::unique_ptr<LightingManager> lightingManager;

@@ -621,13 +621,6 @@ bool Renderer::initialize(core::Window* win) {
         LOG_ERROR("Failed to initialize sky system");
         return false;
     }
-    // Expose sub-components via renderer accessors
-    skybox = nullptr;  // Owned by skySystem; access via skySystem->getSkybox()
-    celestial = nullptr;
-    starField = nullptr;
-    clouds = nullptr;
-    lensFlare = nullptr;
-
     weather = std::make_unique<Weather>();
     if (!weather->initialize(vkCtx, perFrameSetLayout))
         LOG_WARNING("Weather effect initialization failed (non-fatal)");
@@ -742,13 +735,6 @@ void Renderer::shutdown() {
         skySystem.reset();
     }
 
-    // Individual sky components are owned by skySystem; just null the aliases
-    skybox = nullptr;
-    celestial = nullptr;
-    starField = nullptr;
-    clouds = nullptr;
-    lensFlare = nullptr;
-
     if (weather) {
         weather.reset();
     }
@@ -766,6 +752,27 @@ void Renderer::shutdown() {
     if (footprintRenderer) {
         footprintRenderer->shutdown();
         footprintRenderer.reset();
+    }
+
+    // The four transient effect renderers. Each frees its own Vulkan objects
+    // in its destructor, which used to be the only thing that released them -
+    // so they came down when ~Renderer ran rather than here, which is where
+    // this function's whole contract says a sub-renderer frees its allocations
+    // (before VkContext::shutdown reaches vmaDestroyAllocator). It held only
+    // because Application resets the renderer on the next line.
+    if (mountDust) {
+        mountDust->shutdown();
+        mountDust.reset();
+    }
+    if (chargeEffect) {
+        chargeEffect->shutdown();
+        chargeEffect.reset();
+    }
+    // LevelUpEffect frees through its destructor alone; it declares no shutdown.
+    levelUpEffect.reset();
+    if (questMarkerRenderer) {
+        questMarkerRenderer->shutdown();
+        questMarkerRenderer.reset();
     }
 
     LOG_DEBUG("Renderer::shutdown - characterRenderer...");
@@ -839,6 +846,10 @@ void Renderer::shutdown() {
     destroyPerFrameResources();
 
     zoneManager.reset();
+
+    // Holds no Vulkan objects of its own - it answers what the light should be
+    // - so its order among these does not matter, only that it is released.
+    lightingManager.reset();
 
     performanceHUD.reset();
     cameraController.reset();
