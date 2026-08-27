@@ -3293,8 +3293,6 @@ static int lua_GetDefaultLanguage(lua_State* L) {
     return 1;
 }
 
-/// No enchant on either hand: four values per hand, and MainMenuBar reads the
-/// expiry as a number.
 /// GetWeaponEnchantInfo() → per hand: hasEnchant, expiration, charges.
 ///
 /// It answered no for both hands unconditionally, so TemporaryEnchantFrame
@@ -3302,21 +3300,37 @@ static int lua_GetDefaultLanguage(lua_State* L) {
 /// nothing at all. The buff bar is handed over, so this client's own weapon
 /// enchant display beside it is suppressed and this was the only one left.
 ///
-/// The enchant is tracked per equipped item; its remaining time is not, and
-/// the frame reads expiration only to write a countdown under an icon it has
-/// already decided to show. Zero there costs the countdown, not the icon.
+/// Expiration is in milliseconds, and it is not decoration. It was answered as
+/// zero on the reasoning that the frame reads it only to write a countdown, so
+/// zero costs the countdown and nothing else. That is wrong twice over, and
+/// both are visible: TemporaryEnchantFrame_OnUpdate writes
+/// SecondsToTimeAbbrev(expiration/1000) whenever expiration is *not nil*, and
+/// zero is not nil in Lua - so a fresh Rockbiter reads "0" under its icon -
+/// and it then compares that zero against BUFF_WARNING_TIME and puts the
+/// button into the about-to-expire flash, where a thirty-minute imbue then
+/// pulses for its whole life.
+///
+/// SMSG_ITEM_ENCHANT_TIME_UPDATE carries the real remaining time and this
+/// client already keeps it per weapon slot, so the honest number is to hand.
+/// Where the server has not sent one, nil is the honest answer and the one
+/// FrameXML is written for: no countdown, and no flash either.
 static int lua_GetWeaponEnchantInfo(lua_State* L) {
     auto* gh = getGameHandler(L);
-    const game::EquipSlot kHands[2] = {game::EquipSlot::MAIN_HAND,
-                                       game::EquipSlot::OFF_HAND};
-    for (const game::EquipSlot hand : kHands) {
+    // The slot numbering handleItemEnchantTimeUpdate files timers under:
+    // main hand, off hand, ranged.
+    const struct { game::EquipSlot hand; uint32_t timerSlot; } kHands[2] = {
+        {game::EquipSlot::MAIN_HAND, 0}, {game::EquipSlot::OFF_HAND, 1}};
+    for (const auto& [hand, timerSlot] : kHands) {
         bool enchanted = false;
+        uint32_t remainingMs = 0;
         if (gh) {
             const uint64_t guid = gh->getEquipSlotGuid(static_cast<int>(hand));
             if (guid != 0) enchanted = gh->getItemEnchantIds(guid).second != 0;
+            if (enchanted) remainingMs = gh->getTempEnchantRemainingMs(timerSlot);
         }
         lua_pushboolean(L, enchanted ? 1 : 0);   // hasEnchant
-        lua_pushnumber(L, 0.0);                  // expiration, not tracked
+        if (remainingMs > 0) lua_pushnumber(L, static_cast<double>(remainingMs));
+        else lua_pushnil(L);                     // expiration, unknown
         lua_pushnumber(L, 0.0);                  // charges
     }
     return 6;
