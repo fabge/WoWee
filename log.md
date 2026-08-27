@@ -1064,3 +1064,37 @@ cannot quietly drop them, and the pet, which lives in `SpellHandler` and is the
 wiring the first two faults were on the wrong side of.
 
 Canaried by deleting `shapeshiftFormId_ = 0;` and rebuilding: it reports.
+
+## 2026-08-27 — five more, and a sweep so there is no sixth
+
+Writing the fix above suggested its own check: the reset block tells you what it
+clears and cannot tell you what it forgot, so ask the other way round. Every
+GameHandler member that `EntityController` writes while unpacking a player's or a
+pet's update fields, minus everything
+`resetStateForCharacterSwitch` or `handleLoginVerifyWorld` names.
+
+That found **five more**, none of them cleared anywhere:
+
+  `helmVisible_`, `cloakVisible_` - the display switches. Both come home in
+  PLAYER_FLAGS, and a character whose flags are all zero has no PLAYER_FLAGS to
+  send: hiding a helm on one character hid it on the next one who had never
+  touched the switch.
+  `isResting_` - the same, for being in an inn.
+  `corpseMapId_` - the one field of the corpse the block did not clear, while
+  clearing the guid, the position and the valid flag. `canRetrieveCorpse`
+  compares it against the map the player is on, so a stale one is a wrong answer
+  about somebody else's corpse.
+  `repopPending_` - a release-spirit request left in flight. CombatHandler's
+  one-second dedupe reads it, so a stale true swallows the new character's first
+  release.
+
+`tools/character_switch_reset_check.py` is pinned at zero in `sweep_guard`.
+`characters` and `updateFieldTable_` are exempt by name with the reason: the
+first is the account's character list and the second the expansion's field-index
+table, and neither is per-character.
+
+The sweep's own first draft is the argument for the population line `sweep_guard`
+insists on. It anchored the function-body regex on `GameHandler::` and read
+`EntityController::applyUnitFieldsOnUpdate` with it, found nothing, and reported
+a clean tree. The count of members examined - four, where it should have been
+thirty-five - is what showed it. Both numbers are printed for that reason.
