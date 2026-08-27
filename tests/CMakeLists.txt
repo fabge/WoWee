@@ -399,6 +399,24 @@ target_link_libraries(test_jit_write PRIVATE catch2_main)
 add_test(NAME jit_write COMMAND test_jit_write)
 register_test_target(test_jit_write)
 
+# ── test_jit_mapping_agreement ───────────────────────────────────
+# The same subject as test_jit_write's "the window follows the mapping" case,
+# but in the configuration the client is really built with. HAVE_UNICORN is an
+# INTERFACE definition on wowee_common, and WOWEE_MAP_JIT is its negation - so
+# a target that does not link wowee_common compiles as though the build had no
+# Unicorn, and on a machine that has one the assertion catching the 3.1.9 crash
+# never runs.
+#
+# A separate target rather than wowee_common on test_jit_write: the two
+# mechanism cases there mmap MAP_JIT themselves and need the window compiled in.
+# Giving that translation unit the client's definitions makes them SIGBUS.
+add_executable(test_jit_mapping_agreement test_jit_mapping_agreement.cpp)
+target_include_directories(test_jit_mapping_agreement PRIVATE ${TEST_INCLUDE_DIRS})
+target_include_directories(test_jit_mapping_agreement SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDE_DIRS})
+target_link_libraries(test_jit_mapping_agreement PRIVATE catch2_main wowee_common)
+add_test(NAME jit_mapping_agreement COMMAND test_jit_mapping_agreement)
+register_test_target(test_jit_mapping_agreement)
+
 # ── test_warden_reloc ────────────────────────────────────────────
 # Where a Warden relocation entry is allowed to point. The module comes from
 # the server, so both of these decide where an attacker-supplied number may be
