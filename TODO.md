@@ -31,57 +31,47 @@ and removed.
 
 None of these is urgent. Each taxes every future change in its area.
 
-### Breaking the cycles between the subsystem libraries
+### The subsystem libraries are still declared as a cycle
 `CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block
 
-**18 cycles on 2026-08-26, 10 on 2026-08-27 morning, 2 now.** Measure them with
-`tools/library_cycle_check.py <build-dir>` rather than by hand.
+**18 mutual pairs on 2026-08-26. Zero now.** `tools/library_cycle_check.py`
+measures it; run it against a build tree rather than reasoning about it.
 
-Eight of the ten libraries are acyclic outright: `math`, `pipeline`, `audio`,
-`network`, `auth`, `rendering`, `game` and `core` are each in at most one pair,
-and both remaining pairs are `src/ui`.
+The graph is a DAG, but the *declaration* is still a complete graph, because
+nothing has replaced it yet. That is what remains, and it is a decision rather
+than a tidy-up:
 
-| cycle | weak side | what it is |
-| --- | --- | --- |
-| `ui` → `addons` | **9** | `AddonManager` and `LuaEngine` services |
-| `ui` → `core` | 15 | `Application` (5), `Window` (3), `AppearanceComposer` + `helmHidesHair` (3), `localizedKeyName`/`Label` (2), `WorldLoader::mapDisplayName` (1) |
+- The measurement is `nm` on macOS. A hand-written edge list that is right here
+  can still be missing an edge that only GNU ld needs, and CI builds five
+  platforms - so a wrong list is a broken build for somebody else, discovered
+  late.
+- The payoff is real: CMake stops repeating the connected component, which is
+  the whole of the duplicate-library warning below, and a test can link a
+  genuine subset instead of the world.
+- The safe order is to write the edge list from the tool's output, keep the
+  cycle declaration behind an option for one release, and let all five CI
+  platforms build both.
 
-Everything removed so far came in two shapes, and both are exhausted for the
-libraries that are now clean:
+**Half a day, and it wants CI to confirm it rather than this machine.**
+
+Everything that got here came in three shapes, and they are worth keeping
+written down because the next graph problem will be one of them:
 
 - **A singleton reached back up through**, fixed by injection.
-  `Application::instance` from `src/game` and `src/rendering`,
-  `Input::getInstance` from `src/addons`, `interfaceTakingTypedInput` from
-  `src/rendering`. Sixteen call sites in `src/rendering` alone were asking the
-  composition root for an `AssetManager` or a `GameHandler`; both are now
-  handed down through `Renderer`, the way `setAudioCoordinator` already was.
-- **A file in the wrong target.** `wowee_tables` (opcode table, expansion
-  profiles, race models), `wowee_zones`, `wowee_input`, `wowee_crypto`. Each
-  is a thing more than one library reads that belonged to none of them, and
-  each depends on nothing of ours beyond the logger.
-
-What is left is neither, and it is why `src/ui` is last:
-
-- **`ui` → `addons`** is nine real service calls - `AddonManager::reload`,
-  `setAddonEnabled`, `fireEvent`, `runScript`, `LuaEngine::dispatchSlashCommand`,
-  `openInterfaceQuestLog`, `noteClientSettingChanged`, `TocFile::getTitle`.
-  The addon control panel and the chat command dispatcher genuinely drive the
-  addon system. An interface over what `src/ui` needs from it would work, and
-  it is the first honest use for one in this codebase.
-- **`ui` → `core`** has three cheap thirds and one expensive one.
-  `localizedKeyName`/`Label` belong beside the key state in `wowee_input`;
-  `AppearanceComposer` and `helmHidesHair` are character composition and not
-  composition-root work; `WorldLoader::mapDisplayName` is a table. Doing all
-  three leaves the five `Application` calls -
-  `reloadExpansionData`, `setAssetExpansionOverride`, and the three
-  `getRender*ForGuid` - plus `Window`'s three display setters, and those want
-  the UI to be handed a services struct rather than reach for one. **That is
-  the multi-day piece, and it does not pay until it is finished: a pair only
-  closes when its last symbol goes.**
-
-The point of reaching zero is that the libraries can then be declared with
-their real edges instead of as a complete graph, and a test can link a genuine
-subset.
+  `Application::instance` from `src/game`, `src/rendering` and `src/ui`;
+  `Input::getInstance` from `src/addons`; `interfaceTakingTypedInput` from
+  `src/rendering`.
+- **A file in the wrong target.** `wowee_tables`, `wowee_zones`,
+  `wowee_platform`, `wowee_crypto`, `wowee_window`, `wowee_appearance`. Each is
+  a thing more than one library reads that belonged to none of them. No file
+  moved directory; only which target compiles it changed.
+- **A concrete type where a question would do.** `ui::AddonBridge` and
+  `ui::RenderLocator`: nine calls into `AddonManager` and three into
+  `EntitySpawner`, replaced by interfaces `src/ui` declares and the other side
+  implements. This is what the unused interfaces in `game_interfaces.hpp` were
+  reaching for and never found - the difference is that these were written from
+  a measured list of what one library actually asks another, rather than from
+  the shape of the class being hidden.
 
 ### The static-library cycle prints a linker warning on every link
 `CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block

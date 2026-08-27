@@ -1098,3 +1098,70 @@ insists on. It anchored the function-body regex on `GameHandler::` and read
 `EntityController::applyUnitFieldsOnUpdate` with it, found nothing, and reported
 a clean tree. The count of members examined - four, where it should have been
 thirty-five - is what showed it. Both numbers are printed for that reason.
+
+## 2026-08-27 — zero cycles
+
+Eighteen mutual pairs between the subsystem libraries yesterday. Two this
+afternoon. Zero now, and the symbol graph is a DAG.
+
+The last two were both `src/ui`, and neither was a singleton or a misplaced
+file - the two shapes that had accounted for everything up to here. They were a
+**concrete type where a question would do**.
+
+**`ui -> addons`** was nine calls into `AddonManager`, `LuaEngine` and two free
+functions: run this Lua, raise this event, offer this slash command, reload,
+list and toggle addons, open the quest log on a link, tell the CVar store a
+setting moved. All real traffic, none of it a reach for the composition root -
+so injection fixes nothing. What `src/ui` needs is a *narrower thing* than
+AddonManager, which is what an interface is for. `ui::AddonBridge` is declared
+in `src/ui`, because `src/ui` owns the requirement, and implemented in
+`src/addons`, which already depended on `src/ui` for fifty other symbols.
+
+**`ui -> core`** was fifteen, and it came apart in four pieces:
+
+* `core::Window`'s three display setters. `window.cpp` is `wowee_window` now.
+  It depends on `wowee_rendering` for the VkContext it creates, so it goes only
+  to `core` and `ui` - and that is safe only because `src/rendering` turned out
+  to reference no `Window` symbol at all, which was worth measuring before
+  assuming.
+* `AppearanceComposer` and `helmHidesHair`: `wowee_appearance`.
+* `localizedKeyName`/`Label`: into `wowee_platform`, which is `wowee_input`
+  renamed now that it holds `macos_platform.mm` beside the key state whose
+  names it spells.
+* `WorldLoader::mapDisplayName` and its sibling `mapIdToName`: two switch
+  statements over map ids, now `game::mapDisplayName` and `game::mapWdtName` in
+  `wowee_tables`, which is exactly the charter that target was written for.
+
+That left six `Application` symbols and thirty-one `getInstance()` calls in
+eleven files. Most of it was **finishing a design that was already there**:
+`ui::UIServices` says in its own comment that it "replaces
+Application::getInstance() calls throughout UI code", and it already carried the
+window, the renderer, the asset manager, the game handler and the expansion
+registry. The calls simply had not been converted.
+
+Two things needed more than that. The expansion picker calls
+`setAssetExpansionOverride` and `reloadExpansionData`, which no service owns; they
+are handed down as the two calls they are. And the three `getRender*ForGuid`
+queries - where is this guid, how big is it, where are its feet - became
+`ui::RenderLocator`, the same shape as the addon bridge, implemented over
+`EntitySpawner`.
+
+Five free helpers in `src/ui` have no parameter to receive any of this: an icon
+cache that needs the window to upload through, a scene pick that needs render
+bounds. They read `ui::uiServices()`, a stored copy of the same struct. That is
+a narrower global than the one it replaced and not the absence of one, and the
+header says so: `Application::getInstance()` handed out the whole composition
+root, this hands out the set `src/ui` was already given, and everything with a
+`services_` member or a context struct uses that instead.
+
+**What is left is not a cycle, it is a declaration.** `CMakeLists.txt` still
+declares the ten subsystems as a complete graph, which is where the
+duplicate-library warning comes from. Replacing it with the real edge list is
+now possible; `TODO.md` says why it wants CI rather than this machine to confirm
+it.
+
+One thing found on the way and deliberately left: `ChatMarkupRenderer::render`
+has no caller. Nothing constructs a `MarkupRenderContext` anywhere - FrameXML's
+chat replaced it - so the quest-link handler that pulled `openInterfaceQuestLog`
+into the symbol graph is dead code. It is converted along with the rest rather
+than deleted, because deleting it is a separate question from this one.
