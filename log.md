@@ -1027,3 +1027,40 @@ changing all fifteen or leaving forwarding setters behind, and forwarding is
 what the earlier tranches went out of their way to avoid. `GameHandler` being
 the registration point for those is arguably an interface rather than an
 accident.
+
+## 2026-08-27 — the same bug, a third time, and the thing that could not be tested
+
+The pet's spells survived a character switch until 2026-08-26. The pet's stats
+survived until this morning. This afternoon, asking the same question of every
+member `entity_controller` owns turned up **eight more**, all of them the player's
+own:
+
+  `chosenTitleBit_`, `shapeshiftFormId_`, `playerHonorPoints_`,
+  `playerArenaPoints_`, `playerRestedXp_`, `playerManaRegen_`,
+  `playerManaRegenCasting_`, and the sticky-transport pair
+  `playerTransportStickyGuid_` / `playerTransportStickyTimer_`.
+
+The shape never changes, and it is worth stating once because it is what makes
+these survive an obvious-looking reset: an update field is sent when the server
+has a value for it, so **a character who has none of a thing is never told it is
+zero**. A mage after a druid kept the druid's shapeshift form. A character with
+no title wore the previous one's. The rested XP, honor and arena points on the
+screen were somebody else's. The sticky transport is worse than stale - it
+deliberately outlives the server's own mention of a boat by a few seconds, so a
+leftover guid is a new character riding a transport they are nowhere near.
+
+Two of the eleven that this reported are correct as they are and were left
+alone: `characters` is the account's character list, not the character's, and
+`updateFieldTable_` is the expansion's field layout.
+
+**Why it kept happening:** the clearing was sixty lines inline in
+`selectCharacter`, which ends by sending CMSG_PLAYER_LOGIN down a socket. Nothing
+could call it without one, so nothing tested what it cleared, and what it cleared
+had to be verified by reading a sixty-line block against a four-thousand-line
+header. It is `GameHandler::resetStateForCharacterSwitch()` now, public for that
+reason, and `tests/test_character_switch_reset.cpp` covers all three clusters -
+the eight new fields, a sample of the ones that were already right so a tidy-up
+cannot quietly drop them, and the pet, which lives in `SpellHandler` and is the
+wiring the first two faults were on the wrong side of.
+
+Canaried by deleting `shapeshiftFormId_ = 0;` and rebuilding: it reports.

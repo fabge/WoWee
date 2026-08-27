@@ -144,8 +144,9 @@ Two clusters are left in that 48, and they are not the same:
 - **~20 player stat members** - `playerCritPct_`, `playerDodgePct_`,
   `playerMeleeAP_`, `playerXp_`, `playerCombatRatings_` and the rest of the
   character sheet's numbers. Written only by `entity_controller`, read only
-  through `GameHandler` getters. Check what resets them before moving: the
-  pet-stat fault was found exactly that way.
+  through `GameHandler` getters. Their reset path **was** checked, on
+  2026-08-27, and eight of them were not being cleared at all - see `log.md`.
+  That is fixed and tested; the relocation itself is still open.
 - **12 callbacks** - `creatureSpawnCallback_`, `npcDeathCallback_`,
   `playerSpawnCallback_` and so on. Fired only by `entity_controller`, but
   **set from 15 places across `src/core` and `src/ui`**. Moving them means
