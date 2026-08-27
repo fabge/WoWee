@@ -20,7 +20,6 @@
 #include "pipeline/m2_loader.hpp"
 #include "pipeline/asset_manager.hpp"
 #include "game/inventory.hpp"
-#include "core/application.hpp"
 #include "core/logger.hpp"
 #include "audio/audio_coordinator.hpp"
 #include "audio/audio_engine.hpp"
@@ -565,7 +564,7 @@ void AnimationController::triggerLevelUpEffect(const glm::vec3& position) {
     if (!levelUpEffect->isModelLoaded()) {
         auto* m2Renderer = renderer_->getM2Renderer();
         if (m2Renderer) {
-            auto* assetManager = core::Application::getInstance().getAssetManager();
+            auto* assetManager = renderer_ ? renderer_->getAssetManager() : nullptr;
             if (!assetManager) {
                 LOG_WARNING("LevelUpEffect: no asset manager available");
             } else {
@@ -591,7 +590,7 @@ void AnimationController::startChargeEffect(const glm::vec3& position, const glm
     if (!chargeEffect->isActive()) {
         auto* m2Renderer = renderer_->getM2Renderer();
         if (m2Renderer) {
-            auto* assetManager = core::Application::getInstance().getAssetManager();
+            auto* assetManager = renderer_ ? renderer_->getAssetManager() : nullptr;
             if (assetManager) {
                 chargeEffect->tryLoadM2Models(m2Renderer, assetManager);
             }

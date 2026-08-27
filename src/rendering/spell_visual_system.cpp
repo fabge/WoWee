@@ -6,7 +6,6 @@
 #include "pipeline/dbc_loader.hpp"
 #include "pipeline/dbc_layout.hpp"
 #include "pipeline/m2_loader.hpp"
-#include "core/application.hpp"
 #include "core/logger.hpp"
 #include <algorithm>
 #include <cmath>
@@ -51,7 +50,7 @@ void SpellVisualSystem::loadSpellVisualDbc() {
     if (spellVisualDbcLoaded_) return;
 
     if (!cachedAssetManager_) {
-        cachedAssetManager_ = core::Application::getInstance().getAssetManager();
+        cachedAssetManager_ = renderer_ ? renderer_->getAssetManager() : nullptr;
     }
     // Not an attempt. "Set early to prevent re-entry on failure" was the
     // intent, but there is no failure yet - only assets that have not
@@ -304,7 +303,7 @@ void SpellVisualSystem::playSpellVisualPrecast(uint32_t visualId, const glm::vec
     }
 
     if (!cachedAssetManager_)
-        cachedAssetManager_ = core::Application::getInstance().getAssetManager();
+        cachedAssetManager_ = renderer_ ? renderer_->getAssetManager() : nullptr;
     if (!cachedAssetManager_) { LOG_WARNING("SpellVisual: no AssetManager"); return; }
 
     if (!spellVisualDbcLoaded_) loadSpellVisualDbc();
@@ -403,7 +402,7 @@ void SpellVisualSystem::playSpellVisual(uint32_t visualId, const glm::vec3& worl
     if (!m2Renderer_ || visualId == 0) return;
 
     if (!cachedAssetManager_)
-        cachedAssetManager_ = core::Application::getInstance().getAssetManager();
+        cachedAssetManager_ = renderer_ ? renderer_->getAssetManager() : nullptr;
     if (!cachedAssetManager_) return;
 
     if (!spellVisualDbcLoaded_) loadSpellVisualDbc();
@@ -493,7 +492,7 @@ bool SpellVisualSystem::launchSpellMissile(uint32_t visualId, const glm::vec3& s
     if (!m2Renderer_ || visualId == 0 || speed <= 0.0f) return false;
 
     if (!cachedAssetManager_)
-        cachedAssetManager_ = core::Application::getInstance().getAssetManager();
+        cachedAssetManager_ = renderer_ ? renderer_->getAssetManager() : nullptr;
     if (!cachedAssetManager_) return false;
 
     if (!spellVisualDbcLoaded_) loadSpellVisualDbc();
@@ -540,7 +539,7 @@ void SpellVisualSystem::playPhysicalProjectile(const std::string& modelPath,
     auto* characterRenderer = renderer_->getCharacterRenderer();
     if (!characterRenderer) return;
     if (!cachedAssetManager_)
-        cachedAssetManager_ = core::Application::getInstance().getAssetManager();
+        cachedAssetManager_ = renderer_ ? renderer_->getAssetManager() : nullptr;
     if (!cachedAssetManager_) return;
 
     const std::string cacheKey = modelPath + "|" + texturePath;

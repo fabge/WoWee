@@ -17,6 +17,7 @@ namespace pipeline { class AssetManager; struct M2Model; }
 namespace rendering {
 
 class CharacterRenderer;
+class Renderer;
 class Camera;
 class VkContext;
 class VkTexture;
@@ -32,7 +33,14 @@ public:
     /// and the paperdoll's 640x800 is enormously oversized for a portrait
     /// drawn into a circle fifty pixels across. Defaults to the paperdoll's,
     /// which is what every caller wanted before there was a choice.
-    bool initialize(pipeline::AssetManager* am, int width = 640, int height = 800);
+    ///
+    /// Takes the renderer it draws through rather than asking Application for
+    /// it: this class is in src/rendering, and three getInstance() calls here
+    /// were part of the rendering -> core edge in the library graph. Every
+    /// caller already has one where it calls this - it registers the preview
+    /// with the same renderer on the next line.
+    bool initialize(Renderer* renderer, pipeline::AssetManager* am,
+                    int width = 640, int height = 800);
     void shutdown();
 
     bool loadCharacter(game::Race race, game::Gender gender,
@@ -102,6 +110,10 @@ public:
     [[nodiscard]] bool isModelLoaded() const { return modelLoaded_; }
 
 private:
+    /// The renderer this preview draws through, from initialize. Owned by
+    /// Application and outlives every preview.
+    Renderer* renderer_ = nullptr;
+
     struct FacialHairGeosets {
         uint16_t geoset100 = 0;
         uint16_t geoset300 = 0;

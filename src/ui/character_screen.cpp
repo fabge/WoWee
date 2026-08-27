@@ -403,12 +403,12 @@ void CharacterScreen::renderDetails(game::GameHandler& gameHandler,
             preview_ = std::make_unique<rendering::CharacterPreview>();
         }
         if (!previewInitialized_) {
-            previewInitialized_ = preview_->initialize(assetManager_);
+            auto* renderer = core::Application::getInstance().getRenderer();
+            previewInitialized_ = preview_->initialize(renderer, assetManager_);
             if (!previewInitialized_) {
                 LOG_WARNING("CharacterScreen: failed to init CharacterPreview");
                 preview_.reset();
             } else {
-                auto* renderer = core::Application::getInstance().getRenderer();
                 if (renderer) renderer->registerPreview(preview_.get());
             }
         }

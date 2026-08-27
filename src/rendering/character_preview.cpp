@@ -18,7 +18,6 @@
 #include "pipeline/item_textures.hpp"
 #include "pipeline/m2_asset_loader.hpp"
 #include "core/logger.hpp"
-#include "core/application.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -171,7 +170,9 @@ std::unordered_set<uint16_t> CharacterPreview::buildBaseGeosets() {
     return activeGeosets;
 }
 
-bool CharacterPreview::initialize(pipeline::AssetManager* am, int width, int height) {
+bool CharacterPreview::initialize(Renderer* renderer, pipeline::AssetManager* am,
+                                  int width, int height) {
+    renderer_ = renderer;
     assetManager_ = am;
     // If already initialized with valid resources, reuse them.
     // This avoids destroying GPU resources that may still be referenced by
@@ -189,7 +190,7 @@ bool CharacterPreview::initialize(pipeline::AssetManager* am, int width, int hei
     if (width > 0) fboWidth_ = width;
     if (height > 0) fboHeight_ = height;
 
-    auto* appRenderer = core::Application::getInstance().getRenderer();
+    auto* appRenderer = renderer_;
     vkCtx_ = appRenderer ? appRenderer->getVkContext() : nullptr;
     VkDescriptorSetLayout perFrameLayout = appRenderer ? appRenderer->getPerFrameSetLayout() : VK_NULL_HANDLE;
 
@@ -232,8 +233,7 @@ bool CharacterPreview::initialize(pipeline::AssetManager* am, int width, int hei
 
 void CharacterPreview::shutdown() {
     // Unregister from renderer before destroying resources
-    auto* appRenderer = core::Application::getInstance().getRenderer();
-    if (appRenderer) appRenderer->unregisterPreview(this);
+    if (renderer_) renderer_->unregisterPreview(this);
 
     if (charRenderer_) {
         charRenderer_->shutdown();
@@ -374,8 +374,7 @@ void CharacterPreview::createFBO() {
     }
 
     // 4. Create per-frame UBOs and descriptor sets
-    auto* appRenderer = core::Application::getInstance().getRenderer();
-    VkDescriptorSetLayout perFrameLayout = appRenderer->getPerFrameSetLayout();
+    VkDescriptorSetLayout perFrameLayout = renderer_->getPerFrameSetLayout();
 
     for (uint32_t i = 0; i < MAX_FRAMES; i++) {
         // Create mapped UBO

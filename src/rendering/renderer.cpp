@@ -659,14 +659,14 @@ bool Renderer::initialize(core::Window* win) {
 
     // LightingManager doesn't use GL - initialize for data-only use
     lightingManager = std::make_unique<LightingManager>();
-    auto* assetManager = core::Application::getInstance().getAssetManager();
 
-    // Create zone manager; enrich music paths from DBC if available
+    // Create zone manager. Its music paths are enriched from DBC in
+    // initializeRenderers, which is the first point that has an AssetManager:
+    // Application builds the renderer before the asset manager exists, so the
+    // enrich attempt that used to stand here read a null one every time and
+    // did nothing. Removed rather than left as a branch nothing can take.
     zoneManager = std::make_unique<game::ZoneManager>();
     zoneManager->initialize();
-    if (assetManager) {
-        zoneManager->enrichFromDBC(assetManager);
-    }
 
     // Audio is now owned by AudioCoordinator (created by Application).
     // Renderer receives AudioCoordinator* via setAudioCoordinator().
@@ -1486,7 +1486,7 @@ uint32_t Renderer::getCurrentZoneId() const {
     // A zone remembered from the last map is worse than none: the sticky
     // answer below would hold Duskwood's pinned midnight over a continent
     // away until the first chunk of the new one loaded.
-    if (const auto* gh = core::Application::getInstance().getGameHandler()) {
+    if (const auto* gh = gameHandler_) {
         const uint32_t mapId = gh->getCurrentMapId();
         if (mapId != lastResolvedZoneMapId_) {
             lastResolvedZoneMapId_ = mapId;
@@ -1519,7 +1519,7 @@ uint32_t Renderer::getCurrentZoneId() const {
     // moment the player did. Keep the last chunk that did know.
     if (lastResolvedZoneId_ != 0) return lastResolvedZoneId_;
 
-    const auto* gh = core::Application::getInstance().getGameHandler();
+    const auto* gh = gameHandler_;
     if (gh && gh->getWorldStateZoneId() != 0) {
         const uint32_t areaId = gh->getWorldStateZoneId();
         return zoneManager ? zoneManager->resolveAreaZoneId(areaId) : areaId;
@@ -1590,7 +1590,7 @@ void Renderer::update(float deltaTime) {
     // ZONE_CHANGED - there is no outdoors counterpart. Nothing fired either,
     // so the state was known here and never left this file.
     if (insideWmo != playerIndoors_) {
-        if (auto* gh = core::Application::getInstance().getGameHandler()) {
+        if (auto* gh = gameHandler_) {
             gh->fireAddonEvent(insideWmo ? "ZONE_CHANGED_INDOORS" : "ZONE_CHANGED", {});
         }
     }
@@ -1598,7 +1598,7 @@ void Renderer::update(float deltaTime) {
 
     // Update lighting system
     if (lightingManager) {
-        const auto* gh = core::Application::getInstance().getGameHandler();
+        const auto* gh = gameHandler_;
         uint32_t mapId    = gh ? gh->getCurrentMapId() : 0;
         float gameTime    = gh ? gh->getGameTime() : -1.0f;
         bool isRaining    = gh ? gh->isRaining() : false;

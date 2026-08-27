@@ -186,6 +186,20 @@ public:
     // Audio coordinator - owned by Application, set via setAudioCoordinator().
     void setAudioCoordinator(audio::AudioCoordinator* ac) { audioCoordinator_ = ac; }
     audio::AudioCoordinator* getAudioCoordinator() { return audioCoordinator_; }
+
+    /// The two services the renderer and everything it owns used to reach for
+    /// through core::Application::getInstance().
+    ///
+    /// Both are owned by Application and hand-wired down here, the way the
+    /// audio coordinator above already was. Sixteen call sites across five
+    /// translation units asked the composition root for one of these, which was
+    /// the whole of the rendering -> core edge that Input did not account for -
+    /// and AGENTS.md says services are hand-wired downward rather than reached
+    /// back up through singletons.
+    void setAssetManager(pipeline::AssetManager* am) { cachedAssetManager = am; }
+    [[nodiscard]] pipeline::AssetManager* getAssetManager() const { return cachedAssetManager; }
+    void setGameHandler(game::GameHandler* gh) { gameHandler_ = gh; }
+    [[nodiscard]] game::GameHandler* getGameHandler() const { return gameHandler_; }
     game::ZoneManager* getZoneManager() { return zoneManager.get(); }
     LightingManager* getLightingManager() { return lightingManager.get(); }
 
@@ -265,6 +279,7 @@ private:
     std::unique_ptr<QuestMarkerRenderer> questMarkerRenderer;
     std::unique_ptr<FootprintRenderer> footprintRenderer;
     audio::AudioCoordinator* audioCoordinator_ = nullptr;  // Owned by Application
+    game::GameHandler* gameHandler_ = nullptr;             // Owned by Application
     std::unique_ptr<AnimationController> animationController_;  // §4.2
     std::unique_ptr<game::ZoneManager> zoneManager;
     // Shadow mapping (Vulkan)

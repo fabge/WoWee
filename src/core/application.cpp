@@ -26,6 +26,7 @@
 #include "core/logger.hpp"
 #include "core/memory_monitor.hpp"
 #include "rendering/renderer.hpp"
+#include "rendering/animation/emote_registry.hpp"
 #include "rendering/vk_context.hpp"
 #include "audio/npc_voice_manager.hpp"
 #include "rendering/camera.hpp"
@@ -295,6 +296,18 @@ bool Application::initialize() {
 
     // Create game handler with explicit service dependencies
     gameHandler = std::make_unique<game::GameHandler>(gameServices_);
+
+    // The renderer, and everything it owns, used to ask Application for these
+    // two through getInstance(). Hand-wired downward here instead - the same
+    // treatment setAudioCoordinator already had - and here rather than beside
+    // that call because the renderer is built before either of them exists.
+    // See Renderer::setAssetManager.
+    renderer->setAssetManager(assetManager.get());
+    renderer->setGameHandler(gameHandler.get());
+    // Same reason, and it has to be here rather than inside src/rendering:
+    // nearly everything that reads the emote tables is a static lookup with no
+    // instance to carry a handle. See EmoteRegistry::setAssetManager.
+    rendering::EmoteRegistry::instance().setAssetManager(assetManager.get());
 
     // Try to get WoW data path from environment variable
     const char* dataPathEnv = std::getenv("WOW_DATA_PATH");
