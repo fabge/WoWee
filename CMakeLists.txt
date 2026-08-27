@@ -665,150 +665,8 @@ set(WOWEE_SRC_PIPELINE
     src/pipeline/wdt_loader.cpp
     src/pipeline/wowee_terrain_loader.cpp
     src/pipeline/wowee_model.cpp
-    src/pipeline/wowee_model_fromm2.cpp
     src/pipeline/wowee_building.cpp
     src/pipeline/wowee_collision.cpp
-    src/pipeline/wowee_light.cpp
-    src/pipeline/wowee_weather.cpp
-    src/pipeline/wowee_world_map.cpp
-    src/pipeline/wowee_sound.cpp
-    src/pipeline/wowee_spawns.cpp
-    src/pipeline/wowee_items.cpp
-    src/pipeline/wowee_loot.cpp
-    src/pipeline/wowee_creatures.cpp
-    src/pipeline/wowee_quests.cpp
-    src/pipeline/wowee_objects.cpp
-    src/pipeline/wowee_factions.cpp
-    src/pipeline/wowee_locks.cpp
-    src/pipeline/wowee_skills.cpp
-    src/pipeline/wowee_spells.cpp
-    src/pipeline/wowee_achievements.cpp
-    src/pipeline/wowee_trainers.cpp
-    src/pipeline/wowee_gossip.cpp
-    src/pipeline/wowee_taxi.cpp
-    src/pipeline/wowee_talents.cpp
-    src/pipeline/wowee_maps.cpp
-    src/pipeline/wowee_chars.cpp
-    src/pipeline/wowee_tokens.cpp
-    src/pipeline/wowee_triggers.cpp
-    src/pipeline/wowee_titles.cpp
-    src/pipeline/wowee_events.cpp
-    src/pipeline/wowee_mounts.cpp
-    src/pipeline/wowee_battlegrounds.cpp
-    src/pipeline/wowee_mail.cpp
-    src/pipeline/wowee_gems.cpp
-    src/pipeline/wowee_guilds.cpp
-    src/pipeline/wowee_conditions.cpp
-    src/pipeline/wowee_pets.cpp
-    src/pipeline/wowee_auction.cpp
-    src/pipeline/wowee_channels.cpp
-    src/pipeline/wowee_cinematics.cpp
-    src/pipeline/wowee_glyphs.cpp
-    src/pipeline/wowee_vehicles.cpp
-    src/pipeline/wowee_holidays.cpp
-    src/pipeline/wowee_liquids.cpp
-    src/pipeline/wowee_animations.cpp
-    src/pipeline/wowee_spell_visuals.cpp
-    src/pipeline/wowee_world_state_ui.cpp
-    src/pipeline/wowee_player_conditions.cpp
-    src/pipeline/wowee_trade_skills.cpp
-    src/pipeline/wowee_creature_equipment.cpp
-    src/pipeline/wowee_item_sets.cpp
-    src/pipeline/wowee_game_tips.cpp
-    src/pipeline/wowee_companions.cpp
-    src/pipeline/wowee_spell_mechanics.cpp
-    src/pipeline/wowee_keybindings.cpp
-    src/pipeline/wowee_spell_schools.cpp
-    src/pipeline/wowee_lfg.cpp
-    src/pipeline/wowee_macros.cpp
-    src/pipeline/wowee_char_features.cpp
-    src/pipeline/wowee_pvp.cpp
-    src/pipeline/wowee_bags.cpp
-    src/pipeline/wowee_runes.cpp
-    src/pipeline/wowee_loading_screens.cpp
-    src/pipeline/wowee_item_suffixes.cpp
-    src/pipeline/wowee_combat_ratings.cpp
-    src/pipeline/wowee_unit_movement.cpp
-    src/pipeline/wowee_quest_sorts.cpp
-    src/pipeline/wowee_spell_ranges.cpp
-    src/pipeline/wowee_spell_cast_times.cpp
-    src/pipeline/wowee_spell_durations.cpp
-    src/pipeline/wowee_spell_cooldowns.cpp
-    src/pipeline/wowee_creature_families.cpp
-    src/pipeline/wowee_spell_power_costs.cpp
-    src/pipeline/wowee_glyph_slots.cpp
-    src/pipeline/wowee_creature_difficulties.cpp
-    src/pipeline/wowee_item_materials.cpp
-    src/pipeline/wowee_player_spawn_profiles.cpp
-    src/pipeline/wowee_talent_tabs.cpp
-    src/pipeline/wowee_currency_types.cpp
-    src/pipeline/wowee_spell_reagents.cpp
-    src/pipeline/wowee_achievement_criteria.cpp
-    src/pipeline/wowee_spell_effect_types.cpp
-    src/pipeline/wowee_spell_aura_types.cpp
-    src/pipeline/wowee_item_qualities.cpp
-    src/pipeline/wowee_skill_costs.cpp
-    src/pipeline/wowee_item_flags.cpp
-    src/pipeline/wowee_npc_services.cpp
-    src/pipeline/wowee_token_rewards.cpp
-    src/pipeline/wowee_spell_procs.cpp
-    src/pipeline/wowee_creature_patrols.cpp
-    src/pipeline/wowee_boss_encounters.cpp
-    src/pipeline/wowee_instance_lockouts.cpp
-    src/pipeline/wowee_stable_slots.cpp
-    src/pipeline/wowee_stat_curves.cpp
-    src/pipeline/wowee_action_bars.cpp
-    src/pipeline/wowee_group_compositions.cpp
-    src/pipeline/wowee_hearth_binds.cpp
-    src/pipeline/wowee_server_broadcasts.cpp
-    src/pipeline/wowee_combat_maneuvers.cpp
-    src/pipeline/wowee_realm_list.cpp
-    src/pipeline/wowee_emotes.cpp
-    src/pipeline/wowee_buff_book.cpp
-    src/pipeline/wowee_tabards.cpp
-    src/pipeline/wowee_spell_markers.cpp
-    src/pipeline/wowee_learning_notifications.cpp
-    src/pipeline/wowee_creature_resists.cpp
-    src/pipeline/wowee_pet_talents.cpp
-    src/pipeline/wowee_heroic_scaling.cpp
-    src/pipeline/wowee_reputation_rewards.cpp
-    src/pipeline/wowee_minimap_levels.cpp
-    src/pipeline/wowee_pet_care.cpp
-    src/pipeline/wowee_movie_credits.cpp
-    src/pipeline/wowee_spell_variants.cpp
-    src/pipeline/wowee_voiceovers.cpp
-    src/pipeline/wowee_trade_rules.cpp
-    src/pipeline/wowee_word_filters.cpp
-    src/pipeline/wowee_raid_markers.cpp
-    src/pipeline/wowee_loot_modes.cpp
-    src/pipeline/wowee_sky_params.cpp
-    src/pipeline/wowee_server_config.cpp
-    src/pipeline/wowee_anniversary_events.cpp
-    src/pipeline/wowee_pvp_ranks.cpp
-    src/pipeline/wowee_localization.cpp
-    src/pipeline/wowee_global_channels.cpp
-    src/pipeline/wowee_addon_manifest.cpp
-    src/pipeline/wowee_spell_pack.cpp
-    src/pipeline/wowee_player_movement_anim.cpp
-    src/pipeline/wowee_transit_schedule.cpp
-    src/pipeline/wowee_mage_portals.cpp
-    src/pipeline/wowee_combat_stats.cpp
-    src/pipeline/wowee_guild_bank.cpp
-    src/pipeline/wowee_quest_graph.cpp
-    src/pipeline/wowee_crafting_recipes.cpp
-    src/pipeline/wowee_world_locations.cpp
-    src/pipeline/wowee_soulbind_rules.cpp
-    src/pipeline/wowee_creature_behavior.cpp
-    src/pipeline/wowee_random_property.cpp
-    src/pipeline/wowee_spell_proc_rules.cpp
-    src/pipeline/wowee_auction_houses.cpp
-    src/pipeline/wowee_battleground_rewards.cpp
-    src/pipeline/wowee_sound_swap.cpp
-    src/pipeline/wowee_tutorial_steps.cpp
-    src/pipeline/wowee_chat_commands.cpp
-    src/pipeline/wowee_camera_presets.cpp
-    src/pipeline/wowee_combat_formulas.cpp
-    src/pipeline/wowee_chat_links.cpp
     src/pipeline/custom_zone_discovery.cpp
     src/pipeline/char_sections.cpp
     src/pipeline/item_textures.cpp
@@ -1274,6 +1132,167 @@ set_target_properties(wowee_base PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(wowee_takeover STATIC src/ui/framexml_takeover.cpp)
 target_link_libraries(wowee_takeover PUBLIC wowee_common wowee_base)
 set_target_properties(wowee_takeover PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---- wowee_openformat: the open-format writers ----
+#
+# The .wqt/.wit/... emitters that turn extracted Blizzard data into this
+# project's own formats. They are the asset pipeline's output side, and the
+# client only ever reads what they produce - measured on 2026-08-26, 142 of
+# them contributed no symbol to the linked client at all, while every one was
+# compiled into it and listed a second time by the editor.
+#
+# The four the client does read through - wowee_model, wowee_building,
+# wowee_collision and wowee_terrain_loader - stay in wowee_pipeline, which is
+# also where asset_extract picks them up.
+#
+# EXCLUDE_FROM_ALL: nothing in a default build links this. It is built when
+# the editor is, and named explicitly otherwise.
+add_library(wowee_openformat STATIC EXCLUDE_FROM_ALL
+    src/pipeline/wowee_achievement_criteria.cpp
+    src/pipeline/wowee_achievements.cpp
+    src/pipeline/wowee_action_bars.cpp
+    src/pipeline/wowee_addon_manifest.cpp
+    src/pipeline/wowee_animations.cpp
+    src/pipeline/wowee_anniversary_events.cpp
+    src/pipeline/wowee_auction.cpp
+    src/pipeline/wowee_auction_houses.cpp
+    src/pipeline/wowee_bags.cpp
+    src/pipeline/wowee_battleground_rewards.cpp
+    src/pipeline/wowee_battlegrounds.cpp
+    src/pipeline/wowee_boss_encounters.cpp
+    src/pipeline/wowee_buff_book.cpp
+    src/pipeline/wowee_camera_presets.cpp
+    src/pipeline/wowee_channels.cpp
+    src/pipeline/wowee_char_features.cpp
+    src/pipeline/wowee_chars.cpp
+    src/pipeline/wowee_chat_commands.cpp
+    src/pipeline/wowee_chat_links.cpp
+    src/pipeline/wowee_cinematics.cpp
+    src/pipeline/wowee_combat_formulas.cpp
+    src/pipeline/wowee_combat_maneuvers.cpp
+    src/pipeline/wowee_combat_ratings.cpp
+    src/pipeline/wowee_combat_stats.cpp
+    src/pipeline/wowee_companions.cpp
+    src/pipeline/wowee_conditions.cpp
+    src/pipeline/wowee_crafting_recipes.cpp
+    src/pipeline/wowee_creature_behavior.cpp
+    src/pipeline/wowee_creature_difficulties.cpp
+    src/pipeline/wowee_creature_equipment.cpp
+    src/pipeline/wowee_creature_families.cpp
+    src/pipeline/wowee_creature_patrols.cpp
+    src/pipeline/wowee_creature_resists.cpp
+    src/pipeline/wowee_creatures.cpp
+    src/pipeline/wowee_currency_types.cpp
+    src/pipeline/wowee_emotes.cpp
+    src/pipeline/wowee_events.cpp
+    src/pipeline/wowee_factions.cpp
+    src/pipeline/wowee_game_tips.cpp
+    src/pipeline/wowee_gems.cpp
+    src/pipeline/wowee_global_channels.cpp
+    src/pipeline/wowee_glyph_slots.cpp
+    src/pipeline/wowee_glyphs.cpp
+    src/pipeline/wowee_gossip.cpp
+    src/pipeline/wowee_group_compositions.cpp
+    src/pipeline/wowee_guild_bank.cpp
+    src/pipeline/wowee_guilds.cpp
+    src/pipeline/wowee_hearth_binds.cpp
+    src/pipeline/wowee_heroic_scaling.cpp
+    src/pipeline/wowee_holidays.cpp
+    src/pipeline/wowee_instance_lockouts.cpp
+    src/pipeline/wowee_item_flags.cpp
+    src/pipeline/wowee_item_materials.cpp
+    src/pipeline/wowee_item_qualities.cpp
+    src/pipeline/wowee_item_sets.cpp
+    src/pipeline/wowee_item_suffixes.cpp
+    src/pipeline/wowee_items.cpp
+    src/pipeline/wowee_keybindings.cpp
+    src/pipeline/wowee_learning_notifications.cpp
+    src/pipeline/wowee_lfg.cpp
+    src/pipeline/wowee_light.cpp
+    src/pipeline/wowee_liquids.cpp
+    src/pipeline/wowee_loading_screens.cpp
+    src/pipeline/wowee_localization.cpp
+    src/pipeline/wowee_locks.cpp
+    src/pipeline/wowee_loot.cpp
+    src/pipeline/wowee_loot_modes.cpp
+    src/pipeline/wowee_macros.cpp
+    src/pipeline/wowee_mage_portals.cpp
+    src/pipeline/wowee_mail.cpp
+    src/pipeline/wowee_maps.cpp
+    src/pipeline/wowee_minimap_levels.cpp
+    src/pipeline/wowee_model_fromm2.cpp
+    src/pipeline/wowee_mounts.cpp
+    src/pipeline/wowee_movie_credits.cpp
+    src/pipeline/wowee_npc_services.cpp
+    src/pipeline/wowee_objects.cpp
+    src/pipeline/wowee_pet_care.cpp
+    src/pipeline/wowee_pet_talents.cpp
+    src/pipeline/wowee_pets.cpp
+    src/pipeline/wowee_player_conditions.cpp
+    src/pipeline/wowee_player_movement_anim.cpp
+    src/pipeline/wowee_player_spawn_profiles.cpp
+    src/pipeline/wowee_pvp.cpp
+    src/pipeline/wowee_pvp_ranks.cpp
+    src/pipeline/wowee_quest_graph.cpp
+    src/pipeline/wowee_quest_sorts.cpp
+    src/pipeline/wowee_quests.cpp
+    src/pipeline/wowee_raid_markers.cpp
+    src/pipeline/wowee_random_property.cpp
+    src/pipeline/wowee_realm_list.cpp
+    src/pipeline/wowee_reputation_rewards.cpp
+    src/pipeline/wowee_runes.cpp
+    src/pipeline/wowee_server_broadcasts.cpp
+    src/pipeline/wowee_server_config.cpp
+    src/pipeline/wowee_skill_costs.cpp
+    src/pipeline/wowee_skills.cpp
+    src/pipeline/wowee_sky_params.cpp
+    src/pipeline/wowee_soulbind_rules.cpp
+    src/pipeline/wowee_sound.cpp
+    src/pipeline/wowee_sound_swap.cpp
+    src/pipeline/wowee_spawns.cpp
+    src/pipeline/wowee_spell_aura_types.cpp
+    src/pipeline/wowee_spell_cast_times.cpp
+    src/pipeline/wowee_spell_cooldowns.cpp
+    src/pipeline/wowee_spell_durations.cpp
+    src/pipeline/wowee_spell_effect_types.cpp
+    src/pipeline/wowee_spell_markers.cpp
+    src/pipeline/wowee_spell_mechanics.cpp
+    src/pipeline/wowee_spell_pack.cpp
+    src/pipeline/wowee_spell_power_costs.cpp
+    src/pipeline/wowee_spell_proc_rules.cpp
+    src/pipeline/wowee_spell_procs.cpp
+    src/pipeline/wowee_spell_ranges.cpp
+    src/pipeline/wowee_spell_reagents.cpp
+    src/pipeline/wowee_spell_schools.cpp
+    src/pipeline/wowee_spell_variants.cpp
+    src/pipeline/wowee_spell_visuals.cpp
+    src/pipeline/wowee_spells.cpp
+    src/pipeline/wowee_stable_slots.cpp
+    src/pipeline/wowee_stat_curves.cpp
+    src/pipeline/wowee_tabards.cpp
+    src/pipeline/wowee_talent_tabs.cpp
+    src/pipeline/wowee_talents.cpp
+    src/pipeline/wowee_taxi.cpp
+    src/pipeline/wowee_titles.cpp
+    src/pipeline/wowee_token_rewards.cpp
+    src/pipeline/wowee_tokens.cpp
+    src/pipeline/wowee_trade_rules.cpp
+    src/pipeline/wowee_trade_skills.cpp
+    src/pipeline/wowee_trainers.cpp
+    src/pipeline/wowee_transit_schedule.cpp
+    src/pipeline/wowee_triggers.cpp
+    src/pipeline/wowee_tutorial_steps.cpp
+    src/pipeline/wowee_unit_movement.cpp
+    src/pipeline/wowee_vehicles.cpp
+    src/pipeline/wowee_voiceovers.cpp
+    src/pipeline/wowee_weather.cpp
+    src/pipeline/wowee_word_filters.cpp
+    src/pipeline/wowee_world_locations.cpp
+    src/pipeline/wowee_world_map.cpp
+    src/pipeline/wowee_world_state_ui.cpp
+)
+target_link_libraries(wowee_openformat PUBLIC wowee_common wowee_base)
+set_target_properties(wowee_openformat PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---- Subsystem libraries ----
 #
@@ -2174,150 +2193,8 @@ add_executable(wowee_editor
     src/pipeline/wdt_loader.cpp
     src/pipeline/wowee_terrain_loader.cpp
     src/pipeline/wowee_model.cpp
-    src/pipeline/wowee_model_fromm2.cpp
     src/pipeline/wowee_building.cpp
     src/pipeline/wowee_collision.cpp
-    src/pipeline/wowee_light.cpp
-    src/pipeline/wowee_weather.cpp
-    src/pipeline/wowee_world_map.cpp
-    src/pipeline/wowee_sound.cpp
-    src/pipeline/wowee_spawns.cpp
-    src/pipeline/wowee_items.cpp
-    src/pipeline/wowee_loot.cpp
-    src/pipeline/wowee_creatures.cpp
-    src/pipeline/wowee_quests.cpp
-    src/pipeline/wowee_objects.cpp
-    src/pipeline/wowee_factions.cpp
-    src/pipeline/wowee_locks.cpp
-    src/pipeline/wowee_skills.cpp
-    src/pipeline/wowee_spells.cpp
-    src/pipeline/wowee_achievements.cpp
-    src/pipeline/wowee_trainers.cpp
-    src/pipeline/wowee_gossip.cpp
-    src/pipeline/wowee_taxi.cpp
-    src/pipeline/wowee_talents.cpp
-    src/pipeline/wowee_maps.cpp
-    src/pipeline/wowee_chars.cpp
-    src/pipeline/wowee_tokens.cpp
-    src/pipeline/wowee_triggers.cpp
-    src/pipeline/wowee_titles.cpp
-    src/pipeline/wowee_events.cpp
-    src/pipeline/wowee_mounts.cpp
-    src/pipeline/wowee_battlegrounds.cpp
-    src/pipeline/wowee_mail.cpp
-    src/pipeline/wowee_gems.cpp
-    src/pipeline/wowee_guilds.cpp
-    src/pipeline/wowee_conditions.cpp
-    src/pipeline/wowee_pets.cpp
-    src/pipeline/wowee_auction.cpp
-    src/pipeline/wowee_channels.cpp
-    src/pipeline/wowee_cinematics.cpp
-    src/pipeline/wowee_glyphs.cpp
-    src/pipeline/wowee_vehicles.cpp
-    src/pipeline/wowee_holidays.cpp
-    src/pipeline/wowee_liquids.cpp
-    src/pipeline/wowee_animations.cpp
-    src/pipeline/wowee_spell_visuals.cpp
-    src/pipeline/wowee_world_state_ui.cpp
-    src/pipeline/wowee_player_conditions.cpp
-    src/pipeline/wowee_trade_skills.cpp
-    src/pipeline/wowee_creature_equipment.cpp
-    src/pipeline/wowee_item_sets.cpp
-    src/pipeline/wowee_game_tips.cpp
-    src/pipeline/wowee_companions.cpp
-    src/pipeline/wowee_spell_mechanics.cpp
-    src/pipeline/wowee_keybindings.cpp
-    src/pipeline/wowee_spell_schools.cpp
-    src/pipeline/wowee_lfg.cpp
-    src/pipeline/wowee_macros.cpp
-    src/pipeline/wowee_char_features.cpp
-    src/pipeline/wowee_pvp.cpp
-    src/pipeline/wowee_bags.cpp
-    src/pipeline/wowee_runes.cpp
-    src/pipeline/wowee_loading_screens.cpp
-    src/pipeline/wowee_item_suffixes.cpp
-    src/pipeline/wowee_combat_ratings.cpp
-    src/pipeline/wowee_unit_movement.cpp
-    src/pipeline/wowee_quest_sorts.cpp
-    src/pipeline/wowee_spell_ranges.cpp
-    src/pipeline/wowee_spell_cast_times.cpp
-    src/pipeline/wowee_spell_durations.cpp
-    src/pipeline/wowee_spell_cooldowns.cpp
-    src/pipeline/wowee_creature_families.cpp
-    src/pipeline/wowee_spell_power_costs.cpp
-    src/pipeline/wowee_glyph_slots.cpp
-    src/pipeline/wowee_creature_difficulties.cpp
-    src/pipeline/wowee_item_materials.cpp
-    src/pipeline/wowee_player_spawn_profiles.cpp
-    src/pipeline/wowee_talent_tabs.cpp
-    src/pipeline/wowee_currency_types.cpp
-    src/pipeline/wowee_spell_reagents.cpp
-    src/pipeline/wowee_achievement_criteria.cpp
-    src/pipeline/wowee_spell_effect_types.cpp
-    src/pipeline/wowee_spell_aura_types.cpp
-    src/pipeline/wowee_item_qualities.cpp
-    src/pipeline/wowee_skill_costs.cpp
-    src/pipeline/wowee_item_flags.cpp
-    src/pipeline/wowee_npc_services.cpp
-    src/pipeline/wowee_token_rewards.cpp
-    src/pipeline/wowee_spell_procs.cpp
-    src/pipeline/wowee_creature_patrols.cpp
-    src/pipeline/wowee_boss_encounters.cpp
-    src/pipeline/wowee_instance_lockouts.cpp
-    src/pipeline/wowee_stable_slots.cpp
-    src/pipeline/wowee_stat_curves.cpp
-    src/pipeline/wowee_action_bars.cpp
-    src/pipeline/wowee_group_compositions.cpp
-    src/pipeline/wowee_hearth_binds.cpp
-    src/pipeline/wowee_server_broadcasts.cpp
-    src/pipeline/wowee_combat_maneuvers.cpp
-    src/pipeline/wowee_realm_list.cpp
-    src/pipeline/wowee_emotes.cpp
-    src/pipeline/wowee_buff_book.cpp
-    src/pipeline/wowee_tabards.cpp
-    src/pipeline/wowee_spell_markers.cpp
-    src/pipeline/wowee_learning_notifications.cpp
-    src/pipeline/wowee_creature_resists.cpp
-    src/pipeline/wowee_pet_talents.cpp
-    src/pipeline/wowee_heroic_scaling.cpp
-    src/pipeline/wowee_reputation_rewards.cpp
-    src/pipeline/wowee_minimap_levels.cpp
-    src/pipeline/wowee_pet_care.cpp
-    src/pipeline/wowee_movie_credits.cpp
-    src/pipeline/wowee_spell_variants.cpp
-    src/pipeline/wowee_voiceovers.cpp
-    src/pipeline/wowee_trade_rules.cpp
-    src/pipeline/wowee_word_filters.cpp
-    src/pipeline/wowee_raid_markers.cpp
-    src/pipeline/wowee_loot_modes.cpp
-    src/pipeline/wowee_sky_params.cpp
-    src/pipeline/wowee_server_config.cpp
-    src/pipeline/wowee_anniversary_events.cpp
-    src/pipeline/wowee_pvp_ranks.cpp
-    src/pipeline/wowee_localization.cpp
-    src/pipeline/wowee_global_channels.cpp
-    src/pipeline/wowee_addon_manifest.cpp
-    src/pipeline/wowee_spell_pack.cpp
-    src/pipeline/wowee_player_movement_anim.cpp
-    src/pipeline/wowee_transit_schedule.cpp
-    src/pipeline/wowee_mage_portals.cpp
-    src/pipeline/wowee_combat_stats.cpp
-    src/pipeline/wowee_guild_bank.cpp
-    src/pipeline/wowee_quest_graph.cpp
-    src/pipeline/wowee_crafting_recipes.cpp
-    src/pipeline/wowee_world_locations.cpp
-    src/pipeline/wowee_soulbind_rules.cpp
-    src/pipeline/wowee_creature_behavior.cpp
-    src/pipeline/wowee_random_property.cpp
-    src/pipeline/wowee_spell_proc_rules.cpp
-    src/pipeline/wowee_auction_houses.cpp
-    src/pipeline/wowee_battleground_rewards.cpp
-    src/pipeline/wowee_sound_swap.cpp
-    src/pipeline/wowee_tutorial_steps.cpp
-    src/pipeline/wowee_chat_commands.cpp
-    src/pipeline/wowee_camera_presets.cpp
-    src/pipeline/wowee_combat_formulas.cpp
-    src/pipeline/wowee_chat_links.cpp
     src/pipeline/custom_zone_discovery.cpp
     src/pipeline/terrain_mesh.cpp
 
@@ -2362,6 +2239,10 @@ target_include_directories(wowee_editor SYSTEM PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/extern/vk-bootstrap/src
 )
 target_link_libraries(wowee_editor PRIVATE
+    # The open-format writers, which the editor is the only real consumer of.
+    # It used to list all 142 sources itself, a second copy of the list the
+    # client compiled and never called.
+    wowee_openformat
     SDL2::SDL2
     Vulkan::Vulkan
     Threads::Threads
