@@ -1514,11 +1514,30 @@ bool AddonManager::loadAddon(const TocFile& addon) {
         }
     }
 
-    // Fire ADDON_LOADED event after all addon files are executed
-    // This is the standard WoW pattern for addon initialization
-    if (success) {
-        luaEngine_.fireEvent("ADDON_LOADED", {addon.addonName});
+    // ADDON_LOADED fires whether or not every file ran.
+    //
+    // It used to fire only on a clean load, and the intent reads well - an
+    // addon that half-ran is not ready, so do not tell FrameXML it is. In
+    // practice it is the worse of the two failures. ADDON_LOADED is where an
+    // addon does its initialisation: Blizzard_TalentUI builds its tabs there,
+    // Blizzard_TimeManager reads its saved alarm there. Withholding it does not
+    // undo the frames the addon already put on screen; it guarantees they are
+    // never wired to anything.
+    //
+    // It is also what the real client does. A Lua error in one of an addon's
+    // files is reported and the addon carries on loading; nothing in 3.3.5
+    // treats one bad file as the addon not existing.
+    //
+    // The caller still learns the truth - loadAddon returns false and
+    // loadAddOnByName turns that into CORRUPT - so nothing here is being
+    // hidden. What changes is that a half-loaded addon gets its chance to
+    // initialise the part of itself that did load.
+    if (!success) {
+        LOG_WARNING("AddonManager: '", addon.addonName,
+                    "' did not load cleanly; firing ADDON_LOADED anyway so the "
+                    "part of it that did load can initialise");
     }
+    luaEngine_.fireEvent("ADDON_LOADED", {addon.addonName});
     return success;
 }
 
@@ -1593,6 +1612,11 @@ bool AddonManager::loadAddOnByName(const std::string& name, std::string& reason)
         // staying in the loaded set blocks the re-run without also becoming a
         // success for every caller after this one.
         lodFailed_.insert(key);
+        // And tell the takeover policy, for the same reason. Its question is
+        // "is this addon's art on screen?", not "did it load cleanly" - a
+        // half-run addon has already drawn its frames, and leaving it unnoted
+        // means this client keeps drawing its own copy over the top of them.
+        ui::frameXmlNoteAddOnLoaded(found->addonName);
         return false;
     }
     // What it draws is on screen from here, which for some of them is a second
