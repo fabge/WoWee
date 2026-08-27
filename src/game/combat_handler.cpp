@@ -1315,6 +1315,11 @@ void CombatHandler::setTarget(uint64_t guid) {
     if (guid == owner_.getTargetGuid()) return;
     // Looted-out, unskinnable corpses cannot be selected.
     if (!isSelectableUnit(guid)) return;
+    // The other half of the pair in clearTarget. Read together they say
+    // whether a target that will not go away was never cleared, or was
+    // cleared and immediately set back - and by what, since the guid names it.
+    LOG_WARNING("Target set: 0x", std::hex, guid, std::dec, " (was 0x",
+                std::hex, owner_.getTargetGuid(), std::dec, ")");
 
     // Save previous target - once as "the last one whatever it was", which is
     // what TargetLastTarget flips back to, and once under its kind, which is
@@ -1389,7 +1394,12 @@ void CombatHandler::setTarget(uint64_t guid) {
 
 void CombatHandler::clearTarget() {
     if (owner_.getTargetGuid() != 0) {
-        LOG_INFO("Target cleared");
+        // At warning, and paired with the one in setTarget below. "I killed it
+        // and now I cannot deselect it" has two shapes that look identical:
+        // the clear never runs, or it runs and something sets the target
+        // straight back. One line each says which, and targeting changes at
+        // human pace so the pair costs nothing.
+        LOG_WARNING("Target cleared: was 0x", std::hex, owner_.getTargetGuid(), std::dec);
         // Zero the GUID before firing the event so callbacks/addons that query
         // the current target see null (consistent with setTarget which updates
         // targetGuid before the event).

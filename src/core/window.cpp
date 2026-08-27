@@ -1,5 +1,6 @@
 #include "core/window.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include "core/env.hpp"
 #include "core/logger.hpp"
@@ -363,8 +364,40 @@ void Window::applyResolution(int w, int h) {
         LOG_INFO("Fullscreen resolution applied: ", width, "x", height);
         return;
     }
+    // Grow around the middle, not the top-left corner.
+    //
+    // SDL keeps the window's origin across a resize, so a window created
+    // centred at the configured size and then resized larger here - which is
+    // what happens at every start, because the saved resolution is applied
+    // once the settings are loaded - ends up pushed right and down by half the
+    // difference, and has to be dragged back every session.
+    //
+    // The centre rather than a re-centre on the display: a player who has put
+    // the window somewhere deliberately and then changes resolution in the
+    // options keeps the place they chose. At start-up the window is already
+    // centred, so holding the centre is holding centred.
+    int oldW = 0, oldH = 0, oldX = 0, oldY = 0;
+    SDL_GetWindowSize(window, &oldW, &oldH);
+    SDL_GetWindowPosition(window, &oldX, &oldY);
+    const int centreX = oldX + oldW / 2;
+    const int centreY = oldY + oldH / 2;
+
     SDL_SetWindowSize(window, w, h);
     SDL_GetWindowSize(window, &width, &height);
+
+    // Clamped to the usable area of the display it is on, or a window that
+    // grew near an edge is moved half off the screen - and on macOS a negative
+    // y puts the title bar under the menu bar, where it cannot be grabbed.
+    int newX = centreX - width / 2;
+    int newY = centreY - height / 2;
+    SDL_Rect usable{};
+    const int displayIndex = SDL_GetWindowDisplayIndex(window);
+    if (displayIndex >= 0 && SDL_GetDisplayUsableBounds(displayIndex, &usable) == 0) {
+        newX = std::max(usable.x, std::min(newX, usable.x + usable.w - width));
+        newY = std::max(usable.y, std::min(newY, usable.y + usable.h - height));
+    }
+    SDL_SetWindowPosition(window, newX, newY);
+
     windowedWidth = w;
     windowedHeight = h;
     if (vkContext) {

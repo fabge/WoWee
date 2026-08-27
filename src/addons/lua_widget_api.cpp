@@ -15,6 +15,7 @@
 #include "ui/text_markup.hpp"
 #include "ui/plural_escape.hpp"
 #include "ui/widget_tree.hpp"
+#include "ui/widget_renderer.hpp"
 #include "ui/interface_fonts.hpp"
 #include "ui/ui_colors.hpp"
 #include "ui/framexml_takeover.hpp"
@@ -437,6 +438,20 @@ wowee::ui::Widget* measuredWidgetOf(lua_State* L, int index) {
     auto* tree = wowee::addons::getWidgetTree(L);
     if (!tree) return nullptr;
     const uint32_t id = widgetIdOf(L, index);
+    // Against the text it holds now. Everything below - GetHeight, GetWidth,
+    // GetTop, GetBottom - reads a rect, and for a font string that rect is
+    // only as current as the last time the text was measured. The layout pass
+    // does that once a frame, so a script that writes a string and asks how
+    // big it is in the same breath was answered for the string that was there
+    // before: WorldMapQuestFrame_UpdateQuests sizes every quest block from
+    // `objectives:GetHeight()` it has just filled, and got one line's worth
+    // however many objectives it had just written, so the next block was
+    // anchored over the top of this one.
+    //
+    // Before resolveWidget, not after: the resolve places the widget from the
+    // sizes it has, so a height corrected afterwards would not reach the
+    // position until the frame after.
+    if (wowee::ui::Widget* w = tree->get(id)) wowee::ui::sizeFontString(*w);
     tree->resolveWidget(id);
     return tree->get(id);
 }
@@ -770,16 +785,29 @@ float measureTextWidth(const std::string& text, const std::string& fontFace,
 
 /// The font string a widget measures: itself if it is one, and otherwise the
 /// one a button was given, which is where its text actually lives.
-const wowee::ui::Widget* textWidgetOf(lua_State* L, int index) {
-    const wowee::ui::Widget* w = widgetOf(L, index);
-    if (!w || w->kind == wowee::ui::WidgetKind::FontString) return w;
+/// The font string a size question is really about, measured against the text
+/// it holds right now rather than the text the last layout pass saw.
+///
+/// Every caller here is FrameXML asking how big a string is, and the two that
+/// matter ask straight after writing it: WorldMapQuestFrame_UpdateQuests sizes
+/// each quest block from the objectives string it has just filled, and
+/// WatchFrame's quest handler measures the lines it has just laid out. Without
+/// the measure they are told what the string said a frame ago - one line where
+/// there are now three - so the next block is anchored over the top of this
+/// one, and the tracker's own handler reports that it used no pixels, which is
+/// the branch that disables the collapse button.
+wowee::ui::Widget* textWidgetOf(lua_State* L, int index) {
     auto* tree = wowee::addons::getWidgetTree(L);
-    if (!tree) return w;
-    lua_getfield(L, index, "__fontString");
-    const wowee::ui::Widget* fs =
-        lua_istable(L, -1) ? tree->get(widgetIdOf(L, lua_gettop(L))) : nullptr;
-    lua_pop(L, 1);
-    return fs ? fs : w;
+    wowee::ui::Widget* w = tree ? tree->get(widgetIdOf(L, index)) : nullptr;
+    if (w && w->kind != wowee::ui::WidgetKind::FontString && tree) {
+        lua_getfield(L, index, "__fontString");
+        wowee::ui::Widget* fs =
+            lua_istable(L, -1) ? tree->get(widgetIdOf(L, lua_gettop(L))) : nullptr;
+        lua_pop(L, 1);
+        if (fs) w = fs;
+    }
+    if (w) wowee::ui::sizeFontString(*w);
+    return w;
 }
 
 int lua_Region_GetTextWidth(lua_State* L) {

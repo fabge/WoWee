@@ -31,6 +31,18 @@ namespace ui {
 class WidgetTree;
 struct Widget;
 
+/// Measure one font string against the text it holds *now*.
+///
+/// The layout pass measures every string once a frame, and until it runs a
+/// string that has just been given new text still reports the size of the old
+/// one. Anything that sets text and asks how big it is in the same breath has
+/// to ask for this first - FrameXML lays the world map's quest list and the
+/// objectives tracker's lines out exactly that way.
+///
+/// Cheap to call repeatedly: it keeps the text, size and face it last measured
+/// and returns at once when none of them has moved.
+void sizeFontString(Widget& widget);
+
 class WidgetRenderer {
 public:
     void initialize(pipeline::AssetManager* assets, rendering::VkContext* vkCtx);

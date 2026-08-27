@@ -252,14 +252,50 @@ void WidgetRenderer::sizeTextures(WidgetTree& tree) {
 }
 
 void WidgetRenderer::sizeFontStrings(WidgetTree& tree) {
-    ImFont* font = interfaceFace("frizqt__");
-    if (!font) font = ImGui::GetFont();
-    if (!font) return;
-
     for (size_t id = 1; id < tree.size(); ++id) {
-        Widget* w = tree.get(static_cast<uint32_t>(id));
-        if (!w || w->kind != WidgetKind::FontString) continue;
-        if (w->text.empty()) continue;
+        if (Widget* w = tree.get(static_cast<uint32_t>(id))) sizeFontString(*w);
+    }
+}
+
+/// One font string measured, which is the body of the loop above.
+///
+/// Pulled out so that a script can ask for it. The measurement used to happen
+/// only in that pass, once a frame, and everything that reads a string's size
+/// read what the *previous* text measured to: `GetHeight` straight after a
+/// `SetText` answered for the string that was there before. FrameXML does
+/// exactly that in the two places it lays text out by hand -
+/// WorldMapQuestFrame_UpdateQuests sizes each quest block from
+/// `objectives:GetHeight()` it has just filled, and WatchFrame's quest handler
+/// measures the lines it has just written - so a two-objective quest was given
+/// one line of room and the next one was drawn over the top of it.
+void sizeFontString(Widget& widget) {
+    Widget* w = &widget;
+    {
+        if (w->kind != WidgetKind::FontString) return;
+        if (w->text.empty()) return;
+        // Measuring needs glyph metrics, and those need a live ImGui context
+        // with a built atlas. The layout pass this was lifted out of always had
+        // one; a script can ask at any time, including while FrameXML is still
+        // loading and before the first frame exists. Without the guard that is
+        // a null dereference inside ImGui rather than an unanswered question.
+        if (ImGui::GetCurrentContext() == nullptr) return;
+        ImFont* font = interfaceFace("frizqt__");
+        if (!font) font = ImGui::GetFont();
+        if (!font || !font->IsLoaded()) return;
+        // What it was, so a measurement that changes the size can say so. The
+        // rect a getter reads is resolved once per layout generation and the
+        // resolve is skipped for anything already marked done this generation -
+        // so a string re-measured mid-frame keeps the rect built from its old
+        // text unless it is put back in the queue. resolvedGen of zero is
+        // "never resolved"; layoutGeneration_ starts at one and only rises.
+        const float sizeBeforeW = w->width;
+        const float sizeBeforeH = w->height;
+        struct MarkStale {
+            Widget* w; const float& bw; const float& bh;
+            ~MarkStale() {
+                if (w->width != bw || w->height != bh) w->resolvedGen = 0;
+            }
+        } markStale{w, sizeBeforeW, sizeBeforeH};
         // Anchors that span an axis give the size on that axis, and the string
         // does not get a say about it. Asked per axis, the way the texture
         // sizing above asks it - anchorsSpanAxis exists for exactly this and
@@ -280,7 +316,7 @@ void WidgetRenderer::sizeFontStrings(WidgetTree& tree) {
         // added to the schema could be reached however correctly it registered.
         const bool spansX = anchorsSpanAxis(w->anchors, true);
         const bool spansY = anchorsSpanAxis(w->anchors, false);
-        if (spansX && spansY) continue;
+        if (spansX && spansY) return;
 
         // A width with no height is a paragraph, not a request to be measured.
         //
@@ -332,10 +368,10 @@ void WidgetRenderer::sizeFontStrings(WidgetTree& tree) {
                                      w->measuredSize == size &&
                                      w->measuredFace == w->fontFace;
         if (paragraph) {
-            if (sameMeasurement) continue;
+            if (sameMeasurement) return;
         } else {
-            if (w->autoSized && sameMeasurement) continue;
-            if (!w->autoSized && w->width > 0.0f && w->height > 0.0f) continue;
+            if (w->autoSized && sameMeasurement) return;
+            if (!w->autoSized && w->width > 0.0f && w->height > 0.0f) return;
         }
 
         if (paragraph) {
@@ -352,7 +388,7 @@ void WidgetRenderer::sizeFontStrings(WidgetTree& tree) {
             w->measuredText = w->text;
             w->measuredSize = size;
             w->measuredFace = w->fontFace;
-            continue;
+            return;
         }
 
         const ImVec2 measured =

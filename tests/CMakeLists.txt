@@ -2192,6 +2192,15 @@ target_link_libraries(test_spell_missile PRIVATE catch2_main wowee_rendering)
 add_test(NAME spell_missile COMMAND test_spell_missile)
 register_test_target(test_spell_missile)
 
+# ── test_font_string_measure ────────────────────────────────
+# A font string measured against the text it holds now, rather than the text
+# the last layout pass saw. Needs an ImGui context, which it builds itself with
+# the default face - no game data and no device.
+add_executable(test_font_string_measure test_font_string_measure.cpp)
+target_link_libraries(test_font_string_measure PRIVATE catch2_main wowee_ui)
+add_test(NAME font_string_measure COMMAND test_font_string_measure)
+register_test_target(test_font_string_measure)
+
 # ── test_cvar_setting_mirror ────────────────────────────────
 # A setting reaching the CVar a Blizzard control drives. The FrameXML sweep
 # that drives the real panel covers this too, and skips wherever the extracted

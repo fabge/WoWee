@@ -1281,3 +1281,56 @@ in its first draft, which is the sweep doing its job on the sweep's own fix.
 Three sweeps read the rows out of the file as text rather than keeping a copy,
 so all three were repointed. `cvar_slider_range_fit` reads both files now: the
 table moved and the hand-written `key == "..."` branches beside it did not.
+
+## Text measured against the text it holds now
+
+Two reports, one cause. The world map's quest list drew titles on top of the
+objective lines above them, and the objectives tracker's collapse button could
+not be clicked - and a play session's log said why the second one outright,
+which is what the diagnostics added the session before were for:
+
+    press at (1301.38,581.041) hit WatchFrameCollapseExpandButton
+    release on WatchFrameCollapseExpandButton - the frame is disabled
+
+The click was never the problem. The button is `Disable()`d by
+`WatchFrame_Update`, in the branch it takes when the objective handlers report
+that they laid nothing out. That handler measures what it just drew:
+`heightUsed = topEdge - lastLine:GetBottom()`. The world map does the same
+thing one line up from its own bug:
+
+    questFrame:SetHeight(max(questFrame.title:GetHeight() +
+                             questFrame.objectives:GetHeight() + ...))
+
+Both write text and ask how big it is in the same breath. A font string is
+measured by the layout pass, once a frame, and the answer is cached against the
+text it measured - so both were told what the *previous* text came to. Three
+objectives asked and one line's height answered, so every quest block was built
+to fit one line and the next was anchored over the top of it; and the tracker's
+handler measured nothing, reported no pixels used, and disabled its own button.
+That is also why the tracker sometimes worked: whether the answer was stale
+depended on whether that string had changed since the last pass.
+
+`sizeFontString` is the body of that pass lifted out so a script can ask for it,
+and `measuredWidgetOf` and `textWidgetOf` - between them every rect and text
+getter - now ask before answering. Two things make it work. It has to run
+*before* `resolveWidget`, because the resolve places a widget from the sizes it
+has. And a re-measure that changes the size clears `resolvedGen`, because the
+resolve is skipped for anything already marked done this generation - without
+that the string was measured correctly and the getter still read the rect built
+from the old text. It also needs a guard the pass never did: a script can ask
+at any time, including while FrameXML is still loading, and measuring without a
+live ImGui context is a null dereference rather than an unanswered question.
+The runner found that one, by segfaulting.
+
+Three smaller things ride along. `applyResolution` keeps the window's centre
+instead of its top-left: SDL holds the origin across a resize, and the saved
+resolution is applied once the settings load, so a window created centred was
+pushed right and down by half the difference at every start. Not in `setSize`,
+which is the resize *event* - re-centring there would recentre the window while
+it is being dragged.
+
+And two diagnostics for reports that are not yet explained: the jump grunt
+declining in silence now says whether the audio engine is up, how many clips
+loaded and which voice profile was chosen; and target set/clear are a warning
+pair, so "I killed it and cannot deselect it" can be read as either the clear
+never running or something setting the target straight back.

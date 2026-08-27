@@ -3,6 +3,7 @@
 #include "audio/audio_engine.hpp"
 #include "pipeline/asset_manager.hpp"
 #include "core/logger.hpp"
+#include <chrono>
 #include <algorithm>
 #include <cctype>
 
@@ -222,7 +223,24 @@ void ActivitySoundManager::reapProcesses() {
 }
 
 void ActivitySoundManager::playJump() {
+    // Said, rather than declined in silence. "The jump grunt is gone" has three
+    // causes that look identical from the chair - the audio engine is not up,
+    // the voice profile was never chosen so there are no clips, or the clips
+    // are there and something downstream ate the sound - and none of them left
+    // a trace. Once every few seconds at most, and only when a jump has
+    // actually happened.
     if (!AudioEngine::instance().isInitialized() || jumpClips.empty()) {
+        static double lastSaid = 0.0;
+        const double now = std::chrono::duration<double>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (now - lastSaid > 5.0) {
+            lastSaid = now;
+            LOG_WARNING("Jump sound: nothing played - the audio engine is up: ",
+                        AudioEngine::instance().isInitialized() ? "yes" : "no",
+                        ", clips loaded: ", jumpClips.size(),
+                        ", voice profile: ",
+                        voiceProfileKey.empty() ? "never chosen" : voiceProfileKey);
+        }
         return;
     }
 
@@ -378,7 +396,7 @@ void ActivitySoundManager::setCharacterVoiceProfile(const std::string& raceFolde
     rebuildSwimLoopClipsForProfile(raceFolder, raceBase, male);
     rebuildHardLandClipsForProfile(raceFolder, raceBase, male);
     rebuildCombatVocalClipsForProfile(raceFolder, raceBase, male);
-    core::Logger::getInstance().info("Activity SFX voice profile (explicit): ", voiceProfileKey,
+    core::Logger::getInstance().warning("Activity SFX voice profile (explicit): ", voiceProfileKey,
                                      " jump clips=", jumpClips.size(),
                                      " swim clips=", swimLoopClips.size(),
                                      " hardLand clips=", hardLandClips.size(),
