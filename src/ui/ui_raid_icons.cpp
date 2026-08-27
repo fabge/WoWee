@@ -1,4 +1,5 @@
 #include "ui/ui_raid_icons.hpp"
+#include "ui/ui_services.hpp"
 #include "ui/ui_texture_load.hpp"
 
 #include "core/application.hpp"
@@ -23,7 +24,7 @@ VkDescriptorSet getRaidTargetIcon(uint8_t icon, pipeline::AssetManager* assetMan
     // Only a successful upload is cached: a transient failure (descriptor pool
     // pressure) should be retried rather than blacklisting the icon for good.
     VkDescriptorSet ds = uploadUiTextureFromBlp(
-        assetManager, path, core::Application::getInstance().getWindow());
+        assetManager, path, uiServices().window);
     if (ds) cache[icon] = ds;
     return ds;
 }

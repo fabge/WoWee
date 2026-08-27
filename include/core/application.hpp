@@ -29,7 +29,7 @@ namespace wowee {
 
 // Forward declarations
 namespace rendering { class Renderer; }
-namespace ui { class UIManager; }
+namespace ui { class UIManager; class AddonBridge; class RenderLocator; }
 namespace auth { class AuthHandler; }
 namespace game { class GameHandler; class World; class ExpansionRegistry; struct ExpansionProfile; }
 namespace pipeline { class AssetManager; class DBCLayout; struct M2Model; struct WMOModel; }
@@ -211,6 +211,11 @@ private:
     std::unique_ptr<game::World> world;
     std::unique_ptr<pipeline::AssetManager> assetManager;
     std::unique_ptr<addons::AddonManager> addonManager_;
+    /// The narrow face src/ui reaches the addon system through, built over
+    /// addonManager_ and outliving nothing else. See ui/addon_bridge.hpp.
+    std::unique_ptr<ui::AddonBridge> addonBridge_;
+    /// And the one it asks where a unit is through, over entitySpawner_.
+    std::unique_ptr<ui::RenderLocator> renderLocator_;
     // Set by ReloadUI() from inside Lua, acted on between frames - the reload
     // destroys the state that asked for it.
     bool reloadUiPending_ = false;

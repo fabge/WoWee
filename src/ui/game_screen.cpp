@@ -1,4 +1,5 @@
 #include "ui/graphics_choices.hpp"
+#include "ui/render_locator.hpp"
 #include "core/cvar_store.hpp"
 #include "ui/game_screen.hpp"
 #include "addons/lua_api_registrations.hpp"
@@ -844,11 +845,13 @@ void GameScreen::render(game::GameHandler& gameHandler) {
                 // circle tracks the rendered model (not a parallel entity-space
                 // interpolator that can drift from the visual position).
                 glm::vec3 instPos;
-                if (core::Application::getInstance().getRenderPositionForGuid(target->getGuid(), instPos)) {
+                if (services_.renderLocator &&
+                    services_.renderLocator->positionForGuid(target->getGuid(), instPos)) {
                     targetGLPos = instPos;
                     // Override Z with foot position to sit the circle on the ground.
                     float footZ = 0.0f;
-                    if (core::Application::getInstance().getRenderFootZForGuid(target->getGuid(), footZ)) {
+                    if (services_.renderLocator &&
+                        services_.renderLocator->footZForGuid(target->getGuid(), footZ)) {
                         targetGLPos.z = footZ;
                     }
                 } else {
@@ -856,7 +859,8 @@ void GameScreen::render(game::GameHandler& gameHandler) {
                     targetGLPos = core::coords::canonicalToRender(
                         glm::vec3(target->getX(), target->getY(), target->getZ()));
                     float footZ = 0.0f;
-                    if (core::Application::getInstance().getRenderFootZForGuid(target->getGuid(), footZ)) {
+                    if (services_.renderLocator &&
+                        services_.renderLocator->footZForGuid(target->getGuid(), footZ)) {
                         targetGLPos.z = footZ;
                     }
                 }
@@ -869,7 +873,8 @@ void GameScreen::render(game::GameHandler& gameHandler) {
                 {
                     glm::vec3 boundsCenter;
                     float boundsRadius = 0.0f;
-                    if (core::Application::getInstance().getRenderBoundsForGuid(target->getGuid(), boundsCenter, boundsRadius)) {
+                    if (services_.renderLocator &&
+                        services_.renderLocator->boundsForGuid(target->getGuid(), boundsCenter, boundsRadius)) {
                         float r = boundsRadius * 1.1f;
                         circleRadius = std::min(std::max(r, 0.8f), 8.0f);
                     }

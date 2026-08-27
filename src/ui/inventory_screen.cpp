@@ -1,4 +1,5 @@
 #include "game/reputation_standing.hpp"
+#include "ui/ui_services.hpp"
 #include "ui/ui_texture_load.hpp"
 #include "ui/ui_upload_budget.hpp"
 #include "ui/inventory_screen.hpp"
@@ -106,7 +107,7 @@ VkDescriptorSet InventoryScreen::getItemIcon(uint32_t displayInfoId) {
     // The shared cache, so an item drawn here and on the action bar is
     // uploaded once. See itemIconTexture.
     return itemIconTexture(displayInfoId, assetManager_,
-                           core::Application::getInstance().getWindow());
+                           uiServices().window);
 }
 
 // ============================================================
@@ -217,7 +218,7 @@ VkDescriptorSet InventoryScreen::castCursorTexture() {
         if (assetManager_ && assetManager_->isInitialized()) {
             castCursorTexture_ = uploadUiTextureFromBlp(
                 assetManager_, "Interface\\Cursor\\Cast.blp",
-                core::Application::getInstance().getWindow());
+                uiServices().window);
         }
     }
     return castCursorTexture_;

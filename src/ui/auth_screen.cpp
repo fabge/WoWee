@@ -85,7 +85,7 @@ std::string AuthScreen::makeServerKey(const std::string& host, int port) {
 }
 
 std::string AuthScreen::currentExpansionId() const {
-    auto* reg = core::Application::getInstance().getExpansionRegistry();
+    auto* reg = services_.expansionRegistry;
     if (reg && reg->getActive()) {
         return reg->getActive()->id;
     }
@@ -109,9 +109,8 @@ void AuthScreen::selectServerProfile(int index) {
     usingStoredHash = !savedPasswordHash.empty();
     password_.setText(usingStoredHash ? PASSWORD_PLACEHOLDER : "");
 
-    auto& app = core::Application::getInstance();
     if (!s.expansionId.empty()) {
-        auto* expReg = app.getExpansionRegistry();
+        auto* expReg = services_.expansionRegistry;
         if (expReg && expReg->setActive(s.expansionId)) {
             auto& profiles = expReg->getAllProfiles();
             for (int i = 0; i < static_cast<int>(profiles.size()); ++i) {
@@ -120,11 +119,11 @@ void AuthScreen::selectServerProfile(int index) {
         }
     }
     assetProfileId_ = s.assetProfileId;
-    if (!app.setAssetExpansionOverride(assetProfileId_)) {
+    if (services_.setAssetExpansionOverride && !services_.setAssetExpansionOverride(assetProfileId_)) {
         assetProfileId_.clear();
-        app.setAssetExpansionOverride({});
+        if (services_.setAssetExpansionOverride) services_.setAssetExpansionOverride({});
     }
-    app.reloadExpansionData();
+    if (services_.reloadExpansionData) services_.reloadExpansionData();
 }
 
 void AuthScreen::upsertCurrentServerProfile(bool includePasswordHash) {
@@ -228,7 +227,7 @@ void AuthScreen::render(auth::AuthHandler& authHandler) {
         loginInfoLoaded = true;
         if (portText_.empty()) setPort(port);
         if (hostname_.empty()) hostname_.setText("localhost");
-        auto* registry = core::Application::getInstance().getExpansionRegistry();
+        auto* registry = services_.expansionRegistry;
         if (registry && registry->getActive()) {
             const auto& profiles = registry->getAllProfiles();
             for (int i = 0; i < static_cast<int>(profiles.size()); ++i) {
@@ -431,7 +430,7 @@ void AuthScreen::renderCard(auth::AuthHandler& authHandler, float screenW, float
     // The card is sized before it is drawn, so every row that might not
     // appear has to be asked about here on the same terms the drawing asks -
     // otherwise the sheet comes out taller than what is on it.
-    auto* registry = core::Application::getInstance().getExpansionRegistry();
+    auto* registry = services_.expansionRegistry;
     const bool haveExpansions = registry && !registry->getAllProfiles().empty();
 
     float advancedH = 0.0f;
@@ -599,8 +598,6 @@ void AuthScreen::renderCard(auth::AuthHandler& authHandler, float screenW, float
                  px(1.0f), 0x2C71u);
         col.gap(px(kRowGap) + px(2));
 
-        auto& app = core::Application::getInstance();
-
         // Saved servers.
         {
             ui_.text(col.at(), "Realm", labelSize, theme.inkSoft);
@@ -680,7 +677,7 @@ void AuthScreen::renderCard(auth::AuthHandler& authHandler, float screenW, float
                 const auto [a, b] = col.row(px(kFieldHeight));
                 if (ui_.dropdown("expansion", a, b, preview, rows, &expansionIndex)) {
                     registry->setActive(profiles[static_cast<size_t>(expansionIndex)].id);
-                    app.reloadExpansionData();
+                    if (services_.reloadExpansionData) services_.reloadExpansionData();
                 }
                 col.gap(px(kRowGap));
             }
@@ -718,8 +715,9 @@ void AuthScreen::renderCard(auth::AuthHandler& authHandler, float screenW, float
                 if (ui_.dropdown("assets", a, b, rows2[static_cast<size_t>(assetChoice)], rows2,
                                  &assetChoice)) {
                     assetProfileId_ = ids[static_cast<size_t>(assetChoice)];
-                    app.setAssetExpansionOverride(assetProfileId_);
-                    app.reloadExpansionData();
+                    if (services_.setAssetExpansionOverride)
+                        services_.setAssetExpansionOverride(assetProfileId_);
+                    if (services_.reloadExpansionData) services_.reloadExpansionData();
                 }
                 col.gap(px(kRowGap));
             }
@@ -755,7 +753,7 @@ void AuthScreen::renderCard(auth::AuthHandler& authHandler, float screenW, float
                  paperFade(theme.pencil, 0.5f), px(1.0f), 0x77A3u);
 
         std::string where = makeServerKey(hostname_.text(), port);
-        if (auto* registry = core::Application::getInstance().getExpansionRegistry())
+        if (auto* registry = services_.expansionRegistry)
             if (const auto* active = registry->getActive())
                 where += "  \xc2\xb7  " + active->shortName;
         ui_.text(col.at(), where.c_str(), smallSize, theme.pencil);
@@ -763,7 +761,7 @@ void AuthScreen::renderCard(auth::AuthHandler& authHandler, float screenW, float
         const float r = smallSize * 0.86f;
         const float cy = col.y + smallRow * 0.5f - px(1);
         if (ui_.glyphButton("quit", ImVec2(col.x1 - r, cy), r, PaperUI::Glyph::Cross)) {
-            if (auto* window = core::Application::getInstance().getWindow())
+            if (auto* window = services_.window)
                 window->setShouldClose(true);
         }
         if (ui_.glyphButton("settings", ImVec2(col.x1 - r * 3.4f, cy), r,
@@ -854,11 +852,10 @@ void AuthScreen::drawBackdrop() {
 }
 
 void AuthScreen::updateMusic() {
-    auto& app = core::Application::getInstance();
-    auto* ac = app.getAudioCoordinator();
+    auto* ac = services_.audioCoordinator;
     if (!musicInitAttempted) {
         musicInitAttempted = true;
-        auto* assets = app.getAssetManager();
+        auto* assets = services_.assetManager;
         if (ac) {
             auto* music = ac->getMusicManager();
             if (music && assets && assets->isInitialized() && !music->isInitialized()) {
@@ -915,8 +912,7 @@ void AuthScreen::updateMusic() {
 }
 
 void AuthScreen::stopLoginMusic() {
-    auto& app = core::Application::getInstance();
-    auto* ac = app.getAudioCoordinator();
+    auto* ac = services_.audioCoordinator;
     if (!ac) return;
     auto* music = ac->getMusicManager();
     if (!music) return;
@@ -960,7 +956,7 @@ void AuthScreen::attemptAuth(auth::AuthHandler& authHandler) {
     {
         uint8_t primary = 8;
         bool vanillaFamily = false;
-        auto* reg = core::Application::getInstance().getExpansionRegistry();
+        auto* reg = services_.expansionRegistry;
         if (reg) {
             if (auto* profile = reg->getActive()) {
                 primary = profile->protocolVersion;
@@ -999,7 +995,7 @@ void AuthScreen::beginAuthAttempt(auth::AuthHandler& authHandler) {
     });
 
     // Configure client version from active expansion profile
-    auto* reg = core::Application::getInstance().getExpansionRegistry();
+    auto* reg = services_.expansionRegistry;
     if (reg) {
         auto* profile = reg->getActive();
         if (profile) {
@@ -1294,8 +1290,7 @@ static uint32_t findMemType(VkPhysicalDevice pd, uint32_t filter, VkMemoryProper
 // Takes pixels already decoded on a worker thread and does the GPU-side work,
 // which has to happen on the main thread.
 bool AuthScreen::uploadBackgroundImage(const unsigned char* data) {
-    auto& app = core::Application::getInstance();
-    auto* renderer = app.getRenderer();
+    auto* renderer = services_.renderer;
     if (!renderer) return false;
     bgVkCtx = renderer->getVkContext();
     if (!bgVkCtx) return false;

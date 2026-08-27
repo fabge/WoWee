@@ -5,6 +5,8 @@
 // battleground score HUD, combat log, threat window, BG scoreboard.
 // ============================================================
 #include "core/local_time.hpp"
+#include "ui/ui_services.hpp"
+#include "ui/render_locator.hpp"
 #include "core/cvar_store.hpp"
 #include "ui/combat_ui.hpp"
 #include "addons/lua_api_registrations.hpp"
@@ -477,7 +479,8 @@ void CombatUI::renderCombatText(game::GameHandler& gameHandler) {
         if (!isHudOnly && camera && entry.dstGuid != 0) {
             // Look up the destination entity's render position
             glm::vec3 renderPos;
-            bool havePos = core::Application::getInstance().getRenderPositionForGuid(entry.dstGuid, renderPos);
+            bool havePos = uiServices().renderLocator &&
+                           uiServices().renderLocator->positionForGuid(entry.dstGuid, renderPos);
             if (!havePos) {
                 // Fallback to entity canonical position
                 auto entity = gameHandler.getEntityManager().getEntity(entry.dstGuid);

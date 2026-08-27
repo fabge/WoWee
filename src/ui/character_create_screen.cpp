@@ -1,4 +1,5 @@
 #include "ui/character_create_screen.hpp"
+#include "ui/ui_services.hpp"
 #include "core/logger.hpp"
 #include "ui/ui_colors.hpp"
 #include "rendering/character_preview.hpp"
@@ -178,7 +179,7 @@ void CharacterCreateScreen::initializePreview(pipeline::AssetManager* am) {
     assetManager_ = am;
     if (!preview_) {
         preview_ = std::make_unique<rendering::CharacterPreview>();
-        auto* renderer = core::Application::getInstance().getRenderer();
+        auto* renderer = uiServices().renderer;
         if (preview_->initialize(renderer, am)) {
             if (renderer) renderer->registerPreview(preview_.get());
         }

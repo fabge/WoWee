@@ -27,6 +27,10 @@
 #include "core/memory_monitor.hpp"
 #include "rendering/renderer.hpp"
 #include "rendering/animation/emote_registry.hpp"
+#include "addons/addon_bridge.hpp"
+#include "ui/addon_bridge.hpp"
+#include "ui/render_locator.hpp"
+#include "core/render_locator.hpp"
 #include "rendering/vk_context.hpp"
 #include "audio/npc_voice_manager.hpp"
 #include "rendering/camera.hpp"
@@ -380,6 +384,8 @@ bool Application::initialize() {
         entitySpawner_ = std::make_unique<EntitySpawner>(
             renderer.get(), assetManager.get(), gameHandler.get(), &gameServices_);
         entitySpawner_->initialize();
+        // The narrow face src/ui asks "where is this guid" through.
+        renderLocator_ = makeRenderLocator(*entitySpawner_);
 
         appearanceComposer_ = std::make_unique<AppearanceComposer>(
             renderer.get(), assetManager.get(), gameHandler.get(),
@@ -396,11 +402,18 @@ bool Application::initialize() {
             uiServices.assetManager = assetManager.get();
             uiServices.gameHandler = gameHandler.get();
             uiServices.expansionRegistry = expansionRegistry_.get();
-            uiServices.addonManager = addonManager_.get();  // May be nullptr here, re-wire later
+            uiServices.addonBridge = addonBridge_.get();  // May be nullptr here, re-wire later
             uiServices.audioCoordinator = audioCoordinator_.get();
             uiServices.entitySpawner = entitySpawner_.get();
             uiServices.appearanceComposer = appearanceComposer_.get();
             uiServices.worldLoader = worldLoader_.get();
+            uiServices.renderLocator = renderLocator_.get();
+            // The login screen's expansion picker, handed down as the two
+            // calls it is rather than as a pointer back to Application.
+            uiServices.setAssetExpansionOverride =
+                [this](const std::string& id) { return setAssetExpansionOverride(id); };
+            uiServices.reloadExpansionData = [this] { reloadExpansionData(); };
+            ui::setUiServices(uiServices);
             uiManager->setServices(uiServices);
         }
 
@@ -419,6 +432,9 @@ bool Application::initialize() {
 
         // Initialize addon system
         addonManager_ = std::make_unique<addons::AddonManager>();
+        // And the narrow face src/ui reaches it through. Built here, beside
+        // the manager, because this is the only place that knows both.
+        addonBridge_ = addons::makeAddonBridge(*addonManager_, gameHandler.get());
         // Bindings ask the interface whether someone is typing before they
         // fire. Set here rather than at the call sites because every panel
         // polls its own key from inside its own draw - there are many askers
@@ -1179,11 +1195,18 @@ bool Application::initialize() {
             uiServices.assetManager = assetManager.get();
             uiServices.gameHandler = gameHandler.get();
             uiServices.expansionRegistry = expansionRegistry_.get();
-            uiServices.addonManager = addonManager_.get();
+            uiServices.addonBridge = addonBridge_.get();
             uiServices.audioCoordinator = audioCoordinator_.get();
             uiServices.entitySpawner = entitySpawner_.get();
             uiServices.appearanceComposer = appearanceComposer_.get();
             uiServices.worldLoader = worldLoader_.get();
+            uiServices.renderLocator = renderLocator_.get();
+            // The login screen's expansion picker, handed down as the two
+            // calls it is rather than as a pointer back to Application.
+            uiServices.setAssetExpansionOverride =
+                [this](const std::string& id) { return setAssetExpansionOverride(id); };
+            uiServices.reloadExpansionData = [this] { reloadExpansionData(); };
+            ui::setUiServices(uiServices);
             uiManager->setServices(uiServices);
         }
 

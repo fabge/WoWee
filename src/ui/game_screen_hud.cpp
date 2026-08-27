@@ -1,4 +1,5 @@
 #include "ui/game_screen.hpp"
+#include "ui/render_locator.hpp"
 #include "core/cvar_store.hpp"
 #include "core/config_paths.hpp"
 #include "addons/lua_api_registrations.hpp"
@@ -80,8 +81,7 @@ namespace wowee { namespace ui {
 
 
 void GameScreen::updateCharacterGeosets(game::Inventory& inventory) {
-    auto& app = core::Application::getInstance();
-    auto* renderer = app.getRenderer();
+    auto* renderer = services_.renderer;
     if (!renderer) return;
 
     uint32_t instanceId = renderer->getCharacterInstanceId();
@@ -90,7 +90,7 @@ void GameScreen::updateCharacterGeosets(game::Inventory& inventory) {
     auto* charRenderer = renderer->getCharacterRenderer();
     if (!charRenderer) return;
 
-    auto* assetManager = app.getAssetManager();
+    auto* assetManager = services_.assetManager;
 
     // Load ItemDisplayInfo.dbc for geosetGroup lookup
     std::shared_ptr<pipeline::DBCFile> displayInfoDbc;
@@ -138,7 +138,7 @@ void GameScreen::updateCharacterGeosets(game::Inventory& inventory) {
 
     std::unordered_set<uint16_t> geosets;
     if (appearanceComposer_) {
-        if (auto* gh = app.getGameHandler()) {
+        if (auto* gh = services_.gameHandler) {
             if (const auto* ch = gh->getActiveCharacter()) {
                 const uint8_t raceId = static_cast<uint8_t>(ch->race);
                 const uint8_t sexId = static_cast<uint8_t>(ch->gender);
@@ -260,7 +260,7 @@ void GameScreen::updateCharacterGeosets(game::Inventory& inventory) {
     // the geosets, so turning the cloak off left the cloak's own body geoset on
     // and turning the helm off left the player bald under nothing.
     bool helmShown = true, cloakShown = true;
-    if (auto* gh = app.getGameHandler()) {
+    if (auto* gh = services_.gameHandler) {
         helmShown = gh->isHelmVisible();
         cloakShown = gh->isCloakVisible();
     }
@@ -284,14 +284,14 @@ void GameScreen::updateCharacterGeosets(game::Inventory& inventory) {
     if (hasEquippedType({1}) && helmShown) {
         const uint32_t headDisplayId = findEquippedDisplayId({1});
         uint8_t genderId = 0;
-        if (auto* gh = app.getGameHandler()) {
+        if (auto* gh = services_.gameHandler) {
             if (const auto* ch = gh->getActiveCharacter()) {
                 genderId = static_cast<uint8_t>(ch->gender);
             }
         }
         // A circlet, tiara or crown sits over the hair rather than covering it,
         // and the data says which does what - see core::helmHidesHair.
-        if (auto* assets = app.getAssetManager();
+        if (auto* assets = services_.assetManager;
             assets && core::helmHidesHair(*assets, headDisplayId, genderId)) {
             for (auto it = geosets.begin(); it != geosets.end();) {
                 if (*it != 0 && (*it / 100) == 0) it = geosets.erase(it);
@@ -344,19 +344,23 @@ void GameScreen::updateCharacterGeosets(game::Inventory& inventory) {
 }
 
 void GameScreen::updateCharacterTextures(game::Inventory& inventory) {
-    auto& app = core::Application::getInstance();
-    auto* renderer = app.getRenderer();
+    auto* renderer = services_.renderer;
     if (!renderer) return;
 
     auto* charRenderer = renderer->getCharacterRenderer();
     if (!charRenderer) return;
 
-    auto* assetManager = app.getAssetManager();
+    auto* assetManager = services_.assetManager;
     if (!assetManager) return;
 
-    const auto& bodySkinPath = app.getBodySkinPath();
-    const auto& underwearPaths = app.getUnderwearPaths();
-    uint32_t skinSlot = app.getSkinTextureSlotIndex();
+    static const std::string kNoSkin;
+    const auto& bodySkinPath = services_.appearanceComposer
+                                   ? services_.appearanceComposer->getBodySkinPath() : kNoSkin;
+    static const std::vector<std::string> kNoUnderwear;
+    const auto& underwearPaths = services_.appearanceComposer
+                                     ? services_.appearanceComposer->getUnderwearPaths() : kNoUnderwear;
+    uint32_t skinSlot = services_.appearanceComposer
+                            ? services_.appearanceComposer->getSkinTextureSlotIndex() : 0u;
 
     if (bodySkinPath.empty()) return;
 
@@ -388,7 +392,7 @@ void GameScreen::updateCharacterTextures(game::Inventory& inventory) {
             // Which of _M, _F, _U exists is not recorded anywhere, so the
             // order they are asked in is the rule - pipeline/item_textures.hpp.
             bool isFemale = false;
-            if (auto* gh = app.getGameHandler()) {
+            if (auto* gh = services_.gameHandler) {
                 if (auto* ch = gh->getActiveCharacter()) {
                     isFemale = (ch->gender == game::Gender::FEMALE) ||
                                (ch->gender == game::Gender::NONBINARY && ch->useFemaleModel);
@@ -412,7 +416,8 @@ void GameScreen::updateCharacterTextures(game::Inventory& inventory) {
     }
 
     // Cloak cape texture - separate from skin atlas, uses texture slot type-2 (Object Skin)
-    uint32_t cloakSlot = app.getCloakTextureSlotIndex();
+    uint32_t cloakSlot = services_.appearanceComposer
+                             ? services_.appearanceComposer->getCloakTextureSlotIndex() : 0u;
     if (cloakSlot > 0 && instanceId != 0) {
         // Find equipped cloak (inventoryType 16)
         uint32_t cloakDisplayId = 0;
@@ -437,7 +442,7 @@ void GameScreen::updateCharacterTextures(game::Inventory& inventory) {
                     // pipeline/item_textures.hpp, and the other three places
                     // that load a cape have always used all of it.
                     bool isFemale = false;
-                    if (auto* gh = app.getGameHandler()) {
+                    if (auto* gh = services_.gameHandler) {
                         if (auto* ch = gh->getActiveCharacter()) {
                             isFemale = (ch->gender == game::Gender::FEMALE) ||
                                        (ch->gender == game::Gender::NONBINARY && ch->useFemaleModel);
@@ -465,8 +470,7 @@ void GameScreen::updateCharacterTextures(game::Inventory& inventory) {
 // ============================================================
 
 void GameScreen::renderWorldMap(game::GameHandler& gameHandler) {
-    auto& app = core::Application::getInstance();
-    auto* renderer = app.getRenderer();
+    auto* renderer = services_.renderer;
     if (!renderer) return;
 
     auto* wm = renderer->getWorldMap();
@@ -745,7 +749,7 @@ void GameScreen::renderWorldMap(game::GameHandler& gameHandler) {
 
     glm::vec3 playerPos = renderer->getCharacterPosition();
     float playerYaw = renderer->getCharacterYaw();
-    auto* window = app.getWindow();
+    auto* window = services_.window;
     int screenW = window ? window->getWidth() : 1280;
     int screenH = window ? window->getHeight() : 720;
     wm->render(playerPos, screenW, screenH, playerYaw);
@@ -984,7 +988,8 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
         // Prefer the renderer's actual instance position so the nameplate tracks the
         // rendered model exactly (avoids drift from the parallel entity interpolator).
         glm::vec3 renderPos;
-        if (!core::Application::getInstance().getRenderPositionForGuid(guid, renderPos)) {
+        if (!(services_.renderLocator &&
+              services_.renderLocator->positionForGuid(guid, renderPos))) {
             renderPos = core::coords::canonicalToRender(
                 glm::vec3(unit->getX(), unit->getY(), unit->getZ()));
         }
@@ -1548,7 +1553,8 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
             const std::string& ownName = static_cast<game::Unit*>(self.get())->getName();
             if (!ownName.empty()) {
                 glm::vec3 ownPos;
-                if (!core::Application::getInstance().getRenderPositionForGuid(playerGuid, ownPos)) {
+                if (!(services_.renderLocator &&
+                      services_.renderLocator->positionForGuid(playerGuid, ownPos))) {
                     ownPos = core::coords::canonicalToRender(
                         glm::vec3(self->getX(), self->getY(), self->getZ()));
                 }

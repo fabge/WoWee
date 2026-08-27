@@ -1,4 +1,6 @@
 #include "ui/scene_pick.hpp"
+#include "ui/ui_services.hpp"
+#include "ui/render_locator.hpp"
 
 #include "core/application.hpp"
 #include "core/coordinates.hpp"
@@ -75,7 +77,8 @@ ScenePick pickScene(game::GameHandler& gameHandler,
         glm::vec3 hitCenter;
         float hitRadius = 0.0f;
         const bool hasBounds =
-            core::Application::getInstance().getRenderBoundsForGuid(guid, hitCenter, hitRadius);
+            uiServices().renderLocator &&
+            uiServices().renderLocator->boundsForGuid(guid, hitCenter, hitRadius);
         if (!hasBounds) {
             // Match the hover-cursor sizes, so the reticle agrees with the
             // cursor affordance - otherwise NPCs feel hard to click.

@@ -3,6 +3,8 @@
 // every other surface that draws an item held a reference to the bag window.
 // ============================================================
 #include "ui/item_tooltip.hpp"
+#include "ui/ui_services.hpp"
+#include "game/map_names.hpp"
 
 #include "ui/ui_colors.hpp"
 #include "ui/ui_texture_load.hpp"
@@ -54,7 +56,7 @@ bool canUseItemType(const game::GameHandler& gameHandler,
 /// The item's icon, through the shared cache.
 VkDescriptorSet itemIcon(uint32_t displayInfoId, pipeline::AssetManager* assetManager) {
     return itemIconTexture(displayInfoId, assetManager,
-                           core::Application::getInstance().getWindow());
+                           uiServices().window);
 }
 
 // Render "Classes: Warrior, Paladin" or "Races: Human, Orc" restriction text.
@@ -258,7 +260,7 @@ void renderItemTooltip(const game::ItemDef& item, const game::Inventory* invento
                 homeLocation = gameHandler->getWhoAreaName(zoneId);
             // Fall back to continent name if zone unavailable
             if (homeLocation.empty()) {
-                const char* dn = core::WorldLoader::mapDisplayName(mapId);
+                const char* dn = game::mapDisplayName(mapId);
                 homeLocation = dn ? dn : "Unknown";
             }
             ImGui::TextColored(ImVec4(0.8f, 0.9f, 1.0f, 1.0f), "Home: %s", homeLocation.c_str());
