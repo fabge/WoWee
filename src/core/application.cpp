@@ -65,6 +65,8 @@
 #include "addons/addon_manager.hpp"
 #include "addons/lua_api_helpers.hpp"
 #include <imgui.h>
+#include <imgui_internal.h>
+#include "ui/link_hit.hpp"
 #include "pipeline/m2_loader.hpp"
 #include "pipeline/wmo_loader.hpp"
 #include "pipeline/wmo_group_path.hpp"
@@ -90,6 +92,7 @@
 #include <climits>
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <optional>
 #include <sstream>
 #include <set>
@@ -1517,12 +1520,27 @@ void Application::run() {
             }
             // Typed text, when an addon's edit box is listening for it.
             else if (event.type == SDL_TEXTINPUT) {
+                bool typedIntoBox = false;
                 if (addonManager_ && addonsLoaded_) {
                     if (auto* engine = addonManager_->getLuaEngine();
                         engine && engine->editBoxHasFocus()) {
                         engine->dispatchText(event.text.text);
+                        typedIntoBox = true;
                     }
                 }
+                // Slash opens chat, and it is the *character* that opens it,
+                // not a key position. OPENCHATSLASH is bound to SLASH, which
+                // names the key right of PERIOD on a US board; on a German one
+                // that key types `-` and the slash lives on shift-7, so the
+                // binding could never fire and there was no way into chat by
+                // slash at all. Every layout that can type a slash reaches
+                // this, whatever it has to hold down to do it.
+                //
+                // Reported as a press rather than routed straight to chat so
+                // it lands in the same place a key would, and the guards that
+                // decide whether chat may open at all stay in one piece.
+                if (!typedIntoBox && std::strcmp(event.text.text, "/") == 0)
+                    Input::getInstance().noteBindingCommandPressed("OPENCHATSLASH");
             }
             // Debug controls
             else if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
@@ -4587,8 +4605,29 @@ void Application::render() {
                 const double now = ImGui::GetTime();
                 if (now - lastSaid > 1.0) {
                     lastSaid = now;
-                    LOG_WARNING("WidgetInput: click held over this client's own "
-                                "window, so it was not passed to the interface");
+                    // Which window, by name, and what the interface would have
+                    // been offered instead. "Not passed to the interface" is
+                    // the right answer to the wrong question: the report that
+                    // follows is always "but there is nothing of yours there",
+                    // and without the name there is no way to find the window
+                    // that disagrees. Both halves are cheap and this line runs
+                    // at most once a second while a button is held.
+                    const ImGuiWindow* hovered = ImGui::GetCurrentContext()
+                        ? ImGui::GetCurrentContext()->HoveredWindow : nullptr;
+                    const ImVec2 mouse = ImGui::GetIO().MousePos;
+                    std::string wouldHaveHit = "nothing";
+                    if (auto* eng = addonManager_ ? addonManager_->getLuaEngine() : nullptr) {
+                        float tx = mouse.x, ty = mouse.y;
+                        ui::mouseToTreeSpace(tx, ty, ImGui::GetIO().DisplaySize.y,
+                                             eng->widgets().uiScale());
+                        if (const auto* w = eng->widgets().get(eng->widgets().hitTest(tx, ty)))
+                            wouldHaveHit = w->name.empty() ? "(unnamed frame)" : w->name;
+                    }
+                    LOG_WARNING("WidgetInput: click at (", mouse.x, ",", mouse.y,
+                                ") held over this client's own window '",
+                                hovered && hovered->Name ? hovered->Name : "(unnamed)",
+                                "', so it was not passed to the interface - which "
+                                "would have hit ", wouldHaveHit);
                 }
             }
 

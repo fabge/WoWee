@@ -3788,8 +3788,18 @@ void LuaEngine::dispatchMouse(float x, float y, float screenH, MouseButtons butt
         }
         if (visibleFrames > 0) {
             lastReport = now;
-            LOG_INFO("WidgetInput: mouse=(", x, ",", y, ") hit=", hit,
-                     " hover=", hoverWid_, " mouseEnabled=", mouseFrames,
+            // By name, not by id. The whole point of the line is to be read
+            // beside a report that a particular frame will not take a click,
+            // and an id answers a question nobody asked - matching it back to
+            // a frame means a second run with a debugger attached.
+            const auto* hitW = hit ? widgets_.get(hit) : nullptr;
+            const auto* hoverW = hoverWid_ ? widgets_.get(hoverWid_) : nullptr;
+            auto nameOf = [](const ui::Widget* w) -> const char* {
+                if (!w) return "nothing";
+                return w->name.empty() ? "(unnamed)" : w->name.c_str();
+            };
+            LOG_INFO("WidgetInput: mouse=(", x, ",", y, ") hit=", nameOf(hitW),
+                     " hover=", nameOf(hoverW), " mouseEnabled=", mouseFrames,
                      " visible=", visibleFrames);
         }
     }

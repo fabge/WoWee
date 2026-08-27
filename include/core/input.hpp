@@ -20,6 +20,10 @@ public:
     void beginFrame();
 
     void setBindingCommandHeld(const std::string& command, bool held);
+    /// Report a press with no matching release, for a command whose trigger is
+    /// not a key going down: a typed character, a gesture, a touch control that
+    /// fires once. Held state is untouched, so nothing is left stuck down.
+    void noteBindingCommandPressed(const std::string& command);
     [[nodiscard]] bool isBindingCommandHeld(const std::string& command) const;
     [[nodiscard]] bool isBindingCommandJustPressed(const std::string& command) const;
     void clearBindingCommands();

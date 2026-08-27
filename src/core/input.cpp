@@ -25,6 +25,11 @@ void Input::setBindingCommandHeld(const std::string& command, bool held) {
     }
 }
 
+void Input::noteBindingCommandPressed(const std::string& command) {
+    if (command.empty()) return;
+    pressedBindingCommands_.insert(command);
+}
+
 bool Input::isBindingCommandHeld(const std::string& command) const {
     return heldBindingCommands_.contains(command);
 }
