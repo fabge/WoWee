@@ -144,6 +144,7 @@ hand - fix the tool's docstring and run `tools/tools_readme_check.py --write`.
 | `interface_feature_check.py` | A Lua global tested for truth, where a missing one answers with a no-op. | pinned by sweep_guard |
 | `keybinding_route_check.py` | Keys that stop working the moment their panel is handed over. | pinned by sweep_guard |
 | `lazy_load_latch_check.py` | Lazy loaders that record "loaded" before they have read anything. | pinned by sweep_guard |
+| `library_cycle_check.py` | Mutual dependencies between the subsystem libraries, and how one-sided each is. | run by tools_run_check |
 | `long_function_check.py` | Functions over a length that makes them hard to change safely. | pinned by sweep_guard |
 | `lua_binding_scan.py` | The C++ bodies behind the Lua names the interface calls. | run by tools_run_check |
 | `lua_return_window_check.py` | Bindings that pop after building the values they return. | pinned by sweep_guard |

@@ -249,6 +249,18 @@ public:
         return openSettingsCallback_;
     }
 
+    /// Where the held state of a binding this client performs itself goes.
+    ///
+    /// A binding the client answers is not run as Lua, but its held and
+    /// press-edge state is still recorded from the same resolved binding
+    /// FrameXML displays - camera movement and native action handling consume
+    /// that instead of polling hardcoded keys. Injected rather than reached:
+    /// core::Input::getInstance() here was the whole of the addons -> core edge
+    /// in the library graph, and AGENTS.md says services are hand-wired
+    /// downward rather than reached back up through singletons.
+    using BindingHeldSink = std::function<void(const std::string&, bool)>;
+    void setBindingHeldSink(BindingHeldSink sink) { bindingHeldSink_ = std::move(sink); }
+
     using LuaErrorCallback = std::function<void(const std::string&)>;
     void setLuaErrorCallback(LuaErrorCallback cb) { luaErrorCallback_ = std::move(cb); }
 
@@ -268,6 +280,7 @@ private:
     ui::WidgetTree widgets_;
     game::GameHandler* gameHandler_ = nullptr;
     LuaServices luaServices_;
+    BindingHeldSink bindingHeldSink_;
     LuaErrorCallback luaErrorCallback_;
     /// Distinct Lua errors this session and how often each fired. A handler
     /// that raises on every frame is one entry, not forty thousand.

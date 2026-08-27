@@ -261,6 +261,30 @@ void frameXmlReportUnaccountedElements();
 void frameXmlNoteWorldEntry();
 bool frameXmlWorldEntered();
 
+/**
+ * Is someone typing into the interface that ImGui does not draw?
+ *
+ * There are two interfaces in this client and only one of them is ImGui, so
+ * the io.WantTextInput that everything here used to ask is blind to a chat box
+ * FrameXML draws. It answers false for the whole time someone is typing into
+ * one, and the keys then do double duty: into the box, and into whatever the
+ * key otherwise does. Typing "/logout" opened the quest log on the l and the
+ * social panel on the o, and walked the character on the o's neighbours.
+ *
+ * Asked from several places - bindings, the camera, the sheathe key - so the
+ * answer lives here once rather than at each of them.
+ *
+ * Here rather than beside the keybindings because it is the same question the
+ * rest of this file answers - which of the two interfaces owns something - and
+ * because it was the whole of the rendering -> ui edge in the library graph:
+ * the camera controller asked it, and keybinding_manager.cpp is far too big to
+ * drag into wowee_takeover for one symbol.
+ */
+bool interfaceTakingTypedInput();
+
+/// How to answer the question above. Set once, while the interface is built.
+void setTypedInputProbe(std::function<bool()> probe);
+
 /// Whether the interface has the cursor: a frame that takes the mouse is under
 /// it, or one is holding a press.
 ///

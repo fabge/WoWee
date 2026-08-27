@@ -40,7 +40,6 @@
 #include <fstream>
 #include "core/app_clock.hpp"
 #include "core/config_paths.hpp"
-#include "core/input.hpp"
 #include "core/macos_platform.hpp"
 #include <filesystem>
 #include <lua.h>

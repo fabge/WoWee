@@ -29,7 +29,6 @@
 #include <fstream>
 #include "core/app_clock.hpp"
 #include "core/config_paths.hpp"
-#include "core/input.hpp"
 #ifdef __APPLE__
 #include "core/macos_platform.hpp"
 #endif
@@ -3249,7 +3248,7 @@ bool LuaEngine::dispatchResolvedBinding(int physicalKey, std::string command,
     // camera movement and native action handling consume that state instead of
     // polling hardcoded keys.
     if (clientActsOnBinding(command)) {
-        core::Input::getInstance().setBindingCommandHeld(command, down);
+        if (bindingHeldSink_) bindingHeldSink_(command, down);
         return false;
     }
 

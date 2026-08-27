@@ -176,6 +176,24 @@ void frameXmlNoteMouseOwned(bool owned) {
 }
 bool frameXmlOwnsMouse() { return gMouseOwned.load(std::memory_order_relaxed); }
 
+namespace {
+/// One probe for the whole client, set while the interface is built and read
+/// from every path that has to know whether someone is typing.
+std::function<bool()>& typedInputProbe() {
+    static std::function<bool()> probe;
+    return probe;
+}
+}  // namespace
+
+bool interfaceTakingTypedInput() {
+    const auto& probe = typedInputProbe();
+    return probe && probe();
+}
+
+void setTypedInputProbe(std::function<bool()> probe) {
+    typedInputProbe() = std::move(probe);
+}
+
 namespace { std::atomic<bool> gCombatTextAddOn{false}; }
 
 namespace {

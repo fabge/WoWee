@@ -773,7 +773,6 @@ set(WOWEE_SRC_RENDERING
 
 set(WOWEE_SRC_GAME
     src/game/expansion_profile.cpp
-    src/game/opcode_table.cpp
     src/game/update_field_table.cpp
     src/game/game_handler.cpp
     src/game/game_handler_packets.cpp
@@ -813,7 +812,6 @@ set(WOWEE_SRC_GAME
     src/game/packet_parsers_tbc.cpp
     src/game/packet_parsers_classic.cpp
     src/game/character.cpp
-    src/game/zone_manager.cpp
     src/game/inventory.cpp
 )
 
@@ -1133,6 +1131,39 @@ add_library(wowee_takeover STATIC src/ui/framexml_takeover.cpp)
 target_link_libraries(wowee_takeover PUBLIC wowee_common wowee_base)
 set_target_properties(wowee_takeover PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# ---- wowee_opcodes: the wire protocol's own names ----
+#
+# Which opcode number means what, per expansion, loaded from Data/opcodes. Not
+# a subsystem: src/network needs it to name a packet it has just read, and
+# src/game needs it to build one - which made the whole network -> game edge in
+# the library graph, three symbols against twenty-two the other way.
+#
+# It belongs to neither. The file stays in src/game because that is where the
+# protocol tables live; only which target compiles it has changed. Same shape
+# as wowee_takeover, and for the same reason.
+#
+# Depends on the logger and nothing else.
+add_library(wowee_opcodes STATIC src/game/opcode_table.cpp)
+target_link_libraries(wowee_opcodes PUBLIC wowee_common wowee_base)
+set_target_properties(wowee_opcodes PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---- wowee_zones: which zone a point is in, and what plays there ----
+#
+# ZoneManager reads AreaTable.dbc and the zone music tables and answers where a
+# coordinate is, what the area is called and what should be playing. Measured on
+# 2026-08-27 it depended on the logger and on src/pipeline's DBC reader, and on
+# nothing in src/game at all - while src/audio and src/rendering both read it,
+# which was the whole of the audio -> game edge (4 symbols against 27) and two
+# thirds of rendering -> game.
+#
+# It is not game logic; it is DBC-derived world reference data that three
+# libraries share. The file stays in src/game because moving it would rename its
+# namespace across thirty call sites - only which target compiles it has
+# changed.
+add_library(wowee_zones STATIC src/game/zone_manager.cpp)
+target_link_libraries(wowee_zones PUBLIC wowee_common wowee_base wowee_pipeline)
+set_target_properties(wowee_zones PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # ---- wowee_openformat: the open-format writers ----
 #
 # The .wqt/.wit/... emitters that turn extracted Blizzard data into this
@@ -1310,8 +1341,15 @@ set_target_properties(wowee_openformat PROPERTIES POSITION_INDEPENDENT_CODE ON)
 foreach(_sub math core network auth audio pipeline rendering game ui addons)
     string(TOUPPER "${_sub}" _SUB)
     add_library(wowee_${_sub} STATIC ${WOWEE_SRC_${_SUB}})
-    target_link_libraries(wowee_${_sub} PUBLIC wowee_common wowee_base wowee_takeover)
+    target_link_libraries(wowee_${_sub} PUBLIC wowee_common wowee_base wowee_takeover wowee_opcodes)
     set_target_properties(wowee_${_sub} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endforeach()
+
+# wowee_zones depends on wowee_pipeline, so it is given only to the four
+# libraries that read it rather than to all ten - handing it to wowee_pipeline
+# as well would declare a cycle between the two for no reason.
+foreach(_zone_user audio rendering game ui)
+    target_link_libraries(wowee_${_zone_user} PUBLIC wowee_zones)
 endforeach()
 
 # The headers, attached to one library so IDEs and `install` still see them.

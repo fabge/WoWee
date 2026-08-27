@@ -102,5 +102,17 @@ private:
     bool loadProfile(const std::string& jsonPath, const std::string& dirPath);
 };
 
+/// The registry the client is running against, for the handful of places that
+/// need the active expansion and have no path to the one Application owns.
+///
+/// The same shape as pipeline::setActiveDBCLayout, and for the same reason:
+/// which expansion is active is one answer for the whole process, and the
+/// alternative was an inline in a header reaching Application::getInstance() -
+/// which is what made every translation unit that asked "is this classic?"
+/// into a src/game -> src/core dependency. Set once, by Application, right
+/// after the registry is built.
+void setActiveExpansionRegistry(const ExpansionRegistry* registry);
+[[nodiscard]] const ExpansionRegistry* getActiveExpansionRegistry();
+
 } // namespace game
 } // namespace wowee

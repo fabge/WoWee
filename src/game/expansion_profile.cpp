@@ -310,5 +310,20 @@ bool ExpansionRegistry::loadProfile(const std::string& jsonPath, const std::stri
     return true;
 }
 
+namespace {
+/// One registry for the process. A raw pointer because Application owns the
+/// object and outlives everything that asks.
+const ExpansionRegistry*& activeRegistry() {
+    static const ExpansionRegistry* registry = nullptr;
+    return registry;
+}
+}  // namespace
+
+void setActiveExpansionRegistry(const ExpansionRegistry* registry) {
+    activeRegistry() = registry;
+}
+
+const ExpansionRegistry* getActiveExpansionRegistry() { return activeRegistry(); }
+
 } // namespace game
 } // namespace wowee

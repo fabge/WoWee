@@ -288,6 +288,10 @@ bool Application::initialize() {
     gameServices_.audioCoordinator = audioCoordinator_.get();
     gameServices_.assetManager = assetManager.get();
     gameServices_.expansionRegistry = expansionRegistry_.get();
+    // And the process-wide handle src/game reads for "is this classic?".
+    // See setActiveExpansionRegistry: the alternative was an inline header
+    // asking Application::getInstance(), from four libraries.
+    game::setActiveExpansionRegistry(expansionRegistry_.get());
 
     // Create game handler with explicit service dependencies
     gameHandler = std::make_unique<game::GameHandler>(gameServices_);
@@ -763,6 +767,14 @@ bool Application::initialize() {
                 // script, which is how a script error came to report itself.
                 if (gh) gh->addScriptError(err);
             });
+            // A binding this client performs itself still records its held
+            // state, from the same resolved binding FrameXML displays. Wired
+            // here rather than reached for from src/addons: that call was the
+            // whole of the addons -> core edge in the library graph.
+            addonManager_->getLuaEngine()->setBindingHeldSink(
+                [](const std::string& command, bool down) {
+                    Input::getInstance().setBindingCommandHeld(command, down);
+                });
             // The game-menu button opens this client's settings panel.
             addonManager_->getLuaEngine()->setOpenSettingsCallback([this] {
                 if (auto* uim = uiManager.get()) uim->getGameScreen().openSettings();

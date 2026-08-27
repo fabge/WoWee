@@ -2,6 +2,7 @@
 #include <functional>
 #include <vector>
 #include "ui/keybinding_manager.hpp"
+#include "ui/framexml_takeover.hpp"
 #include "core/logger.hpp"
 #include <fstream>
 #include <sstream>
@@ -66,24 +67,6 @@ bool KeybindingManager::isActionPressed(Action action, bool repeat) {
         if (ImGui::IsKeyPressed(key, repeat)) return true;
     }
     return false;
-}
-
-namespace {
-/// One probe for the whole client, set while the interface is built and read
-/// from every path that has to know whether someone is typing.
-std::function<bool()>& typedInputProbe() {
-    static std::function<bool()> probe;
-    return probe;
-}
-}  // namespace
-
-bool interfaceTakingTypedInput() {
-    const auto& probe = typedInputProbe();
-    return probe && probe();
-}
-
-void setTypedInputProbe(std::function<bool()> probe) {
-    typedInputProbe() = std::move(probe);
 }
 
 namespace {

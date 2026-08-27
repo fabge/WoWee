@@ -2,14 +2,16 @@
 
 #include "game/expansion_profile.hpp"
 #include "game/item_text.hpp"
-#include "core/application.hpp"
 
 namespace wowee {
 namespace game {
 
 inline bool isActiveExpansion(const char* expansionId) {
-    auto& app = core::Application::getInstance();
-    auto* registry = app.getExpansionRegistry();
+    // Through the registry src/game holds itself, not through Application.
+    // This inline is used from src/game, src/addons, src/ui and src/core, and
+    // reaching the composition root from a header made every one of them
+    // depend on it for one bool.
+    const auto* registry = getActiveExpansionRegistry();
     if (!registry) return false;
     auto* profile = registry->getActive();
     if (!profile) return false;
