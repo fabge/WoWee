@@ -117,11 +117,13 @@ Since 2026-08-26 the client is not one target. It is `src/main.cpp` linked again
 - `wowee_common` — an INTERFACE target holding the include paths, third-party links, warning flags and precompiled header. Everything that compiles client code inherits it, so there is one answer to "how is this built" rather than one per target.
 - `wowee_base` — the logger, the app clock, the memory monitor, the writable-path rules and the CVar store. **It depends on nothing of ours, and that is the property to protect**: anything added there becomes reachable from every subsystem at once.
 - `wowee_takeover` — the policy deciding, per UI element, whether this client or FrameXML owns it. Five of the ten libraries consult it.
+- `wowee_opcodes` — `src/game/opcode_table.cpp`. Which opcode number means what, per expansion. `src/network` names a packet with it and `src/game` builds one with it; it belongs to neither.
+- `wowee_zones` — `src/game/zone_manager.cpp`. AreaTable.dbc and the zone music tables. Depends on `wowee_pipeline` and on nothing in `src/game`, and is read by audio, rendering, game and ui, so it is linked into those four rather than all ten.
 - `wowee_openformat` — the `src/pipeline/wowee_*.cpp` writers that turn extracted Blizzard data into this project's own formats. `EXCLUDE_FROM_ALL`, and only `wowee_editor` links it: the client reads what they produce and never calls them, and compiling them into it was 142 objects that contributed no symbol.
 
 **A test should link a subsystem library, not re-enumerate translation units.** `target_link_libraries(test_x PRIVATE wowee_game)` and let the linker work out what it needs; the older targets in `tests/CMakeLists.txt` name `.cpp` files by hand because there was nothing to link, and they go stale. `wowee_common` carries glm, so a target that links a subsystem needs no `wowee_test_link_glm()` call.
 
-The subsystem libraries are declared as a cycle, because the symbol graph is still one — 10 mutual pairs as of 2026-08-26, down from 18. CMake allows cycles among static libraries and repeats the connected component. `TODO.md` ranks what is left by its weakest side. Do not replace the cycle with a hand-written edge list until they are gone: the measurement is macOS-only, a missing edge is a link failure on GNU ld, and CI builds five platforms.
+The subsystem libraries are declared as a cycle, because the symbol graph is still one — 5 mutual pairs as of 2026-08-27, down from 18. Measure them with `tools/library_cycle_check.py <build-dir>` rather than by hand. CMake allows cycles among static libraries and repeats the connected component. `TODO.md` ranks what is left by its weakest side. Do not replace the cycle with a hand-written edge list until they are gone: the measurement is macOS-only, a missing edge is a link failure on GNU ld, and CI builds five platforms.
 
 Minimum validation before pushing a change:
 

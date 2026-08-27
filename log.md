@@ -858,3 +858,49 @@ hundred and eighty small binaries and one three-minute sweep; serially it was th
 longest step in two of the jobs. And `docs/plan-new-mmo.md`'s line counts, which
 were 2025's, were re-measured - `src/ui/` is 34k and FrameXML-driven, not "~42k,
 ImGui-based".
+
+## 2026-08-27 — half the library cycles go
+
+Ten mutual pairs between the subsystem libraries this morning, five now, and the
+measurement is a tool rather than an afternoon with `nm`:
+`tools/library_cycle_check.py` reads the archives, builds the directed graph and
+prints every pair weakest side first. The numbers in `TODO.md` are its output.
+
+The five that went came in two shapes.
+
+**Three singletons reached back up through.** `AGENTS.md` says services are
+hand-wired downward as structs of pointers, and these were the exceptions.
+
+* `Application::instance` from `src/game`. Only one call site looked like one -
+  `warden_handler.cpp`, fixed by reading `owner_.services().expansionRegistry`,
+  which was already there. The rest was `isActiveExpansion` in
+  `game_utils.hpp`: an *inline* asking `Application::getInstance()`, so every
+  translation unit in four libraries that asked "is this classic?" carried a
+  reference to the composition root. It now asks
+  `game::getActiveExpansionRegistry()`, set once by `Application` - the same
+  shape as `pipeline::setActiveDBCLayout`, which was already doing this.
+* `Input::getInstance().setBindingCommandHeld` from `src/addons`, one line in
+  `LuaEngine::dispatchResolvedBinding`. Now a `BindingHeldSink` the composition
+  root wires.
+* `interfaceTakingTypedInput` from `src/rendering`. It moved into
+  `wowee_takeover`, which is where "which of the two interfaces owns this"
+  already lives, rather than dragging `keybinding_manager.cpp` there for one
+  symbol.
+
+**Two files in the wrong target.** `OpcodeTable` is the wire protocol: `src/network`
+wants it to name a packet it has just read and `src/game` wants it to build one,
+and it belongs to neither. `ZoneManager` reads AreaTable.dbc and the zone music
+tables, depends on nothing in `src/game` at all, and is read by `src/audio` and
+`src/rendering`. Each is now its own small target - `wowee_opcodes`,
+`wowee_zones` - exactly as `wowee_takeover` was carved out. The files stay in
+`src/game`; only which target compiles them changed, because moving them would
+rename their namespace across thirty call sites for no gain.
+
+`wowee_zones` is linked into the four libraries that read it rather than all ten:
+it depends on `wowee_pipeline`, and giving it to `wowee_pipeline` too would
+declare a cycle between the two for nothing.
+
+What is left is not more of the same. `rendering -> core` is the camera
+controller polling `core::Input`, which wants telling rather than asking;
+`ui -> core` at 24 and `ui -> addons` at 9 have never been read through;
+`network -> auth` is genuinely mutual crypto. `TODO.md` has the list.

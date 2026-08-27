@@ -34,42 +34,55 @@ None of these is urgent. Each taxes every future change in its area.
 ### Breaking the cycles between the subsystem libraries
 `CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block
 
-**18 cycles on 2026-08-26, 10 now**, and four libraries are acyclic outright:
-`wowee_base`, `wowee_takeover`, `wowee_math`, `wowee_pipeline`. Every fix so
-far was a file in the wrong library, not a call in the wrong place - the
-logger, the memory monitor, the writable-path rules, the app clock, the CVar
-store, `stb_image`'s implementation, and the takeover policy.
+**18 cycles on 2026-08-26, 10 on 2026-08-27 morning, 5 now.** Measure them with
+`tools/library_cycle_check.py <build-dir>` rather than by hand - the numbers
+below are its output, and a claim that an edge is gone can now be checked.
 
-The point of reaching zero is that the libraries can then be declared with
-their real edges instead of as a complete graph, and a test can link a genuine
-subset. What is left, by weakest side:
+Five libraries are acyclic outright: `wowee_math`, `wowee_pipeline`,
+`wowee_audio`, `wowee_network` and `wowee_auth` are each in at most one pair.
+
+What is left, by weakest side:
 
 | cycle | weak side | what it is |
 | --- | --- | --- |
-| `game` → `core` | **1** | `core::Application::instance` |
-| `rendering` → `ui` | **1** | `ui::interfaceTakingTypedInput` |
-| `addons` → `core` | 2 | `core::Input::getInstance`, `setBindingCommandHeld` |
-| `network` → `game` | 3 | `OpcodeTable`, `getActiveOpcodeTable` |
-| `audio` → `game` | 4 | `ZoneManager` |
-| `rendering` → `core` | 7 | |
+| `rendering` → `game` | **3** | `getPlayerModelPath`, `ExpansionRegistry::getActive`, `getActiveExpansionRegistry` |
+| `rendering` → `core` | 7 | `core::Input`, polled by the camera controller |
 | `network` → `auth` | 8 | genuinely mutual |
-| `rendering` → `game` | 8 | |
 | `ui` → `addons` | 9 | |
-| `core` → `ui` | 24 | |
+| `ui` → `core` | 24 | |
 
-The two single-symbol ones are the interesting pair, and neither is a move:
+Five went on 2026-08-27, and they came in two shapes.
 
-- **`Application::instance`** is `game` reaching into the composition root
-  through a global. The fix is injection, not relocation - `AGENTS.md` says
-  services are hand-wired downward as structs of pointers rather than reached
-  back up through singletons, and this is the exception to that rule.
-- **`interfaceTakingTypedInput`** lives in `src/ui/keybinding_manager.cpp`,
-  which is far too big to move for one symbol. Either the query belongs in
-  `wowee_takeover` beside the rest of the ownership policy, or the camera
-  controller should be told rather than asking.
+**Three singletons, fixed by injection.** `Application::instance` reached from
+`src/game` (through an inline in `game_utils.hpp` that made four libraries
+depend on the composition root for one bool), `Input::getInstance` reached from
+`src/addons`, and `interfaceTakingTypedInput` reached from `src/rendering`. Two
+became hand-wired sinks set by `Application` - `LuaEngine::setBindingHeldSink`,
+`game::setActiveExpansionRegistry` - and the third moved into `wowee_takeover`,
+which is where "which of the two interfaces owns this" already lives.
 
-`Input::getInstance` is the same singleton shape as `Application::instance`.
-**~half a day for the three singletons, and it is a design change each time.**
+**Two files in the wrong target.** `OpcodeTable` is the wire protocol, wanted by
+`src/network` to name a packet and `src/game` to build one, and belonging to
+neither; `ZoneManager` reads AreaTable.dbc and needs nothing from `src/game` at
+all, while `src/audio` and `src/rendering` both read it. Each is now its own
+small target - `wowee_opcodes`, `wowee_zones` - the same shape as
+`wowee_takeover`. The files stay where they are; only which target compiles them
+changed.
+
+What is left is not more of the same:
+
+- **`rendering` → `game`** is one real symbol plus two expansion-profile ones.
+  `expansion_profile.cpp` depends on nothing but the logger and would make a
+  clean fourth small target, but on its own it does not remove the pair -
+  `getPlayerModelPath` in `character.cpp` still crosses. Do both or neither.
+- **`rendering` → `core`** is the camera controller polling `core::Input` for
+  keys and binding state. The fix is to tell the camera rather than have it ask,
+  which is a change to how input reaches the renderer.
+- **`ui` → `core`** at 24 and **`ui` → `addons`** at 9 have never been read
+  through. Start by listing them.
+
+The point of reaching zero is that the libraries can then be declared with their
+real edges instead of as a complete graph, and a test can link a genuine subset.
 
 ### The static-library cycle prints a linker warning on every link
 `CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block
