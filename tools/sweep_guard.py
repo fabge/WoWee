@@ -1058,6 +1058,17 @@ CHECKS += [
     # writes outside the stack - GetChildren on UIParent, with 267 of them,
     # died in realloc rather than raising. Canaried by removing each of the
     # three guards in turn; all three are reported.
+    # The same bug has shipped three times: a per-character value written only
+    # from an update field, and never cleared when the character changes. An
+    # update field is sent when the server has a value for it, so a character
+    # who has none of a thing is never told it is zero and keeps the last one's
+    # - a hunter's pet in a mage's spellbook, a mage in the druid's bear form,
+    # a helm hidden on a character who never touched the switch. Reading the
+    # reset block tells you what it clears and not what it forgot; this asks
+    # the other way round.
+    ("character_switch_reset_check.py",
+     r"^(\d+) player field\(s\) the character switch does not clear", 0,
+     "player fields kept from the character before"),
     # Renderer::shutdown() is a hand-written list of thirty owned subsystems,
     # and it exists because ~Renderer is too late: a sub-renderer has to free
     # its VMA allocations before VkContext::shutdown reaches

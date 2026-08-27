@@ -70,6 +70,7 @@ hand - fix the tool's docstring and run `tools/tools_readme_check.py --write`.
 | `binding_arg_coverage_check.py` | Bindings that read fewer arguments than the interface passes. | pinned by sweep_guard |
 | `bootstrap_chunk_check.py` | A bootstrap chunk that uses a local it never declared. | pinned by sweep_guard |
 | `bounded_log_check.py` | A diagnostic meant to fire a few times, whose counter can never advance. | pinned by sweep_guard |
+| `character_switch_reset_check.py` | Player fields the client keeps from the character it was playing before. | pinned by sweep_guard |
 | `chat_line_twice_check.py` | Chat lines this client writes that the interface also writes. | pinned by sweep_guard |
 | `chat_type_coverage_check.py` | Chat types FrameXML can hand SendChatMessage that it does not map. | pinned by sweep_guard |
 | `client_command_bridge_check.py` | This client's own slash commands, and whether FrameXML's chat can reach them. | pinned by sweep_guard |

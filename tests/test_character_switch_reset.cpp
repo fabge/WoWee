@@ -64,6 +64,34 @@ TEST_CASE("a character switch clears the previous character's own fields",
     CHECK(handler.playerTransportStickyTimerRef() == 0.0f);
 }
 
+TEST_CASE("a character switch clears the display switches and the corpse's map",
+          "[character][switch]") {
+    // Found on 2026-08-27 by the sweep this fix came with, once it could see
+    // the player-field applier. All five come home in PLAYER_FLAGS or with the
+    // corpse - and a character whose flags are all zero has no PLAYER_FLAGS to
+    // send, so hiding a helm on one character hid it on the next one who had
+    // never touched the switch.
+    GameServices services{};
+    GameHandler handler(services);
+
+    handler.helmVisibleRef() = false;
+    handler.cloakVisibleRef() = false;
+    handler.isRestingRef() = true;
+    handler.corpseMapIdRef() = 571;      // Northrend
+    handler.repopPendingRef() = true;
+
+    handler.resetStateForCharacterSwitch();
+
+    // Both default to visible: hidden is the choice, shown is the absence of one.
+    CHECK(handler.helmVisibleRef());
+    CHECK(handler.cloakVisibleRef());
+    CHECK_FALSE(handler.isRestingRef());
+    // canRetrieveCorpse compares this against the map the player is on, so a
+    // stale one is a wrong answer about somebody else's corpse.
+    CHECK(handler.corpseMapIdRef() == 0u);
+    CHECK_FALSE(handler.repopPendingRef());
+}
+
 TEST_CASE("a character switch clears the stats the switch already cleared",
           "[character][switch]") {
     // The ones that were already right, so a future tidy-up of that block

@@ -641,6 +641,21 @@ void GameHandler::resetStateForCharacterSwitch() {
     playerManaRegenCasting_ = 0.0f;
     chosenTitleBit_ = -1;
     shapeshiftFormId_ = 0;
+    // The helm and cloak switches, and whether the last character was in an
+    // inn. All three come home in PLAYER_FLAGS - but a character whose flags
+    // are all zero has no PLAYER_FLAGS to send, so hiding a helm on one
+    // character hid it on the next one who had never touched the switch.
+    helmVisible_ = true;
+    cloakVisible_ = true;
+    isResting_ = false;
+    // The corpse's map, which was the one field of the corpse this block did
+    // not clear. canRetrieveCorpse compares it against the map the player is
+    // on, so a stale one is a wrong answer about somebody else's corpse.
+    corpseMapId_ = 0;
+    // And a release-spirit request left in flight. The one-second dedupe in
+    // CombatHandler reads it, so a stale true swallows the new character's
+    // first release.
+    repopPending_ = false;
     // And the boat the *previous* character was standing on. This one keeps a
     // transport alive for a few seconds after the server stops mentioning it,
     // so a stale guid here is a new character riding a transport they are
