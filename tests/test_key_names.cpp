@@ -5,6 +5,13 @@
 #include <SDL2/SDL_keyboard.h>
 #include <SDL2/SDL_mouse.h>
 
+#include <set>
+#include <string>
+
+#ifdef __APPLE__
+#include "core/macos_platform.hpp"
+#endif
+
 using namespace wowee::ui;
 
 // The contract this module exists for. The binding panel names a key one way
@@ -28,15 +35,23 @@ TEST_CASE("the press and the panel name every key identically", "[bindings][keys
 }
 
 TEST_CASE("a keycode and its scancode name the same key", "[bindings][keys]") {
+    // Keys no layout moves. A punctuation key can come back nameless - German
+    // puts a dead accent where ANSI puts =, and PLUS has already gone to the
+    // key that prints + - so those are checked for agreement below rather than
+    // for having a name at all.
     const SDL_Scancode scancodes[] = {
-        SDL_SCANCODE_A,      SDL_SCANCODE_5,     SDL_SCANCODE_F7,
-        SDL_SCANCODE_ESCAPE, SDL_SCANCODE_LEFT,  SDL_SCANCODE_GRAVE,
-        SDL_SCANCODE_EQUALS, SDL_SCANCODE_KP_4,  SDL_SCANCODE_SPACE,
+        SDL_SCANCODE_A,      SDL_SCANCODE_5,    SDL_SCANCODE_F7,
+        SDL_SCANCODE_ESCAPE, SDL_SCANCODE_LEFT, SDL_SCANCODE_KP_4,
+        SDL_SCANCODE_SPACE,
     };
     for (const SDL_Scancode scancode : scancodes) {
         const std::string byScancode = wowKeyNameFromScancode(scancode);
         CHECK_FALSE(byScancode.empty());
         CHECK(wowKeyNameFromKeycode(SDL_GetKeyFromScancode(scancode)) == byScancode);
+    }
+    for (const SDL_Scancode scancode : {SDL_SCANCODE_GRAVE, SDL_SCANCODE_EQUALS}) {
+        CHECK(wowKeyNameFromKeycode(SDL_GetKeyFromScancode(scancode)) ==
+              wowKeyNameFromScancode(scancode));
     }
 }
 
@@ -46,10 +61,12 @@ TEST_CASE("a keycode and its scancode name the same key", "[bindings][keys]") {
 TEST_CASE("keys carry Blizzard's names", "[bindings][keys]") {
     CHECK(wowKeyNameFromScancode(SDL_SCANCODE_LEFT) == "LEFT");
     CHECK(wowKeyNameFromScancode(SDL_SCANCODE_PAGEUP) == "PAGEUP");
-    // The two that ImGui spells GraveAccent and Equal.
-    CHECK(wowKeyNameFromScancode(SDL_SCANCODE_GRAVE) == "TILDE");
-    CHECK(wowKeyNameFromScancode(SDL_SCANCODE_EQUALS) == "PLUS");
-    CHECK(wowKeyNameFromScancode(SDL_SCANCODE_MINUS) == "MINUS");
+    // The two that ImGui spells GraveAccent and Equal. The punctuation keys
+    // themselves follow the layout, so what is asserted is the spelling of the
+    // name rather than which key wears it.
+    CHECK(wowKeyNameForCharacter("`") == "TILDE");
+    CHECK(wowKeyNameForCharacter("=") == "PLUS");
+    CHECK(wowKeyNameForCharacter("-") == "MINUS");
     CHECK(wowKeyNameFromScancode(SDL_SCANCODE_KP_0) == "NUMPAD0");
     CHECK(wowKeyNameFromScancode(SDL_SCANCODE_KP_PLUS) == "NUMPADPLUS");
     // The keypad's Enter is the main Enter to the binding tables.
@@ -76,6 +93,64 @@ TEST_CASE("a letter key names itself under the active layout", "[bindings][keys]
     CHECK(name[0] <= 'Z');
     CHECK(imGuiKeyFromWowName(name) == ImGuiKey_Y);
     CHECK(wowKeyNameFromImGuiKey(ImGuiKey_Y) == name);
+}
+
+// The bug this pass fixed. A German keyboard prints - on the key in the ANSI
+// slash position, and the name followed the position: pressing - ran the SLASH
+// binding, which opens the chat box. What is checked is the rule, on whatever
+// layout the machine running the test is set to.
+TEST_CASE("a key is named for the character it prints", "[bindings][keys]") {
+    // Letters and digits are themselves; the punctuation the interface names
+    // is spelled the interface's way.
+    CHECK(wowKeyNameForCharacter("z") == "Z");
+    CHECK(wowKeyNameForCharacter("7") == "7");
+    CHECK(wowKeyNameForCharacter("/") == "SLASH");
+    CHECK(wowKeyNameForCharacter(",") == "COMMA");
+    CHECK(wowKeyNameForCharacter("\\") == "BACKSLASH");
+    // Both spellings of the key WoW calls PLUS: an ANSI keyboard prints = on
+    // it, a German one prints +.
+    CHECK(wowKeyNameForCharacter("+") == "PLUS");
+
+    // A character with no name, and the multi-byte answers a layout gives for
+    // the sharp s or a dead key.
+    CHECK(wowKeyNameForCharacter("#").empty());
+    CHECK(wowKeyNameForCharacter("").empty());
+    CHECK(wowKeyNameForCharacter("\u00df").empty());  // the sharp s
+
+#ifdef __APPLE__
+    // And the keys themselves, against what this machine's layout prints on
+    // them. Only where the character has a name at all - a key printing the
+    // sharp s keeps its position's name, or none.
+    const SDL_Scancode punctuation[] = {
+        SDL_SCANCODE_MINUS,     SDL_SCANCODE_EQUALS,     SDL_SCANCODE_LEFTBRACKET,
+        SDL_SCANCODE_RIGHTBRACKET, SDL_SCANCODE_BACKSLASH, SDL_SCANCODE_SEMICOLON,
+        SDL_SCANCODE_APOSTROPHE, SDL_SCANCODE_GRAVE,     SDL_SCANCODE_COMMA,
+        SDL_SCANCODE_PERIOD,    SDL_SCANCODE_SLASH,
+    };
+    for (const SDL_Scancode scancode : punctuation) {
+        const std::string printed = wowee::core::localizedKeyName(scancode);
+        const std::string named = wowKeyNameForCharacter(printed);
+        if (named.empty()) continue;
+        INFO("scancode " << static_cast<int>(scancode) << " prints " << printed);
+        CHECK(wowKeyNameFromScancode(scancode) == named);
+    }
+#endif
+}
+
+// Two keys under one name is the same bug wearing the other face: the layout
+// gives - to the slash position, so the minus position cannot answer MINUS as
+// well or one binding fires from either key.
+TEST_CASE("no two keys share a name", "[bindings][keys]") {
+    std::set<std::string> seen;
+    for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k) {
+        const std::string name = wowKeyNameFromImGuiKey(static_cast<ImGuiKey>(k));
+        if (name.empty()) continue;
+        // Enter is the one name two keys share, by design: the keypad's Enter
+        // is the main Enter to the binding tables.
+        if (name == "ENTER") continue;
+        INFO("name " << name << " claimed twice");
+        CHECK(seen.insert(name).second);
+    }
 }
 
 TEST_CASE("mouse buttons carry the interface's numbering", "[bindings][keys]") {

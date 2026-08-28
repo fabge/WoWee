@@ -1956,3 +1956,55 @@ aimed at the caster, on the grounds that an empty `SpellCastTargets` is
 `TARGET_FLAG_SELF` on the wire and the server reads that as "the caster is the
 target". Both are in this merge; whether they touch that report is for the next
 session to say.
+
+## Punctuation keys follow the layout, not the ANSI position
+
+Reported: pressing `-` on a German keyboard opened the chat box.
+
+The whole cause is one line of the previous keyboard pass: the layout was asked
+what a key prints, and the answer was used **only when it was a letter or a
+digit**. On German QWERTZ the key that prints `-` is the ANSI slash position,
+so it kept the name `SLASH` - and `SLASH` opens chat with a slash typed into
+it. Every punctuation key was named for the ANSI key it sits under rather than
+for what it prints. `+` was `RIGHTBRACKET`, `#` was `BACKSLASH`, `<` was
+`TILDE`.
+
+Naming a key by what it prints cannot be done one key at a time, which is why
+`layoutNames()` resolves the whole keyboard at once. Once the slash position
+takes the name `MINUS`, the ANSI minus position - which prints the sharp s -
+cannot keep `MINUS` as well: two keys under one name is a binding that fires
+from whichever the reverse lookup finds first, the same bug wearing the other
+face. So the layout is asked first and the ANSI position fills in only the
+names the layout did not already hand out; a key left with neither is
+unbindable, which is honest, rather than a second copy of another key.
+
+On this machine's German layout that resolves to:
+
+| ANSI position | prints | name |
+|---|---|---|
+| MINUS | ß | *(none)* |
+| PLUS | ´ | *(none)* |
+| RIGHTBRACKET | + | PLUS |
+| SLASH | - | MINUS |
+| GRAVE | < | TILDE |
+| LEFTBRACKET, BACKSLASH, SEMICOLON, APOSTROPHE | ü # ö ä | unchanged |
+
+The two nameless ones are the dead accent and the sharp s: the interface has no
+KEY_ entry either could wear, and both would otherwise have been a duplicate.
+
+The resolved table is cached against `core::keyboardLayoutIdentifier()`, so
+switching input source mid-session renames the keyboard rather than leaving the
+old layout's answers in place.
+
+Two things were checked rather than assumed. SDL's macOS keymap carries Unicode
+keycodes - the sharp s key reports `0xDF`, not `SDLK_MINUS` - so the
+keycode/scancode round trip `wowKeyNameFromKeycode` depends on is lossless and
+the two keys stay distinct. And `layoutKeyLabels()` now labels the resolved
+name, so the interface shows `-` on MINUS instead of on the sharp s.
+
+`tests/test_key_names.cpp` gained the rule (`wowKeyNameForCharacter`, checkable
+on any layout), the keys themselves against whatever this machine prints, and a
+uniqueness pass that would have failed on the duplicate. Three assertions there
+had pinned punctuation to ANSI positions and could only ever have held on a US
+keyboard; they now assert the spelling of the name rather than which key wears
+it.

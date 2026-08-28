@@ -23,14 +23,22 @@
 /// stand for themselves.
 namespace wowee::ui {
 
+/// The binding name for a character a key prints, or empty when the interface
+/// has no name for it. Letters and digits stand for themselves, uppercased;
+/// the punctuation the interface names is spelled its way, so - is MINUS and
+/// the backtick is TILDE. Anything longer than one byte - an accented letter,
+/// a dead key - names nothing.
+[[nodiscard]] std::string wowKeyNameForCharacter(const std::string& printed);
+
 /// The name for a physical key, or empty for one the interface cannot bind.
 ///
 /// Where the platform can say what character a key produces under the active
-/// layout, that character wins for letters and digits: on German QWERTZ the
-/// key in the ANSI Y position is Z, and binding it has to record Z. Only a
-/// single ASCII alphanumeric is taken from the layout - the punctuation
-/// positions produce things like ß and é, which are not names any binding
-/// table knows.
+/// layout, that character wins: on German QWERTZ the key in the ANSI Y
+/// position is Z, and the key in the ANSI slash position prints -, so it is
+/// MINUS rather than SLASH. A key whose character has no name keeps the name
+/// of the ANSI position it sits in - unless the layout already handed that
+/// name to another key, in which case it has none, because two keys under one
+/// name is a binding that fires from the wrong key.
 [[nodiscard]] std::string wowKeyNameFromScancode(int sdlScancode);
 
 /// The same, for the keycode an SDL key event carries.

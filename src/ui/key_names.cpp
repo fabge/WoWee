@@ -5,6 +5,7 @@
 
 #include <cctype>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #ifdef __APPLE__
@@ -109,26 +110,97 @@ const std::vector<KeyEntry>& keyTable() {
     return table;
 }
 
-}  // namespace
-
-std::string wowKeyNameFromScancode(int sdlScancode) {
+/// The name resolved for every key in the table, in the table's own order,
+/// under the keyboard layout in use.
+///
+/// SDL and ImGui both name the physical ANSI position, and a binding has to
+/// carry the character the key actually prints - so this is resolved once for
+/// the whole keyboard rather than per key. It has to be the whole keyboard,
+/// because the answer for one key decides the answer for another: on German
+/// QWERTZ the ANSI slash position prints -, which makes it MINUS, and the ANSI
+/// minus position, whose key prints the sharp s, therefore cannot keep the
+/// name MINUS as well. Two
+/// keys under one name is a binding that fires from the wrong key, which is
+/// exactly the bug - pressing - opened chat, because - sat in the slash
+/// position and SLASH is bound to chat.
+///
+/// So the layout is asked first and position fills in only what is left over:
+///
+///   1. every key the layout gives a nameable character takes that name,
+///   2. every other key keeps its position's name, unless step 1 gave that
+///      name away - then it has no name, and cannot be bound. The sharp s
+///      and the acute accent land here on German; both would otherwise be a
+///      second MINUS and a second PLUS.
+const std::vector<std::string>& layoutNames() {
+    const auto& table = keyTable();
 #ifdef __APPLE__
-    // SDL and ImGui both name the physical ANSI position. The binding has to
-    // record the character printed on the key under the layout in use, or
-    // German QWERTZ records and displays its Z as Y.
-    //
-    // Only a single ASCII alphanumeric: the layout answers ß for the MINUS
-    // position and é for others, and those are not names the interface knows.
-    if (std::string localized = core::localizedKeyName(sdlScancode);
-        localized.size() == 1) {
-        const auto value = static_cast<unsigned char>(localized[0]);
-        if (std::isalnum(value)) {
-            return std::string(1, static_cast<char>(std::toupper(value)));
+    static std::vector<std::string> resolved;
+    static std::string resolvedFor = "\x01";  // no layout answers this
+    if (const std::string layout = core::keyboardLayoutIdentifier();
+        resolved.empty() || layout.empty() || layout != resolvedFor) {
+        resolvedFor = layout;
+        resolved.assign(table.size(), std::string());
+        std::unordered_set<std::string> claimed;
+        for (size_t i = 0; i < table.size(); ++i) {
+            resolved[i] = wowKeyNameForCharacter(core::localizedKeyName(table[i].scancode));
+            if (!resolved[i].empty()) claimed.insert(resolved[i]);
+        }
+        for (size_t i = 0; i < table.size(); ++i) {
+            if (resolved[i].empty() && !claimed.contains(table[i].name)) {
+                resolved[i] = table[i].name;
+            }
         }
     }
+    return resolved;
+#else
+    // Nothing here can say what the keys print, so the ANSI position is the
+    // only answer there is.
+    static const std::vector<std::string> resolved = [&] {
+        std::vector<std::string> names;
+        names.reserve(table.size());
+        for (const auto& entry : table) names.push_back(entry.name);
+        return names;
+    }();
+    return resolved;
 #endif
-    for (const auto& entry : keyTable()) {
-        if (entry.scancode == sdlScancode) return entry.name;
+}
+
+}  // namespace
+
+std::string wowKeyNameForCharacter(const std::string& printed) {
+    // Accented letters and the dead keys are several bytes; none names a key.
+    if (printed.size() != 1) return {};
+    const auto value = static_cast<unsigned char>(printed[0]);
+    if (std::isalnum(value) != 0) {
+        return std::string(1, static_cast<char>(std::toupper(value)));
+    }
+    // The punctuation the interface has a name for. Two characters answer
+    // PLUS because two layouts disagree about which one that key prints: the
+    // ANSI keyboard WoW's names were written for prints =, and a German one
+    // prints + on the key next to it.
+    switch (printed[0]) {
+        case '-':  return "MINUS";
+        case '=':
+        case '+':  return "PLUS";
+        case '[':  return "LEFTBRACKET";
+        case ']':  return "RIGHTBRACKET";
+        case '\\': return "BACKSLASH";
+        case ';':  return "SEMICOLON";
+        case '\'': return "APOSTROPHE";
+        case '`':
+        case '~':  return "TILDE";
+        case ',':  return "COMMA";
+        case '.':  return "PERIOD";
+        case '/':  return "SLASH";
+        default:   return {};
+    }
+}
+
+std::string wowKeyNameFromScancode(int sdlScancode) {
+    const auto& table = keyTable();
+    const auto& names = layoutNames();
+    for (size_t i = 0; i < table.size(); ++i) {
+        if (table[i].scancode == sdlScancode) return names[i];
     }
     return {};
 }
@@ -138,16 +210,20 @@ std::string wowKeyNameFromKeycode(int sdlKeycode) {
 }
 
 std::string wowKeyNameFromImGuiKey(ImGuiKey key) {
-    for (const auto& entry : keyTable()) {
-        if (entry.imguiKey == key) return wowKeyNameFromScancode(entry.scancode);
+    const auto& table = keyTable();
+    const auto& names = layoutNames();
+    for (size_t i = 0; i < table.size(); ++i) {
+        if (table[i].imguiKey == key) return names[i];
     }
     return {};
 }
 
 ImGuiKey imGuiKeyFromWowName(const std::string& name) {
     if (name.empty()) return ImGuiKey_None;
-    for (const auto& entry : keyTable()) {
-        if (wowKeyNameFromScancode(entry.scancode) == name) return entry.imguiKey;
+    const auto& table = keyTable();
+    const auto& names = layoutNames();
+    for (size_t i = 0; i < table.size(); ++i) {
+        if (names[i] == name) return table[i].imguiKey;
     }
     return ImGuiKey_None;
 }
@@ -155,13 +231,17 @@ ImGuiKey imGuiKeyFromWowName(const std::string& name) {
 std::vector<std::pair<std::string, std::string>> layoutKeyLabels() {
     std::vector<std::pair<std::string, std::string>> labels;
 #ifdef __APPLE__
-    for (const auto& entry : keyTable()) {
-        // Only the keys named by position. A letter or a digit is its own
-        // label, and the interface has no KEY_ entry for either.
-        if (entry.name.size() <= 1) continue;
-        std::string label = core::localizedKeyLabel(entry.scancode);
-        if (label.empty() || label == entry.name) continue;
-        labels.emplace_back(entry.name, std::move(label));
+    const auto& table = keyTable();
+    const auto& names = layoutNames();
+    for (size_t i = 0; i < table.size(); ++i) {
+        // Only the keys named by position, under the name this layout actually
+        // resolved for them. A letter or a digit is its own label, and the
+        // interface has no KEY_ entry for either; a key the layout left
+        // nameless has nothing to label.
+        if (names[i].size() <= 1) continue;
+        std::string label = core::localizedKeyLabel(table[i].scancode);
+        if (label.empty() || label == names[i]) continue;
+        labels.emplace_back(names[i], std::move(label));
     }
 #endif
     return labels;

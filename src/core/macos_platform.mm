@@ -130,5 +130,18 @@ std::string localizedKeyLabel(int sdlScancode) {
     }
 }
 
+std::string keyboardLayoutIdentifier() {
+    @autoreleasepool {
+        TISInputSourceRef source = TISCopyCurrentKeyboardLayoutInputSource();
+        if (!source) return {};
+        auto* identifier = static_cast<NSString*>(
+            TISGetInputSourceProperty(source, kTISPropertyInputSourceID));
+        std::string value;
+        if (const char* utf8 = [identifier UTF8String]) value = utf8;
+        CFRelease(source);
+        return value;
+    }
+}
+
 } // namespace core
 } // namespace wowee

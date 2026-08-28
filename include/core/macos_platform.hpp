@@ -35,6 +35,14 @@ std::string localizedKeyName(int sdlScancode);
 /// rather than ä. Empty for keys with no printable layout mapping.
 std::string localizedKeyLabel(int sdlScancode);
 
+/// Which keyboard layout the two calls above are currently answering for.
+///
+/// Opaque, and only ever compared with itself: a caller that resolves the whole
+/// keyboard once needs to know when the player has switched input source, and
+/// nothing else about it. Empty when the layout cannot be identified, which
+/// asks the caller to resolve again rather than to trust what it holds.
+std::string keyboardLayoutIdentifier();
+
 } // namespace core
 } // namespace wowee
 
