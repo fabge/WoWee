@@ -2044,3 +2044,67 @@ appear, and staticpopup.lua's own functions (`StaticPopup_Visible`,
 create them - the session log has presses landing on `StaticPopup1Button1` - so
 this is a hole in the harness, not in the client, and it is why the check above
 had to be run against a frame built by hand. Filed in TODO.md.
+
+## The world map's quest markers, and why clicking a quest did nothing
+
+Reported: the map shows nothing about where to go, and clicking a quest in the
+list neither moves the map nor marks anything.
+
+The session log names it outright, once per map update:
+
+    QuestPOI.lua:200: attempt to index local 'poiButton' (a nil value)
+      in QuestPOI_HideButtons
+      in WorldMapFrame_ClearQuestPOIs
+      in WorldMapFrame_UpdateQuests
+      in WorldMapFrame_DisplayQuests
+      in WorldMapFrame_UpdateMap
+
+`WorldMapFrame_UpdateMap` is the whole map update - name, dropdowns, quest
+list, markers - and it raised on its first statement's descendants every time.
+That is both reports: no markers, and a click that runs `WorldMapFrame_UpdateMap`
+and dies before it changes anything.
+
+`QuestPOI_HideButtons` walks `1 .. QUEST_POI_BUTTONS_MAX[...]` and indexes each
+`_G["poi"..parent..type.."_"..i]` with no nil check, so the button range has to
+be dense. `WorldMapFrame_DisplayQuestPOI` numbers a completed quest by its
+visible index and an incomplete one by `index - numCompletedQuests`, which is
+dense only when the completed quests come first.
+
+`orderQuestPoisForFrameXml` already existed to arrange exactly that, from the
+fix of 2026-08-24 - and it was judging "completed" by the quest log while the
+map judges it by its own rule:
+
+    if     ( isComplete and isComplete < 0 ) then isComplete = false;
+    elseif ( numObjectives == 0 and playerMoney >= requiredMoney ) then
+                                                  isComplete = true;
+    end
+
+A quest whose objectives never arrived has none, so the map calls it complete
+and the quest log does not. Two of those sat at positions eight and nine of the
+list in the screenshot - Winterhoof Cleansing and The Forgotten Pools, both
+drawn with the completed icon and both left in the incomplete half by the
+partition. That put the completed buttons at 1-5, 8, 9 with nothing at 6 or 7,
+and the next hide pass indexed the gap.
+
+The rule now lives beside the ordering as `worldMapCountsQuestComplete`, spelled
+the way WorldMapFrame_UpdateQuests spells it, and the ordering's own comment
+says it must be judged that way - because judging it any other way is precisely
+what reopened this.
+
+The test is the property rather than an example: walk the ordered list exactly
+as `WorldMapFrame_UpdateQuests` walks it, produce both index sequences, and
+require each to be dense from one. Pinned for the session's own shape, and then
+for every arrangement of five quests against every set of completed ones - 3840
+orderings, which is cheap and leaves nothing to pick an example badly.
+
+Two things in the same report are **not** fixed and are not this:
+
+- The Zone dropdown is empty, and the map will not enter zone view. The log says
+  `GetMapZones(1): the map lists no zones on that continent` on every open, so
+  `WorldMapFacade::zoneNames(1)` is returning nothing - either
+  `continentZoneIdx` fails to find Kalimdor's `areaID == 0` row or
+  `zoneBelongsToContinent` rejects every zone against it. Not narrowed further.
+- "Camp Taurajo is elongated" is the continent art stretched to the frame, which
+  is what is on screen *because* of the point above: with no zone to enter, the
+  map stays on the continent and the flags scattered across it are zone-relative
+  POI coordinates drawn on a continent projection.
