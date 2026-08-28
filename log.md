@@ -1560,3 +1560,37 @@ path: FrameXML never loads, every interface global answers from the missing-API
 stub, and the run reads as a client with no tracker. And `VARIABLES_LOADED`
 never fires there, so `WATCHFRAME_FILTER_TYPE` sits at watchframe.lua's own `0`
 rather than the `3` the `trackerFilter` CVar supplies.
+
+## 2026-08-28 — the jump grunt, and every other clip the character owns
+
+The same session log answered the second open report in one line:
+
+```
+Jump sound: nothing played - the audio engine is up: yes, clips loaded: 0,
+voice profile: never chosen
+```
+
+`ActivitySoundManager::setCharacterVoiceProfile` opened with
+`if (!assetManager) return;`, dropping the request outright when the audio
+manager had not been initialised yet. The player spawn asks for the profile and
+`Renderer` initialises the audio managers during world load; which of those two
+happens first depends on how the world loaded, and when it went the wrong way
+the request was thrown away and never made again - so the profile stayed
+"never chosen" with the engine running perfectly.
+
+The mirror of it was there too. `initialize()` begins with `shutdown()`, which
+empties every clip vector, and the character's clips are loaded only from the
+spawn - so a re-initialise left them empty while `voiceProfileKey` still
+matched, and the next `setCharacterVoiceProfile` returned early on that key
+without reloading anything.
+
+The profile is a *request* now - folder, base and gender, held separately from
+the loaded clips. `setCharacterVoiceProfile` records it before it checks
+whether it can act on it, `initialize()` reapplies whatever is on record once
+the assets are up, and the key guard on the model-name overload also requires
+the clips to still be there. The order of spawn and initialise stops mattering.
+
+This is the jump grunt, the swim strokes, the hard landing, the attack grunts,
+the wound and death vocals - every clip filed under the character's own voice.
+No regression test: the whole path is `AssetManager` file reads, and a fake for
+it would be testing the fake.

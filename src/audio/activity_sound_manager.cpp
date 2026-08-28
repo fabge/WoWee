@@ -53,6 +53,12 @@ bool ActivitySoundManager::initialize(pipeline::AssetManager* assets) {
     });
 
     initialized = true;
+
+    // The character's own clips, if a profile was already asked for. shutdown()
+    // above emptied them and only the spawn ever sets them, so without this a
+    // re-initialise leaves the player mute for the rest of the session.
+    reloadVoiceProfileClips();
+
     core::Logger::getInstance().info("Activity SFX loaded: jump=", jumpClips.size(),
                                      " splash=", splashEnterClips.size(),
                                      " swimLoop=", swimLoopClips.size());
@@ -334,6 +340,14 @@ void ActivitySoundManager::setSwimmingState(bool swimming, bool moving) {
     }
 }
 
+void ActivitySoundManager::reloadVoiceProfileClips() {
+    if (!assetManager || voiceProfileKey.empty()) return;
+    rebuildJumpClipsForProfile(voiceProfileFolder, voiceProfileBase, voiceProfileMale);
+    rebuildSwimLoopClipsForProfile(voiceProfileFolder, voiceProfileBase, voiceProfileMale);
+    rebuildHardLandClipsForProfile(voiceProfileFolder, voiceProfileBase, voiceProfileMale);
+    rebuildCombatVocalClipsForProfile(voiceProfileFolder, voiceProfileBase, voiceProfileMale);
+}
+
 void ActivitySoundManager::setCharacterVoiceProfile(const std::string& modelName) {
     if (!assetManager || modelName.empty()) return;
 
@@ -371,13 +385,16 @@ void ActivitySoundManager::setCharacterVoiceProfile(const std::string& modelName
         }
     }
 
-    std::string key = folder + "|" + base + "|" + (male ? "M" : "F");
-    if (key == voiceProfileKey) return;
+    const std::string key = folder + "|" + base + "|" + (male ? "M" : "F");
+    // The same profile is worth reloading when its clips are gone. shutdown()
+    // empties them and initialize() begins with shutdown(), so a guard on the
+    // key alone turned a re-initialise into permanent silence.
+    if (key == voiceProfileKey && !jumpClips.empty()) return;
     voiceProfileKey = key;
-    rebuildJumpClipsForProfile(folder, base, male);
-    rebuildSwimLoopClipsForProfile(folder, base, male);
-    rebuildHardLandClipsForProfile(folder, base, male);
-    rebuildCombatVocalClipsForProfile(folder, base, male);
+    voiceProfileFolder = folder;
+    voiceProfileBase = base;
+    voiceProfileMale = male;
+    reloadVoiceProfileClips();
     core::Logger::getInstance().info("Activity SFX voice profile: ", voiceProfileKey,
                                      " jump clips=", jumpClips.size(),
                                      " swim clips=", swimLoopClips.size(),
@@ -388,14 +405,18 @@ void ActivitySoundManager::setCharacterVoiceProfile(const std::string& modelName
 }
 
 void ActivitySoundManager::setCharacterVoiceProfile(const std::string& raceFolder, const std::string& raceBase, bool male) {
-    if (!assetManager) return;
-    std::string key = raceFolder + "|" + raceBase + "|" + (male ? "M" : "F");
-    if (key == voiceProfileKey) return;
+    // Recorded whether or not it can be acted on now. The spawn and the audio
+    // manager's initialise happen in either order depending on how the world
+    // loaded, and dropping the request when the assets are not up yet is how
+    // the profile ended up "never chosen" with the engine running.
+    const std::string key = raceFolder + "|" + raceBase + "|" + (male ? "M" : "F");
     voiceProfileKey = key;
-    rebuildJumpClipsForProfile(raceFolder, raceBase, male);
-    rebuildSwimLoopClipsForProfile(raceFolder, raceBase, male);
-    rebuildHardLandClipsForProfile(raceFolder, raceBase, male);
-    rebuildCombatVocalClipsForProfile(raceFolder, raceBase, male);
+    voiceProfileFolder = raceFolder;
+    voiceProfileBase = raceBase;
+    voiceProfileMale = male;
+    if (!assetManager) return;
+
+    reloadVoiceProfileClips();
     core::Logger::getInstance().warning("Activity SFX voice profile (explicit): ", voiceProfileKey,
                                      " jump clips=", jumpClips.size(),
                                      " swim clips=", swimLoopClips.size(),

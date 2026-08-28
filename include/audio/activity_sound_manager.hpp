@@ -75,7 +75,19 @@ private:
     std::chrono::steady_clock::time_point lastWoundAt{};
     std::chrono::steady_clock::time_point lastSwimStrokeAt{};
     bool meleeSwingWarned = false;
+    // The character's voice, kept as a *request* rather than as loaded state.
+    //
+    // initialize() begins with shutdown(), which empties every clip vector, and
+    // the character's own clips are only ever loaded from the spawn - so a
+    // re-initialise after spawn left the jump grunt, the swim strokes, the hard
+    // landing and every combat vocal silent, with setCharacterVoiceProfile
+    // returning early on the next call because the key still matched. Holding
+    // the request means initialize() can reapply it and the order of the two
+    // stops mattering.
     std::string voiceProfileKey;
+    std::string voiceProfileFolder;
+    std::string voiceProfileBase;
+    bool voiceProfileMale = true;
     float volumeScale = 1.0f;
 
     void preloadCandidates(std::vector<Sample>& out, const std::vector<std::string>& candidates);
@@ -84,6 +96,8 @@ private:
     void rebuildSwimLoopClipsForProfile(const std::string& raceFolder, const std::string& raceBase, bool male);
     void rebuildHardLandClipsForProfile(const std::string& raceFolder, const std::string& raceBase, bool male);
     void rebuildCombatVocalClipsForProfile(const std::string& raceFolder, const std::string& raceBase, bool male);
+    /// Load every clip the stored voice-profile request names. No-op with no request.
+    void reloadVoiceProfileClips();
     bool playSplash(const std::vector<Sample>& clips);
     void startSwimLoop();
     void stopSwimLoop();
