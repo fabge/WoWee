@@ -1776,7 +1776,19 @@ int lua_Tooltip_SetOwner(lua_State* L) {
 /// shared SetText can hand off and stop.
 int lua_Tooltip_SetText(lua_State* L) {
     auto* w = widgetOf(L, 1);
-    if (!w || !w->isTooltip) { lua_pushboolean(L, 0); return 1; }
+    // A GameTooltip is one before anything has been put in it.
+    //
+    // isTooltip was set by the fillers alone - AddLine, SetOwner, each
+    // SetSomething - so a tooltip that had never been filled refused its own
+    // SetText, and the frame metatable then took that "no" as "this is not a
+    // tooltip" and stored the words where a button keeps its label. The first
+    // line of every tooltip is a SetText, which is the title: the name of the
+    // buff, the item, the spell. Once anything had AddLine'd on that widget it
+    // worked for the rest of the session, so what it looked like was a
+    // tooltip that sometimes had no title.
+    const bool isTooltipFrame = w && (w->isTooltip || w->objectType == "GameTooltip");
+    if (!isTooltipFrame) { lua_pushboolean(L, 0); return 1; }
+    w->isTooltip = true;
     w->tooltipLines.clear();
     wowee::ui::Widget::TooltipLine line;
     line.left = luaL_optstring(L, 2, "");
@@ -3527,7 +3539,19 @@ int lua_FontString_SetTextHeight(lua_State* L) {
 }
 
 int lua_FontString_SetFontObject(lua_State* L) {
-    applyFontObject(L, 2, widgetOf(L, 1));
+    // On a button this is the label's font, the same redirect SetTextColor
+    // makes; on an edit box or a message frame there is no label and the font
+    // belongs to the frame itself, which is what draws the text.
+    auto* tree = wowee::addons::getWidgetTree(L);
+    wowee::ui::Widget* w = widgetOf(L, 1);
+    if (w && w->kind != wowee::ui::WidgetKind::FontString && tree) {
+        lua_getfield(L, 1, "__fontString");
+        if (lua_istable(L, -1)) {
+            if (auto* fs = tree->get(widgetIdOf(L, lua_gettop(L)))) w = fs;
+        }
+        lua_pop(L, 1);
+    }
+    applyFontObject(L, 2, w);
     return 0;
 }
 
@@ -3644,6 +3668,20 @@ void installRegionMethods(lua_State* L, bool isTexture, bool isFontString) {
     set("GetObjectType", lua_Region_GetObjectType);
     set("IsObjectType", lua_Region_IsObjectType);
     set("GetNumPoints", lua_Region_GetNumPoints);
+    // A region may animate itself - the achievement banner's glow and shine
+    // are textures with an animIn of their own. These live on the frame
+    // metatable as Lua functions; a region keeps its methods on itself, so
+    // they are copied off the globals the animation bootstrap published. Absent
+    // before the bootstrap has run, which is only true of regions built during
+    // engine start-up, and those declare no animations.
+    for (const char* name : {"CreateAnimationGroup", "StopAnimating"}) {
+        lua_getglobal(L, (std::string("__Wowee") +
+                          (std::strcmp(name, "StopAnimating") == 0
+                               ? "StopAnimating"
+                               : "CreateAnimationGroup")).c_str());
+        if (lua_isfunction(L, -1)) lua_setfield(L, -2, name);
+        else                       lua_pop(L, 1);
+    }
     set("GetScale", lua_Region_GetScale);
     set("SetScale", lua_Region_SetScale);
     set("GetEffectiveScale", lua_Region_GetEffectiveScale);

@@ -4,6 +4,7 @@
 #include "ui/xml_parser.hpp"
 
 #include <algorithm>
+#include <set>
 #include <sstream>
 
 namespace wowee {
@@ -146,6 +147,11 @@ std::string scriptPrelude(const std::string& script) {
 
 struct Emitter {
     EmitResult result;
+    /// Virtual frames declared in this file, so an element written as one of
+    /// their names is known to be a template rather than a typo. A template
+    /// from another file is not in here and still reports itself - the frame is
+    /// built either way, and the report is what says the name was a guess.
+    std::set<std::string> virtualFrames;
     int temp = 0;
     /// True while emitting a template body. Inside one the owning frame is not
     /// known until the template is replayed, so $parent has to be resolved then
@@ -328,6 +334,16 @@ struct Emitter {
         }
         if (const XmlNode* anchors = node.child("Anchors"))
             emitAnchors(*anchors, var, parentVar, parentName);
+        // A texture may animate itself. See emitAnimations: the achievement
+        // banner's glow and shine are textures with an animIn of their own, and
+        // losing them took the banner's whole fade-out with them.
+        //
+        // $parent inside those is the region, not the frame holding it - the
+        // glow's group is AchievementAlertFrame1GlowAnimIn - so the name the
+        // substitution is made against is the region's own.
+        const std::string regionName =
+            substituteParent(node.attrOr("name", ""), parentName);
+        emitAnimations(node, var, regionName.empty() ? parentName : regionName);
     }
 
     /// A virtual Texture or FontString: recorded, not built, and replayed onto
@@ -391,6 +407,154 @@ struct Emitter {
                 emitRegion(*child, var, name, slot.layer, slot.isTexture);
             line(var + ":" + slot.setter + "(" + regionVar + ")");
         }
+    }
+
+    /// <Animations> - one or more <AnimationGroup>, each holding <Alpha>,
+    /// <Translation> and friends.
+    ///
+    /// Asked of regions as well as of frames, because a Texture may declare
+    /// one. The achievement banner is what that costs: its glow and its shine
+    /// are textures with an animIn of their own, and AlertFrame_AnimateIn plays
+    /// all three in a row - so with the texture groups dropped, the second call
+    /// raised on a nil and everything after it was lost, including the
+    /// waitAndAnimOut that hides the banner. It appeared and stayed for the
+    /// rest of the session.
+    void emitAnimations(const XmlNode& node, const std::string& var,
+                        const std::string& name) {
+        // <Animations> - one or more <AnimationGroup>, each holding <Alpha>,
+        // <Translation> and friends. The group is a Lua object rather than a
+        // widget, so this emits the calls a script would make.
+        for (const XmlNode& anims : node.children) {
+            if (anims.name != "Animations") continue;
+            for (const XmlNode& group : anims.children) {
+                if (group.name != "AnimationGroup") continue;
+                const std::string gvar = nextVar();
+                const std::string gname = substituteParent(
+                    group.attrOr("name", ""), name);
+                line(gvar + " = " + var + ":CreateAnimationGroup(" +
+                     (gname.empty() ? "nil" : quote(gname)) + ")");
+                if (const std::string* loop = group.attr("looping")) {
+                    line(gvar + ":SetLooping(" + quote(*loop) + ")");
+                }
+                if (const std::string* pk = group.attr("parentKey")) {
+                    line(var + "." + *pk + " = " + gvar);
+                }
+                for (const XmlNode& gs : group.children) {
+                    if (gs.name == "Scripts") emitScripts(gs, gvar);
+                }
+                for (const XmlNode& a : group.children) {
+                    if (a.name != "Alpha" && a.name != "Translation" &&
+                        a.name != "Scale" && a.name != "Rotation" &&
+                        a.name != "Animation") {
+                        continue;
+                    }
+                    const std::string avar = nextVar();
+                    const std::string aname = substituteParent(
+                        a.attrOr("name", ""), name);
+                    line(avar + " = " + gvar + ":CreateAnimation(" +
+                         quote(a.name == "Animation" ? "Alpha" : a.name) +
+                         (aname.empty() ? "" : ", " + quote(aname)) + ")");
+                    if (const std::string* d = a.attr("duration"))
+                        line(avar + ":SetDuration(" + *d + ")");
+                    if (const std::string* o = a.attr("order"))
+                        line(avar + ":SetOrder(" + *o + ")");
+                    if (const std::string* sd = a.attr("startDelay"))
+                        line(avar + ":SetStartDelay(" + *sd + ")");
+                    if (const std::string* c = a.attr("change"))
+                        line(avar + ":SetChange(" + *c + ")");
+                    if (a.attr("offsetX") || a.attr("offsetY")) {
+                        line(avar + ":SetOffset(" + a.attrOr("offsetX", "0") +
+                             ", " + a.attrOr("offsetY", "0") + ")");
+                    }
+                    // On the group, which is the animation's parent. This
+                    // wrote it on the frame, so alertframes.xml's
+                    // `frame.waitAndAnimOut.animOut:SetStartDelay(4.05)` found
+                    // a nil and raised - taking the Play() on the line after it
+                    // with it, which is the call that hides the banner.
+                    if (const std::string* pk = a.attr("parentKey"))
+                        line(gvar + "." + *pk + " = " + avar);
+                    // An animation's own <Scripts>. Dropping these cost the
+                    // alert banners: alertframes.xml hangs
+                    // `self:GetRegionParent():Hide()` off the fade's
+                    // OnFinished, so without it an achievement banner faded to
+                    // nothing and stayed there.
+                    for (const XmlNode& sc : a.children) {
+                        if (sc.name == "Scripts") emitScripts(sc, avar);
+                    }
+                }
+            }
+        }
+    }
+
+    /// A <FontString> written straight inside a frame, rather than in a Layer.
+    ///
+    /// That is not a region the frame holds - it is the frame's own font: the
+    /// face, size, colour and shadow its text is drawn in. Every EditBox in the
+    /// interface says so this way, InputBoxTemplate included, and so do the
+    /// chat window and UIErrorsFrame.
+    ///
+    /// Thirty-nine of them, and all thirty-nine were dropped: the walk above
+    /// only looks inside <Layers>, and nothing else claimed the element. So the
+    /// chat box drew what you typed in FRIZQT at twelve with no shadow, where
+    /// ChatFontNormal is ARIALN at fourteen with a black one - thin, unshadowed
+    /// pale text over the world, which is what "hard to read" is.
+    ///
+    /// The font instance only. A <Size> or <Anchors> here belongs to a region
+    /// this frame does not have, and applying either would resize or move the
+    /// frame itself.
+    void emitFontInstance(const XmlNode& node, const std::string& var) {
+        if (const std::string* inh = node.attr("inherits"); inh && !inh->empty()) {
+            // Ambiguous the same way a region's is: nearly always a font
+            // object, occasionally a virtual FontString. Asked at runtime.
+            line("if __WoweeTemplates[" + quote(*inh) + "] then __WoweeTemplates[" +
+                 quote(*inh) + "](" + var + ") else " + var +
+                 ":SetFontObject(" + quote(*inh) + ") end");
+        }
+        float height = 0.0f;
+        if (const XmlNode* fh = node.child("FontHeight")) {
+            if (const XmlNode* abs = fh->child("AbsValue")) height = abs->attrFloat("val", 0.0f);
+            else                                           height = fh->attrFloat("val", 0.0f);
+        }
+        const std::string* face = node.attr("font");
+        const std::string* outline = node.attr("outline");
+        if (face || outline) {
+            // SetFont takes all three together, so what this node does not
+            // state is left to what it inherited - nil rather than a default.
+            line(var + ":SetFont(" + (face ? quote(*face) : std::string("nil")) + ", " +
+                 (height > 0.0f ? std::to_string(height) : std::string("nil")) + ", " +
+                 (outline ? quote(*outline) : std::string("nil")) + ")");
+        } else if (height > 0.0f) {
+            line(var + ":SetTextHeight(" + std::to_string(height) + ")");
+        }
+        if (const XmlNode* col = node.child("Color")) {
+            line(var + ":SetTextColor(" +
+                 std::to_string(col->attrFloat("r", 1.0f)) + ", " +
+                 std::to_string(col->attrFloat("g", 1.0f)) + ", " +
+                 std::to_string(col->attrFloat("b", 1.0f)) + ", " +
+                 std::to_string(col->attrFloat("a", 1.0f)) + ")");
+        }
+        if (const XmlNode* sh = node.child("Shadow")) {
+            float sx = 1.0f, sy = -1.0f;
+            if (const XmlNode* off = sh->child("Offset")) {
+                if (const XmlNode* abs = off->child("AbsDimension")) {
+                    sx = abs->attrFloat("x", 1.0f);
+                    sy = abs->attrFloat("y", -1.0f);
+                }
+            }
+            line(var + ":SetShadowOffset(" + std::to_string(sx) + ", " +
+                 std::to_string(sy) + ")");
+            if (const XmlNode* sc = sh->child("Color")) {
+                line(var + ":SetShadowColor(" +
+                     std::to_string(sc->attrFloat("r", 0.0f)) + ", " +
+                     std::to_string(sc->attrFloat("g", 0.0f)) + ", " +
+                     std::to_string(sc->attrFloat("b", 0.0f)) + ", " +
+                     std::to_string(sc->attrFloat("a", 1.0f)) + ")");
+            }
+        }
+        if (const std::string* j = node.attr("justifyH"))
+            line(var + ":SetJustifyH(" + quote(*j) + ")");
+        if (const std::string* jv = node.attr("justifyV"))
+            line(var + ":SetJustifyV(" + quote(*jv) + ")");
     }
 
     void emitAnchors(const XmlNode& anchors, const std::string& var,
@@ -537,6 +701,25 @@ struct Emitter {
         }
     }
 
+    /// The frame type an element makes, as an expression.
+    ///
+    /// A known element names its own type. Anything else is a name the schema
+    /// never defined, and the real client reads the type off what the element
+    /// inherits: 1.12's LootFrame.xml writes <LootButton name="LootButtonTemplate"
+    /// inherits="ItemButtonTemplate" virtual="true"> and then <LootButton
+    /// name="LootButton1" inherits="LootButtonTemplate">, and every one of those
+    /// is a Button because ItemButtonTemplate is one. Built as a Frame instead,
+    /// the template's own RegisterForClicks and OnClick have nothing to act on
+    /// and the loot window's rows do not answer a click.
+    ///
+    /// Resolved at runtime, and through the whole chain, because a template may
+    /// be declared in another file and this emitter sees one file at a time.
+    std::string frameTypeArg(const XmlNode& node) const {
+        if (isFrameElement(node.name)) return quote(node.name);
+        return "__WoweeFrameType(" + quote(node.name) + ", " +
+               quote(node.attrOr("inherits", "")) + ")";
+    }
+
     /// Returns the variable holding the new frame, or empty for a virtual
     /// one, so a caller that must hand it on - a scroll frame to its child -
     /// can name it.
@@ -563,6 +746,23 @@ struct Emitter {
             // for at replay time.
             inner.emitFrameBody(node, "self", name, "self:GetParent()",
                                 std::string(), /*fireOnLoad=*/false);
+            // What kind of frame the template makes, so an element written as
+            // the template's own name can be built as one - and so a template
+            // whose own element is not a frame type passes the question on to
+            // what it inherits. LootButtonTemplate is declared <LootButton>,
+            // which is nothing, and is a Button because it inherits one.
+            //
+            // A resolved type where the element states it, and the chain to
+            // follow where it does not: the chain is walked when a frame is
+            // created rather than now, so a template declared after this one
+            // still answers.
+            virtualFrames.insert(name);
+            if (isFrameElement(node.name)) {
+                line("__WoweeTemplateTypes[" + quote(name) + "] = " + quote(node.name));
+            } else {
+                line("__WoweeTemplateInherits[" + quote(name) + "] = " +
+                     quote(node.name + "," + node.attrOr("inherits", "")));
+            }
             line("__WoweeTemplates[" + quote(name) + "] = function(self)");
             line("local __w = {}");
             // Whether this frame arrived with a parent, read before any
@@ -633,7 +833,7 @@ struct Emitter {
         // Baking the literal instead named every scroll bar after the template,
         // so the _G[self:GetName().."ScrollBar"] its own handlers look up never
         // existed - which is what took down most of FrameXML.
-        line(var + " = CreateFrame(" + quote(node.name) + ", " +
+        line(var + " = CreateFrame(" + frameTypeArg(node) + ", " +
              nameArg(rawName, parentName, parentArg) + ", " + parentArg + ")");
 
         // Identity before anything is built on top of it. FrameXML makes names
@@ -647,6 +847,20 @@ struct Emitter {
         // Before the template applies, so a template body that reaches back
         // through its parent for a sibling finds it already bound.
         emitParentKey(node, var, parentArg);
+        // The element's own name is the first template it inherits, where one
+        // of that name exists. Reported missing only when the element has no
+        // inherits= of its own: <LootButton name="LootButton1"
+        // inherits="LootButtonTemplate"> names no template with its element and
+        // is not meant to - the name is the type, and the type came from what
+        // it inherits. An element that names nothing at all still says so.
+        if (!isFrameElement(node.name)) {
+            const std::string apply = "__WoweeTemplates[" + quote(node.name) + "](" + var + ")";
+            line("if __WoweeTemplates[" + quote(node.name) + "] then " + apply +
+                 (node.attr("inherits")
+                      ? std::string()
+                      : " else __WoweeMissingTemplate(" + quote(node.name) + ")") +
+                 " end");
+        }
         emitInherits(node, var);
         emitFrameBody(node, var, name.empty() ? parentName : name, parentArg,
                       parentName, /*fireOnLoad=*/true,
@@ -897,64 +1111,8 @@ struct Emitter {
                 }
             }
         }
-        // <Animations> - one or more <AnimationGroup>, each holding <Alpha>,
-        // <Translation> and friends. The group is a Lua object rather than a
-        // widget, so this emits the calls a script would make.
-        for (const XmlNode& anims : node.children) {
-            if (anims.name != "Animations") continue;
-            for (const XmlNode& group : anims.children) {
-                if (group.name != "AnimationGroup") continue;
-                const std::string gvar = nextVar();
-                const std::string gname = substituteParent(
-                    group.attrOr("name", ""), name);
-                line(gvar + " = " + var + ":CreateAnimationGroup(" +
-                     (gname.empty() ? "nil" : quote(gname)) + ")");
-                if (const std::string* loop = group.attr("looping")) {
-                    line(gvar + ":SetLooping(" + quote(*loop) + ")");
-                }
-                if (const std::string* pk = group.attr("parentKey")) {
-                    line(var + "." + *pk + " = " + gvar);
-                }
-                for (const XmlNode& gs : group.children) {
-                    if (gs.name == "Scripts") emitScripts(gs, gvar);
-                }
-                for (const XmlNode& a : group.children) {
-                    if (a.name != "Alpha" && a.name != "Translation" &&
-                        a.name != "Scale" && a.name != "Rotation" &&
-                        a.name != "Animation") {
-                        continue;
-                    }
-                    const std::string avar = nextVar();
-                    const std::string aname = substituteParent(
-                        a.attrOr("name", ""), name);
-                    line(avar + " = " + gvar + ":CreateAnimation(" +
-                         quote(a.name == "Animation" ? "Alpha" : a.name) +
-                         (aname.empty() ? "" : ", " + quote(aname)) + ")");
-                    if (const std::string* d = a.attr("duration"))
-                        line(avar + ":SetDuration(" + *d + ")");
-                    if (const std::string* o = a.attr("order"))
-                        line(avar + ":SetOrder(" + *o + ")");
-                    if (const std::string* sd = a.attr("startDelay"))
-                        line(avar + ":SetStartDelay(" + *sd + ")");
-                    if (const std::string* c = a.attr("change"))
-                        line(avar + ":SetChange(" + *c + ")");
-                    if (a.attr("offsetX") || a.attr("offsetY")) {
-                        line(avar + ":SetOffset(" + a.attrOr("offsetX", "0") +
-                             ", " + a.attrOr("offsetY", "0") + ")");
-                    }
-                    if (const std::string* pk = a.attr("parentKey"))
-                        line(var + "." + *pk + " = " + avar);
-                    // An animation's own <Scripts>. Dropping these cost the
-                    // alert banners: alertframes.xml hangs
-                    // `self:GetRegionParent():Hide()` off the fade's
-                    // OnFinished, so without it an achievement banner faded to
-                    // nothing and stayed there.
-                    for (const XmlNode& sc : a.children) {
-                        if (sc.name == "Scripts") emitScripts(sc, avar);
-                    }
-                }
-            }
-        }
+        emitAnimations(node, var, name);
+
         // <NormalFont style="GameFontNormal"/> - the font a button's label is
         // drawn in. Only the normal one: this renderer does not draw a button's
         // text differently when it is highlighted or disabled, so emitting the
@@ -1229,6 +1387,11 @@ struct Emitter {
                 }
             }
         }
+        // The frame's own font, which is a <FontString> child of the frame
+        // itself rather than one inside a Layer. See emitFontInstance.
+        for (const XmlNode& child : node.children) {
+            if (child.name == "FontString") emitFontInstance(child, var);
+        }
         // Before Frames and Scripts, so a child anchoring to $parentNormalTexture
         // and an OnLoad reading its own label both find something there.
         emitButtonRegions(node, var, name);
@@ -1248,7 +1411,12 @@ struct Emitter {
         }
         if (const XmlNode* frames = node.child("Frames")) {
             for (const XmlNode& child : frames->children) {
-                if (isFrameElement(child.name)) emitFrame(child, var, name, anchor);
+                // A named element that is not a known type is a template's own
+                // name used as an element - see emitFrame. Unnamed and unknown
+                // is nothing this can build, and is left to the warning below.
+                if (isFrameElement(child.name) || child.attr("name")) {
+                    emitFrame(child, var, name, anchor);
+                }
             }
         }
         // Scripts last: OnLoad runs against a frame that is already built, which
@@ -1463,6 +1631,27 @@ EmitResult emitFrameXml(const XmlNode& rootIn) {
                 e.result.warnings.push_back("<" + node.name + "> outside a frame "
                                             "has nothing to belong to");
             }
+        } else if (node.attr("name")) {
+            // An element the schema does not define, which the real client
+            // accepts and reads a type off. 1.12's LootFrame.xml is all of
+            // them: <LootButton name="LootButtonTemplate"
+            // inherits="ItemButtonTemplate" virtual="true"> and then
+            // <LootButton name="LootButton1" inherits="LootButtonTemplate">.
+            // This reported an unknown type and built nothing inside it, so the
+            // loot window had no buttons in it. emitFrame takes the type from
+            // the element's own name where that names a template, and from what
+            // it inherits otherwise.
+            //
+            // Only an element that names neither is reported: with an inherits=
+            // there is a type to find and a body to apply, and nothing about the
+            // element is a guess.
+            if (!e.virtualFrames.count(node.name) && !node.attr("inherits")) {
+                e.result.warnings.push_back(
+                    "<" + node.name + "> is not a frame type and no template of "
+                    "that name is declared here - it is built from one if some "
+                    "other file declares it, and from nothing if none does");
+            }
+            e.emitFrame(node, "", "");
         } else if (node.name == "Bindings" || node.name == "Binding" ||
                    node.name == "ModifiedClick") {
             // Key bindings, not frames. Nothing is drawn for them and nothing

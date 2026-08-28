@@ -144,6 +144,117 @@ XmlNode parseShippedFile(const std::string& name) {
 }
 }  // namespace
 
+// The achievement banner is what these two cost. AlertFrame_AnimateIn plays the
+// frame's animIn, then the glow's and the shine's - which are declared on the
+// *textures* - and then plays waitAndAnimOut, whose animOut it reaches through
+// the group. Losing either meant the third and fourth lines never ran: the
+// banner appeared, the fade that hides it was never started, and it sat there
+// for the rest of the session. Nothing raised where anyone could see it.
+TEST_CASE("a texture may animate itself", "[framexml][emit]") {
+    XmlNode root = parseOrFail(
+        "<Ui><Frame name='Alert'><Layers><Layer level='OVERLAY'>"
+        "<Texture name='$parentGlow' parentKey='glow'>"
+        "<Animations><AnimationGroup name='$parentAnimIn' parentKey='animIn'>"
+        "<Alpha change='1' duration='0.2' order='1'/>"
+        "</AnimationGroup></Animations>"
+        "</Texture></Layer></Layers></Frame></Ui>");
+    const std::string lua = emitFrameXml(root).lua;
+    INFO(lua);
+    // The group is created on the texture, not on the frame that holds it.
+    CHECK(has(lua, ":CreateAnimationGroup(\"AlertGlowAnimIn\")"));
+    CHECK(has(lua, ".animIn = "));
+    CHECK(has(lua, ":SetDuration(0.2)"));
+}
+
+TEST_CASE("an animation's parentKey goes on its group", "[framexml][emit]") {
+    XmlNode root = parseOrFail(
+        "<Ui><Frame name='Alert'><Animations>"
+        "<AnimationGroup name='$parentWaitAndAnimOut' parentKey='waitAndAnimOut'>"
+        "<Alpha startDelay='4.05' change='-1' duration='1.5' parentKey='animOut'/>"
+        "</AnimationGroup></Animations></Frame></Ui>");
+    const std::string lua = emitFrameXml(root).lua;
+    INFO(lua);
+    // The group hangs off the frame and the animation off the group, which is
+    // how alertframes.lua reaches it: frame.waitAndAnimOut.animOut.
+    const size_t group = lua.find(" = __w[1]:CreateAnimationGroup(");
+    REQUIRE(group != std::string::npos);
+    const std::string gvar = lua.substr(lua.rfind('\n', group) + 1,
+                                        group - lua.rfind('\n', group) - 1);
+    CHECK(has(lua, "__w[1].waitAndAnimOut = " + gvar));
+    CHECK(has(lua, gvar + ".animOut = "));
+    CHECK_FALSE(has(lua, "__w[1].animOut = "));
+    CHECK(has(lua, ":SetStartDelay(4.05)"));
+}
+
+// A virtual frame's name may be written as an element, and the type comes from
+// whatever the element inherits - reported as issue 132.
+TEST_CASE("a template's name may be used as an element", "[framexml][emit]") {
+    XmlNode root = parseOrFail(
+        "<Ui>"
+        "<Button name='LootButton' virtual='true'><Size><AbsDimension x='10' y='10'/></Size></Button>"
+        "<LootButton name='LootButton1' id='1'/>"
+        "</Ui>");
+    const EmitResult r = emitFrameXml(root);
+    INFO(r.lua);
+    // The template records what kind of frame it makes...
+    CHECK(has(r.lua, "__WoweeTemplateTypes[\"LootButton\"] = \"Button\""));
+    // ...and the element is created as that kind and inherits it.
+    CHECK(has(r.lua, "CreateFrame(__WoweeFrameType(\"LootButton\", \"\")"));
+    CHECK(has(r.lua, "__WoweeTemplates[\"LootButton\"]("));
+    CHECK(has(r.lua, ":SetID(1)"));
+    // And with the template declared in the same file it is not reported: the
+    // emitter can see it is a template rather than a typo.
+    for (const std::string& w : r.warnings) {
+        CHECK(w.find("LootButton") == std::string::npos);
+    }
+}
+
+// The shape 1.12 actually ships, which is not the one above: nothing declares
+// <LootButton> at all. The element is a name the schema never defined, both
+// times it is written, and every frame it makes is a Button because
+// ItemButtonTemplate is one. Built as a Frame instead - which is what the first
+// fix for this did - LootButtonTemplate's own RegisterForClicks and OnClick
+// have nothing to act on and a loot row does not answer a click.
+TEST_CASE("an unknown element takes the type of what it inherits",
+          "[framexml][emit]") {
+    XmlNode root = parseOrFail(
+        "<Ui>"
+        "<LootButton name='LootButtonTemplate' inherits='ItemButtonTemplate' virtual='true'>"
+        "<Scripts><OnClick>LootFrameItem_OnClick(arg1);</OnClick></Scripts>"
+        "</LootButton>"
+        "<Frame name='LootFrame'><Frames>"
+        "<LootButton name='LootButton1' inherits='LootButtonTemplate' id='1'/>"
+        "</Frames></Frame>"
+        "</Ui>");
+    const EmitResult r = emitFrameXml(root);
+    INFO(r.lua);
+    // The template cannot say what it makes, so it says where to ask - its own
+    // element first, then what it inherits.
+    CHECK(has(r.lua, "__WoweeTemplateInherits[\"LootButtonTemplate\"] = "
+                     "\"LootButton,ItemButtonTemplate\""));
+    // And the frame asks, at creation, so a template declared in a file loaded
+    // after this one still answers.
+    CHECK(has(r.lua, "CreateFrame(__WoweeFrameType(\"LootButton\", "
+                     "\"LootButtonTemplate\"), \"LootButton1\""));
+    CHECK(has(r.lua, "__WoweeTemplates[\"LootButtonTemplate\"]("));
+    // Nothing here is a guess: the element has an inherits= to be built from,
+    // so neither half reports a template of the element's own name as missing.
+    CHECK_FALSE(has(r.lua, "__WoweeMissingTemplate(\"LootButton\")"));
+    for (const std::string& w : r.warnings) {
+        CHECK(w.find("LootButton") == std::string::npos);
+    }
+}
+
+TEST_CASE("an unknown element with no name is still reported", "[framexml][emit]") {
+    XmlNode root = parseOrFail("<Ui><Nonsense><Frame name='Inner'/></Nonsense></Ui>");
+    const EmitResult r = emitFrameXml(root);
+    bool said = false;
+    for (const std::string& w : r.warnings) {
+        if (w.find("Nonsense") != std::string::npos) said = true;
+    }
+    CHECK(said);
+}
+
 TEST_CASE("characterframe.xml builds the frame the C key opens",
           "[framexml][emit][shipped]") {
     XmlNode root = parseShippedFile("characterframe.xml");

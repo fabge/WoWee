@@ -345,10 +345,12 @@ bool Application::initialize() {
             if (std::filesystem::exists(expansionManifest)) {
                 assetPath = profile->dataPath;
                 LOG_INFO("Using expansion-specific asset path: ", assetPath);
-                // Register base Data/ as fallback so world terrain files are found
-                // even when the expansion path only contains DBC overrides.
+                // Register base Data/ as fallback so world terrain files are
+                // found even when the expansion path only contains overrides.
+                // Named, so a base extracted from another client is refused
+                // rather than quietly answering for this one.
                 if (assetPath != dataPath) {
-                    assetManager->setBaseFallbackPath(dataPath);
+                    assetManager->setBaseFallbackPath(dataPath, profile->id);
                 }
             }
         }
@@ -2182,7 +2184,18 @@ void Application::loadExpansionTables(const game::ExpansionProfile& profile) {
     }
     game::setActiveUpdateFieldTable(&gameHandler->getUpdateFieldTable());
 
-    gameHandler->setPacketParsers(game::createPacketParsers(profile.id));
+    // An id with no parser set is a profile this build cannot read the wire
+    // for. It still runs, on WotLK's parsers, because refusing to start would
+    // break a realm running a hand-written profile that happens to be close
+    // enough - but it says so, which is the half that was missing.
+    auto packetParsers = game::createPacketParsers(profile.id);
+    if (!packetParsers) {
+        LOG_ERROR("No packet parsers for expansion '", profile.id,
+                  "'. Falling back to WotLK, which will misparse movement and "
+                  "update-object against any realm that is not 3.3.5a");
+        packetParsers = std::make_unique<game::WotlkPacketParsers>();
+    }
+    gameHandler->setPacketParsers(std::move(packetParsers));
 
     // The world header cipher travels with the expansion like everything else
     // above it. src/network/ used to decide this from hard-coded build numbers.
@@ -2237,7 +2250,7 @@ void Application::reloadExpansionData() {
         if (desiredAssetPath != assetManager->getDataPath() &&
             assetManager->switchDataPath(desiredAssetPath) &&
             desiredAssetPath != baseDataPath) {
-            assetManager->setBaseFallbackPath(baseDataPath);
+            assetManager->setBaseFallbackPath(baseDataPath, assetProfile->id);
         }
         LOG_INFO("Protocol profile '", profile->id, "' using asset source '",
                  useLegacyAssets ? std::string("legacy") : assetProfile->id, "'");

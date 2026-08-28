@@ -1909,3 +1909,50 @@ default of "0" for `showAllSpellRanks` while `GetCVar` had no answer at all, so
 the panel and the client agreed by luck from two different sources. Answered
 explicitly now. That is the second time this week a sweep has caught a fault in
 a change made the same hour.
+
+## 2026-08-28 — merged upstream v3.1.12 (23 commits)
+
+Three conflicts, all structural rather than semantic.
+
+`CMakeLists.txt`: our fork splits the sources into `WOWEE_SRC_*` lists and
+upstream keeps one flat list. Ours kept, and the one file upstream added -
+`src/game/cata_movement.cpp` - added to `WOWEE_SRC_GAME` by hand, checked by
+diffing the two file lists rather than by reading the conflict.
+
+`src/addons/lua_engine.cpp`: 3868 lines of it, because our fork extracted the
+widget API into `lua_widget_api.cpp` and upstream still has it here. Ours kept,
+and upstream's three changes inside that region ported across by hand:
+
+- `Tooltip_SetText` accepts a GameTooltip that has not been filled yet, so a
+  fresh tooltip takes its title instead of storing it where a button keeps its
+  label;
+- `SetFontObject` on a frame redirects to the frame's own font string;
+- regions get `CreateAnimationGroup` and `StopAnimating` off the animation
+  bootstrap's globals.
+
+`tools/framexml_run.cpp`: both sides were worth keeping, so both were - our
+font-path resolution and existence check (ImGui aborts rather than answering
+null on a file it cannot open) around upstream's `ExtraSizeScale`, which is
+their "a font height is an em" fix.
+
+Then two sweeps caught what the merge left behind, which is the whole reason
+they are pinned.
+
+`tools_readme_check.py` found `derive_cata_movement.py` unlisted - upstream
+added the tool and our own edits to that table swallowed its row.
+
+`framexml_run`'s addon arm found `Blizzard_GlyphUI` failing to load, and the
+reason was **the same fault a second time**: `Blizzard_DebugTools`'
+`ScriptErrorsFrame_OnError` stores `debuglocals(DEBUGLOCALS_LEVEL)` beside
+every error it records, so the error frame raised while filing an error, and
+that raise propagated out and failed the addon's frame build. `debuginfo`, gone
+yesterday, was hiding this one; defining it exposed the next layer down.
+`debuglocals` answers an empty string now - the caller concatenates it - and
+the addon loads cleanly, so it was never corrupt.
+
+Upstream carries two commits in the area of the unexplained "invalid target"
+when healing yourself: a shot with nothing selected is now refused rather than
+aimed at the caster, on the grounds that an empty `SpellCastTargets` is
+`TARGET_FLAG_SELF` on the wire and the server reads that as "the caster is the
+target". Both are in this merge; whether they touch that report is for the next
+session to say.

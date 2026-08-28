@@ -290,6 +290,12 @@ int main(int argc, char** argv) {
         // laid out at all", not close enough to answer "do these two overlap",
         // which is the question that comes up about anything positioned
         // against a caption's right edge.
+        //
+        // Loaded the way the client loads them, ExtraSizeScale included. A
+        // height means an em in FrameXML and an ascender-to-descender span to
+        // ImGui, and a harness that did not apply the same correction would
+        // measure every caption 18% narrow - which is precisely the width the
+        // overlap question turns on.
         int faces = 0;
         for (const char* name : {"frizqt__.ttf", "morpheus.ttf", "skurri.ttf",
                                  "arialn.ttf", "friends.ttf"}) {
@@ -304,7 +310,12 @@ int main(int argc, char** argv) {
                 file = other;
             }
             if (!std::filesystem::exists(file)) continue;
-            if (ImFont* f = io.Fonts->AddFontFromFileTTF(file.c_str(), 16.0f)) {
+            // The em scale is upstream's: FrameXML states a font height in ems
+            // rather than in pixels, so the face has to be built with the
+            // scale its own metrics imply or every string is the wrong size.
+            ImFontConfig cfg;
+            cfg.ExtraSizeScale = wowee::ui::fontEmSizeScaleOfFile(file);
+            if (ImFont* f = io.Fonts->AddFontFromFileTTF(file.c_str(), 16.0f, &cfg)) {
                 wowee::ui::registerInterfaceFace(name, f);
                 ++faces;
             }
@@ -341,6 +352,7 @@ int main(int argc, char** argv) {
     wowee::game::ExpansionRegistry assetExpansions;
     std::string primaryAssetPath = assetPath;
     std::string assetFallbackPath;
+    std::string assetExpansionId;
     if (assetExpansions.initialize(assetPath) > 0) {
         if (const auto* active = assetExpansions.getActive()) {
             const std::string expansionManifest = active->dataPath + "/manifest.json";
@@ -349,6 +361,7 @@ int main(int argc, char** argv) {
                 active->dataPath != assetPath) {
                 primaryAssetPath = active->dataPath;
                 assetFallbackPath = assetPath;
+                assetExpansionId = active->id;
             }
         }
     }
@@ -356,7 +369,8 @@ int main(int argc, char** argv) {
     wowee::pipeline::AssetManager assets;
     // Before initialize, exactly as application.cpp does it - the fallback
     // manifest is loaded here and initialize does not clear it.
-    if (!assetFallbackPath.empty()) assets.setBaseFallbackPath(assetFallbackPath);
+    if (!assetFallbackPath.empty())
+        assets.setBaseFallbackPath(assetFallbackPath, assetExpansionId);
     const bool haveAssets = assets.initialize(primaryAssetPath);
     if (!haveAssets) {
         std::printf("== assets: none at %s; texture sizes are unavailable\n",

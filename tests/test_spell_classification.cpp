@@ -288,3 +288,68 @@ TEST_CASE("friendly-target spells are the ones that may fall back to the caster"
         CHECK_FALSE(requiresFriendlyTarget(0));
     }
 }
+
+// The other half of the same column, and the one with teeth: a spell that needs
+// an enemy must not be sent with nothing selected. An empty SpellCastTargets is
+// TARGET_FLAG_SELF on the wire and the server reads it as "the caster is the
+// target", so an unaimed shot is a shot aimed at the hunter who fired it.
+TEST_CASE("hostile-target spells are the ones that must not be sent unaimed",
+          "[spell][classification]") {
+    using namespace wowee::game::spellclass;
+
+    SECTION("a nuke or a shot needs a hostile unit") {
+        CHECK(requiresHostileTarget(kImplicitTargetEnemy));  // Arcane Shot, Fireball
+        CHECK(requiresHostileTarget(6));                     // Steady Shot, Smite
+    }
+
+    SECTION("nothing friendly is caught by it") {
+        // These fall back to the caster on purpose when auto self-cast is on,
+        // which is the opposite decision - so the two tests must not overlap.
+        CHECK_FALSE(requiresHostileTarget(kImplicitTargetAlly));
+        CHECK_FALSE(requiresHostileTarget(kImplicitTargetParty));
+        CHECK_FALSE(requiresHostileTarget(kImplicitTargetChainHeal));
+        CHECK_FALSE(requiresHostileTarget(kImplicitTargetRaid));
+    }
+
+    SECTION("a self-cast is not refused for having no target") {
+        // Aspect of the Hawk and Inner Fire read 1 and carry no target by
+        // nature. Refusing those would take away every self-buff in the game.
+        CHECK_FALSE(requiresHostileTarget(kImplicitTargetCaster));
+    }
+
+    SECTION("either-target and destination spells are left alone") {
+        // 25 can go on the caster harmlessly and 63 is a point, not a unit.
+        // Neither is the shape that kills the caster, so neither is blocked.
+        CHECK_FALSE(requiresHostileTarget(kImplicitTargetAny));
+        CHECK_FALSE(requiresHostileTarget(63));
+    }
+
+    SECTION("nothing a player casts on themselves reads as hostile") {
+        // Measured over the shipped Spell.dbc, because the worry this answers
+        // is that refusing an unaimed hostile spell also refuses a buff or a
+        // self-heal. It cannot: none of them is 6.
+        //
+        //   Mark of the Wild 1126, Flash Heal 2061, Renew 139,
+        //   Rejuvenation 774, Power Word: Fortitude 1243, Healing Touch 5185,
+        //   Arcane Intellect 1459, Blessing of Might 19740, Holy Light 635,
+        //   Lay on Hands 633, Power Word: Shield 17          all read 21
+        //   Aspect of the Hawk 13165, Inner Fire 588,
+        //   Trueshot Aura 19506, Feign Death 5384             all read 1
+        //   Mend Pet 136                                          reads 5
+        //   Battle Shout 2048                                    reads 56
+        //
+        // against the shots that started this:
+        //   Arcane Shot 3044, Steady Shot 34120, Auto Shot 75,
+        //   Serpent Sting 1978, Hunter's Mark 1130             all read 6
+        for (uint32_t friendlyAim : {1u, 5u, 21u, 35u, 45u, 56u, 57u, 63u}) {
+            CHECK_FALSE(requiresHostileTarget(friendlyAim));
+        }
+        CHECK(requiresHostileTarget(6));
+    }
+
+    SECTION("the two rules never both fire") {
+        for (uint32_t t = 0; t < 128; ++t) {
+            CHECK_FALSE((requiresFriendlyTarget(t) && requiresHostileTarget(t)));
+        }
+    }
+}

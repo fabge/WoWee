@@ -774,6 +774,7 @@ set(WOWEE_SRC_GAME
     src/game/text_tokens.cpp
     src/game/text_tokens_subject.cpp
     src/game/movement_handler.cpp
+    src/game/cata_movement.cpp
     src/game/combat_handler.cpp
     src/game/spell_handler.cpp
     src/game/inventory_handler.cpp

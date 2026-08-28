@@ -580,6 +580,18 @@ target_link_libraries(test_packet PRIVATE catch2_main)
 add_test(NAME packet COMMAND test_packet)
 register_test_target(test_packet)
 
+# ── test_bit_packet ──────────────────────────────────────────
+add_executable(test_bit_packet
+    test_bit_packet.cpp
+    ${TEST_COMMON_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/network/packet.cpp
+)
+target_include_directories(test_bit_packet PRIVATE ${TEST_INCLUDE_DIRS})
+target_include_directories(test_bit_packet SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDE_DIRS})
+target_link_libraries(test_bit_packet PRIVATE catch2_main)
+add_test(NAME bit_packet COMMAND test_bit_packet)
+register_test_target(test_bit_packet)
+
 # ── test_srp ─────────────────────────────────────────────────
 add_executable(test_srp
     test_srp.cpp
@@ -735,6 +747,33 @@ wowee_add_test(test_spatial_grid
     SOURCES test_spatial_grid.cpp
             ${TEST_COMMON_SOURCES})
 
+# ── test_cata_movement ─────────────────────────────────────────────────
+# The 109 Cataclysm movement layouts derived from a 4.3.4 core, and the reader
+# that executes them. Runs from the source dir for the derived JSON.
+add_executable(test_cata_movement
+    test_cata_movement.cpp
+    ${TEST_COMMON_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/game/cata_movement.cpp
+    ${CMAKE_SOURCE_DIR}/src/network/packet.cpp)
+target_include_directories(test_cata_movement PRIVATE ${TEST_INCLUDE_DIRS})
+target_include_directories(test_cata_movement SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDE_DIRS})
+target_link_libraries(test_cata_movement PRIVATE catch2_main)
+wowee_test_link_glm(test_cata_movement)
+add_test(NAME cata_movement COMMAND test_cata_movement
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+register_test_target(test_cata_movement)
+
+# ── test_base_fallback ─────────────────────────────────────────────────
+# Whether one client's asset tree may answer for another's missing files.
+add_executable(test_base_fallback
+    test_base_fallback.cpp
+    ${TEST_COMMON_SOURCES})
+target_include_directories(test_base_fallback PRIVATE ${TEST_INCLUDE_DIRS})
+target_include_directories(test_base_fallback SYSTEM PRIVATE ${TEST_SYSTEM_INCLUDE_DIRS})
+target_link_libraries(test_base_fallback PRIVATE catch2_main)
+add_test(NAME base_fallback COMMAND test_base_fallback)
+register_test_target(test_base_fallback)
+
 # ── test_asset_manifest_load ───────────────────────────────────────────
 # The 32 MB asset manifest, pinned so a change to how it is read cannot change
 # what it read. Skips when Data/manifest.json is not in the checkout.
@@ -817,6 +856,12 @@ wowee_add_packet_test(test_prewotlk_build_packets)
 # SMSG_ITEM_QUERY_SINGLE_RESPONSE for classic and TBC, pinned before the two
 # readers were merged. Same link set as test_char_enum_layout.
 wowee_add_packet_test(test_item_query_layout)
+
+# ── test_guild_bank_list ───────────────────────────────────────────────
+# SMSG_GUILD_BANK_LIST, whose tab-name block is optional and was gated on the
+# wrong condition - so a tab query that answered with the names attached had
+# every field after them read a block early, and the vault drew empty.
+wowee_add_packet_test(test_guild_bank_list)
 
 # ── test_gameobject_query_layout ───────────────────────────────────────
 # SMSG_GAMEOBJECT_QUERY_RESPONSE, parsed three times, differing only in how
@@ -1183,6 +1228,35 @@ target_include_directories(test_chat_markup_parser SYSTEM PRIVATE
 target_link_libraries(test_chat_markup_parser PRIVATE catch2_main)
 add_test(NAME chat_markup_parser COMMAND test_chat_markup_parser)
 register_test_target(test_chat_markup_parser)
+
+# ── test_font_em_scale ───────────────────────────────────────
+# The head/hhea read that makes a font height mean an em, as FrameXML means it,
+# rather than the ascender-to-descender span ImGui fits into it. Absolute byte
+# offsets into a file this client did not write, so they are pinned.
+add_executable(test_font_em_scale
+    test_font_em_scale.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui/interface_fonts.cpp
+)
+target_include_directories(test_font_em_scale PRIVATE ${TEST_INCLUDE_DIRS})
+target_include_directories(test_font_em_scale SYSTEM PRIVATE
+    ${TEST_SYSTEM_INCLUDE_DIRS}
+    ${CMAKE_SOURCE_DIR}/extern/imgui
+)
+target_link_libraries(test_font_em_scale PRIVATE catch2_main imgui)
+add_test(NAME font_em_scale COMMAND test_font_em_scale)
+register_test_target(test_font_em_scale)
+
+# ── test_npc_flags ───────────────────────────────────────────
+# UNIT_NPC_FLAGS bit by bit. A wrong one is invisible - the mask just always
+# answers no - and NPC_FLAG_VENDOR was 0x04, a bit nothing sets, so no merchant
+# ever read as one.
+wowee_add_test(test_npc_flags SOURCES test_npc_flags.cpp)
+
+# ── test_scene_pick ──────────────────────────────────────────
+# Which of ScenePick's answers a caller wants. closestGuid and resolve()
+# disagree exactly where a wide object stands beside an NPC, which is where the
+# vendor cursor was asking the wrong one.
+wowee_add_test(test_scene_pick SOURCES test_scene_pick.cpp)
 
 # ── test_plural_escape ───────────────────────────────────────
 # WoW's |4singular:plural; escape, which nothing resolved - so the logout

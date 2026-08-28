@@ -761,6 +761,46 @@ void LuaEngine::registerAddonCompatLua() {
     // emitted by the FrameXML loader and meet here.
     bootstrap(
         "__WoweeTemplates = {}\n"
+        // What kind of frame each template makes, so an element written
+        // as a template's own name - <LootButton name="LootButton1"/> -
+        // can be created as one. See the emitter's virtual-frame path.
+        "__WoweeTemplateTypes = {}\n"
+        // And, for a template whose own element is no frame type either, the
+        // names to ask instead: its element and its inherits=, in that order.
+        // 1.12's <LootButton name="LootButtonTemplate"
+        // inherits="ItemButtonTemplate" virtual="true"> knows what it makes
+        // only by way of ItemButtonTemplate, which is a Button.
+        "__WoweeTemplateInherits = {}\n"
+        // Walked when a frame is created rather than when the template is
+        // declared, so a template declared in a file loaded later still
+        // answers. Depth-limited because a chain may name itself, directly or
+        // round a ring, and that must not be what takes the interface down.
+        "local function __WoweeTypeOf(name, depth)\n"
+        "  if not name or name == '' or depth > 8 then return nil end\n"
+        "  local t = __WoweeTemplateTypes[name]\n"
+        "  if t then return t end\n"
+        "  local inh = __WoweeTemplateInherits[name]\n"
+        "  if not inh then return nil end\n"
+        "  for one in string.gmatch(inh, '[^,%s]+') do\n"
+        "    t = __WoweeTypeOf(one, depth + 1)\n"
+        "    if t then return t end\n"
+        "  end\n"
+        "  return nil\n"
+        "end\n"
+        // The type an element makes: its own name where that names a template,
+        // and what it inherits otherwise. A frame is the answer of last resort
+        // - an element naming nothing this client ever saw is still built,
+        // without whatever a Button would have given it, which is what the
+        // missing-template report beside it describes.
+        "function __WoweeFrameType(element, inherits)\n"
+        "  local t = __WoweeTypeOf(element, 0)\n"
+        "  if t then return t end\n"
+        "  for one in string.gmatch(inherits or '', '[^,%s]+') do\n"
+        "    t = __WoweeTypeOf(one, 0)\n"
+        "    if t then return t end\n"
+        "  end\n"
+        "  return 'Frame'\n"
+        "end\n"
         "local reported = {}\n"
         "function __WoweeMissingTemplate(name)\n"
         "  if reported[name] then return end\n"
@@ -1228,6 +1268,27 @@ void LuaEngine::registerWidgetSupportLua() {
         "        self:AddLine(string.format('%.0f sec remaining', duration), 1, 1, 1)\n"
         "    end\n"
         "end\n"
+        // What the minimap's tracking button is showing. 1.12's Minimap.xml
+        // opens the tracking frame's OnEnter with SetOwner and this, and it was
+        // in neither the method table nor the no-op allowlist - so the lookup
+        // answered nil, the call raised, and the OnEnter it was the second line
+        // of took the tooltip's owner with it. Reported in #132.
+        //
+        // The spell's own tooltip where SetSpellByID can render one, because
+        // "Track Humanoids" is a title without the line under it saying what
+        // that does. The id comes from this client rather than from
+        // GetTrackingInfo, whose fifth value is 4.x's own.
+        "function __WoweeFrameMT:SetTrackingSpell()\n"
+        "    self:ClearLines()\n"
+        "    local spellId = __WoweeActiveTrackingSpell()\n"
+        "    if spellId and self.SetSpellByID then\n"
+        "        return self:SetSpellByID(spellId)\n"
+        "    end\n"
+        "    for i = 1, GetNumTrackingTypes() do\n"
+        "        local name, _, active = GetTrackingInfo(i)\n"
+        "        if active and name then return self:SetText(name, 1, 1, 1) end\n"
+        "    end\n"
+        "end\n"
         "function __WoweeFrameMT:SetTrainerService(index)\n"
         "    self:ClearLines()\n"
         "    if not index then return end\n"
@@ -1344,19 +1405,34 @@ void LuaEngine::registerWidgetSupportLua() {
         "    if harmful then self:SetText(name, 1, 0, 0) else self:SetText(name, 1, 1, 1) end\n"
         "    if debuffType then self:AddLine(debuffType, 0.5, 0.5, 0.5) end\n"
         "    if count and count > 1 then self:AddLine(count .. ' stacks', 1, 1, 1) end\n"
+        // What the aura actually does, which is the whole reason a buff is
+        // worth hovering. The tooltip gave its name, its stacks and its time
+        // left and never said that Power Word: Fortitude increases Stamina by
+        // 165 - so nothing on the buff bar described its own effect.
+        //
+        // Above the time remaining, as WoW orders it: the description belongs
+        // to the aura and the countdown to this moment.
+        "    local desc = GetSpellDescription and spellId and GetSpellDescription(spellId)\n"
+        "    if desc and desc ~= '' then self:AddLine(desc, 1, 0.82, 0, 1) end\n"
         "    if duration and duration > 0 and expTime then\n"
         "        self:AddLine(string.format('%.0f sec remaining', expTime - GetTime()), 1, 1, 1)\n"
         "    end\n"
         "    self.__spellId = spellId\n"
         "end\n"
+        // Through SetUnitAura rather than beside it. This had the name and the
+        // dispel type and nothing else - no stacks, no time left, no
+        // description - so a debuff tooltip said strictly less than a buff's,
+        // and any line added to one had to be remembered for the other.
         "function __WoweeFrameMT:SetUnitDebuff(unit, index, filter)\n"
-        "    self:ClearLines()\n"
-        "    local name, rank, icon, count, debuffType, duration, expTime, caster, steal, consolidate, spellId = UnitDebuff(unit, index, filter)\n"
-        "    if name then\n"
-        "        self:SetText(name, 1, 0, 0)\n"
-        "        if debuffType then self:AddLine(debuffType, 0.5, 0.5, 0.5) end\n"
-        "        self.__spellId = spellId\n"
+        // HARMFUL is what makes UnitAura count debuffs rather than buffs, and
+        // a caller's own filter - 'RAID' from the raid frames - has to keep it
+        // rather than replace it.
+        "    if filter and filter ~= '' then\n"
+        "        if not string.find(filter, 'HARMFUL') then filter = filter .. '|HARMFUL' end\n"
+        "    else\n"
+        "        filter = 'HARMFUL'\n"
         "    end\n"
+        "    return self:SetUnitAura(unit, index, filter)\n"
         "end\n"
         // Shared item tooltip builder using GetItemInfo return values
         "function _WoweePopulateItemTooltip(self, itemId)\n"

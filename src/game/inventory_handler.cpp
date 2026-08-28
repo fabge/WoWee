@@ -139,6 +139,14 @@ std::array<uint8_t, 19> inferredVisibleInventoryTypes() {
 /// measured over the shipped file it is zero for every bandage rank, so a
 /// client that asks it is told no spell ever needs a target. What carries it
 /// is EffectImplicitTargetA, which reads 21 - ally - for those same spells.
+///
+/// Look those spells up by id and not by name. Spell.dbc holds two rows per
+/// bandage: the tradeskill recipe that makes one is called "Runecloth Bandage"
+/// and reads effect 24, CREATE_ITEM, aimed at the caster - while the spell the
+/// item actually casts is one of the twelve called "First Aid" (746, 1159,
+/// 3267, 3268, 7926, 7927, 10838, 10839, 18608, 18610, 27030, 27031), effect 6
+/// aimed at an ally. Reading the recipe instead says a bandage lands on the
+/// caster and can never be used on anyone else, which is not true of either row.
 bool spellNeedsAUnit(uint32_t implicitTargetA) {
     // Every friendly aim, not just 21: a scroll or a bandage whose spell reads
     // 45 or 57 needs somebody picked exactly as one reading 21 does, and asking
@@ -2440,7 +2448,7 @@ void InventoryHandler::handleListInventory(network::Packet& packet) {
     // UNIT_NPC_FLAG_REPAIR = 0x1000.
     if (!currentVendorItems_.canRepair && currentVendorItems_.vendorGuid != 0) {
         if (auto* unit = owner_.getUnitByGuid(currentVendorItems_.vendorGuid)) {
-            if (unit->getNpcFlags() & 0x1000) {
+            if (unit->getNpcFlags() & NPC_FLAG_REPAIR) {
                 currentVendorItems_.canRepair = true;
             }
         }
@@ -3270,7 +3278,12 @@ void InventoryHandler::closeGuildBank() {
 
 void InventoryHandler::queryGuildBankTab(uint8_t tabId) {
     if (owner_.getState() != WorldState::IN_WORLD || !owner_.getSocket() || guildBankerGuid_ == 0) return;
-    auto packet = GuildBankQueryTabPacket::build(guildBankerGuid_, tabId, false);
+    // Asking for the full tab, not a slot refresh. The byte reaches
+    // SendBankList as "with content" on the cores that read it, so a false here
+    // asked the server for a tab and told it not to send what is in it. This
+    // client keeps no cached tab to refresh, so there is nothing a partial
+    // update could be for.
+    auto packet = GuildBankQueryTabPacket::build(guildBankerGuid_, tabId, true);
     owner_.getSocket()->send(packet);
 }
 
@@ -3372,7 +3385,25 @@ void InventoryHandler::handleGuildBankList(network::Packet& packet) {
     // player is actually viewing (clicking a tab only sends a query - it never
     // updated the active tab, so operations defaulted to tab 0).
     guildBankActiveTab_ = guildBankData_.tabId;
-    if (owner_.addonEventCallbackRef()) owner_.addonEventCallbackRef()("GUILDBANKBAGSLOTS_CHANGED", {});
+    if (owner_.addonEventCallbackRef()) {
+        // The three the panel listens for and this fired none of.
+        //
+        // GUILDBANK_UPDATE_TABS is the one that runs
+        // GuildBankFrame_SelectAvailableTab, which is what picks a tab the
+        // player may look in and draws it - without it the frame kept whatever
+        // tab it had and never chose one. Only when a tab list actually
+        // arrived: the event means the set of tabs changed, and a slot refresh
+        // does not change it.
+        if (guildBankData_.tabsIncluded && !guildBankData_.tabs.empty()) {
+            owner_.addonEventCallbackRef()("GUILDBANK_UPDATE_TABS", {});
+        }
+        owner_.addonEventCallbackRef()("GUILDBANKBAGSLOTS_CHANGED", {});
+        // The money line and the withdraw allowance, which are read from
+        // GetGuildBankMoney and GetGuildBankWithdrawMoney and were never asked
+        // for again after the frame first drew.
+        owner_.addonEventCallbackRef()("GUILDBANK_UPDATE_MONEY", {});
+        owner_.addonEventCallbackRef()("GUILDBANK_UPDATE_WITHDRAWMONEY", {});
+    }
     for (const auto& tab : guildBankData_.tabs) {
         for (const auto& item : tab.items) {
             if (item.itemEntry != 0) owner_.ensureItemInfo(item.itemEntry);

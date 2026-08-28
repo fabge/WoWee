@@ -161,6 +161,7 @@ hand - fix the tool's docstring and run `tools/tools_readme_check.py --write`.
 | `persisted_but_unread_check.py` | Config keys read into a field nothing else looks at. | pinned by sweep_guard |
 | `pipeline_recreate_check.py` | Renderers that rebuild a different pipeline than they first built. | pinned by sweep_guard |
 | `silent_target_drop_check.py` | Target-guid writes that do not tell the interface. | pinned by sweep_guard |
+| `derive_cata_movement.py` | Derive Cataclysm's per-opcode movement wire layouts from a 4.3.4 core. | run by hand |
 | `dbc_layout_name_check.py` | DBC column names the code asks for and no layout declares. | pinned by sweep_guard |
 | `posix_only_check.py` | POSIX-only functions called outside the header that makes them portable. | pinned by sweep_guard |
 | `read_never_written_check.py` | Struct fields everything reads and nothing ever fills in. | pinned by sweep_guard |
