@@ -1861,3 +1861,51 @@ CVars, and Healing Wave's implicit target reads 45, which
 `requiresFriendlyTarget` accepts - checked against the shipped Spell.dbc
 directly. Three plausible causes were each ruled out by measurement rather than
 by argument. It needs a session.
+
+## 2026-08-28 — "Show all spell ranks" did nothing
+
+Reported with a screenshot: the box unticked, and the book still listing two
+Lightning Bolts and two Earth Shocks, with no rank text on any of them.
+
+`GetSpellTabInfo` hands FrameXML two ranges into one flat list - the whole tab,
+and the highest-rank subset - and `SpellBook_GetTabInfo` keeps the second
+whenever the box is unticked, which is the default. This client answered the
+whole tab for both. The comment above it said so plainly: "This client does not
+track ranks separately, so the whole tab is the highest rank." So the checkbox
+had nothing to change, and `GetSpellBookItemName` returned an empty subName on
+top of that, which is why nothing said which rank was which.
+
+Both ranges have to be contiguous, so the fix is an ordering rather than a
+filter: `partitionHighestRanks` moves the highest known rank of each name to
+the front of every tab and counts them, stably, so the name ordering already
+applied survives. `game/spell_ranks.hpp` also carries the rank-text parser,
+which `highestKnownRankByName` had its own copy of.
+
+**And the half that costs damage.** WotLK does not supersede ranks: the trainer
+teaches rank 2 and you keep rank 1, so `SMSG_SUPERCEDED_SPELL` never arrives
+and the bar-upgrade path behind it never runs. A button dragged at level four
+goes on casting rank one for the life of the character - which is what the
+report was really about. `upgradeActionBarToRank` runs on every newly learned
+spell and moves any slot holding a lower rank of the same name up to it,
+through the same retarget-and-announce path the superseded handler already
+used. Gated on `showAllSpellRanks`: ticked, the player is managing ranks by
+hand and this keeps out of it.
+
+Verified in `framexml_run`, whose fixture now knows two ranks each of Fireball
+and Frostbolt - one rank of everything cannot tell a collapsed book from an
+uncollapsed one, which is why the harness had nothing to say about this before:
+
+```
+TAB 1 General  offset=0 num=5 highestOffset=0 highestNum=3
+  slot 1: Fireball    [Rank 2]
+  slot 2: Frost Armor [Rank 1]
+  slot 3: Frostbolt   [Rank 2]
+  slot 4: Fireball    [Rank 1]
+  slot 5: Frostbolt   [Rank 1]
+```
+
+`cvar_default_agreement.py` caught the first attempt: the client acted on a
+default of "0" for `showAllSpellRanks` while `GetCVar` had no answer at all, so
+the panel and the client agreed by luck from two different sources. Answered
+explicitly now. That is the second time this week a sweep has caught a fault in
+a change made the same hour.

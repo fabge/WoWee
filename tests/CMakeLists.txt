@@ -2124,6 +2124,14 @@ wowee_add_test(test_area_zone_lookup
 wowee_add_test(test_totem_expiry
     SOURCES test_totem_expiry.cpp)
 
+# ── test_spell_ranks ────────────────────────────────────────
+#
+# "Show all spell ranks" hands FrameXML two ranges into one list and keeps the
+# second when the box is unticked. Answering the whole tab for both is why the
+# checkbox did nothing and every rank of every spell was listed.
+wowee_add_test(test_spell_ranks
+    SOURCES test_spell_ranks.cpp)
+
 # ── test_corpse_fields ──────────────────────────────────────
 #
 # Bones keep the owner's guid, so "is this corpse mine" answered yes for a

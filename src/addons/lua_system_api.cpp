@@ -985,6 +985,18 @@ static void pushCvarDefault(lua_State* L, const std::string& n) {
     // So the staging flow was written deliberately and then reached by
     // nothing, because the CVar that gates every one of those eight call
     // sites answered false.
+    // The spellbook's rank collapsing, and unticked is what a stock client
+    // has: the book shows one entry per spell, the highest rank known, and a
+    // button dragged from it follows the spell rather than the rank.
+    //
+    // Answered here rather than left to fall through, because the client acts
+    // on it too - SpellHandler::upgradeActionBarToRank reads the same key to
+    // decide whether a newly learned rank takes over the button its
+    // predecessor sits on. Unanswered, GetCVarBool gave the checkbox nil while
+    // the client acted on "0": the same behaviour by luck, from two different
+    // sources, which is the disagreement cvar_default_agreement.py exists to
+    // catch.
+    else if (n == "showallspellranks") lua_pushstring(L, "0");
     else if (n == "previewtalents") lua_pushstring(L, "1");
     else if (n == "chatmousescroll") lua_pushstring(L, "1");
     else if (n == "showkeyring")     lua_pushstring(L, "1");

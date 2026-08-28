@@ -1,3 +1,4 @@
+#include "game/spell_ranks.hpp"
 #include "game/spell_handler.hpp"
 #include "core/cvar_store.hpp"
 #include "addons/lua_api_registrations.hpp"
@@ -1448,6 +1449,22 @@ const std::vector<SpellHandler::SpellBookTab>& SpellHandler::getSpellBookTabs() 
                                   .spellIds = std::move(tab.spells)});
     }
 
+    // The highest rank of each name to the front of every tab, and how many
+    // that is.
+    //
+    // FrameXML asks for two ranges into this one list and keeps the second
+    // whenever "Show all spell ranks" is unticked, which is the default. Both
+    // ranges have to be contiguous, so the list is ordered rather than
+    // filtered. Answering the whole tab for both is why the checkbox did
+    // nothing and every rank of every spell was listed.
+    const auto nameOf = [this](uint32_t id) { return owner_.getSpellName(id); };
+    const auto rankOf = [this](uint32_t id) {
+        return spellRankNumber(owner_.getSpellRank(id));
+    };
+    for (auto& tab : spellBookTabs_) {
+        tab.highestRankCount = partitionHighestRanks(tab.spellIds, nameOf, rankOf);
+    }
+
     return spellBookTabs_;
 }
 
@@ -2462,6 +2479,10 @@ void SpellHandler::handleLearnedSpell(network::Packet& packet) {
     const bool alreadyKnown = knownSpells_.count(spellId) > 0;
     knownSpells_.insert(spellId);
     LOG_INFO("Learned spell: ", spellId, alreadyKnown ? " (already known, skipping chat)" : "");
+    // A new rank of something already on the bar takes its place there. The
+    // spellbook has collapsed to the highest rank since this build, and the
+    // bar has to agree with it or the button says one rank and casts another.
+    if (!alreadyKnown) upgradeActionBarToRank(spellId);
     if (isPreWotlk()) {
         loadTalentDbc();
         syncPreWotlkTalentsFromKnownSpells();
@@ -2571,6 +2592,58 @@ void SpellHandler::handleRemovedSpell(network::Packet& packet) {
     if (barChanged) owner_.saveCharacterConfig();
 }
 
+/// Point every action slot holding `oldSpellId` at `newSpellId`.
+///
+/// Shared by the two ways a rank is replaced: the server saying so outright
+/// with SMSG_SUPERCEDED_SPELL, and this client noticing that a newly learned
+/// spell outranks one already on the bar.
+bool SpellHandler::retargetActionBarSpell(uint32_t oldSpellId, uint32_t newSpellId) {
+    bool barChanged = false;
+    for (auto& slot : owner_.actionBarRef()) {
+        if (slot.type == ActionBarSlot::SPELL && slot.id == oldSpellId) {
+            slot.id = newSpellId;
+            slot.cooldownRemaining = 0.0f;
+            slot.cooldownTotal = 0.0f;
+            barChanged = true;
+            LOG_DEBUG("Action bar slot upgraded: spell ", oldSpellId, " -> ", newSpellId);
+        }
+    }
+    return barChanged;
+}
+
+/// Move any action slot holding a lower rank of `spellId` up to it.
+///
+/// WotLK does not supersede ranks: the trainer teaches rank 2 and you keep
+/// rank 1, so SMSG_SUPERCEDED_SPELL never arrives and the button someone
+/// dragged at level four goes on casting rank one for the rest of the
+/// character's life. The real client hides this behind the collapsed
+/// spellbook - a button placed from it follows the spell rather than the rank -
+/// and "you never have to re-drag" is the behaviour players expect.
+///
+/// Gated on the same CVar as the book. With "Show all spell ranks" ticked the
+/// player is managing ranks by hand and this must keep its hands off; unticked,
+/// which is the default, the book shows one entry per spell and the bar should
+/// agree with it.
+void SpellHandler::upgradeActionBarToRank(uint32_t spellId) {
+    if (core::storedCVarValue("showAllSpellRanks", "0") != "0") return;
+    const std::string& name = owner_.getSpellName(spellId);
+    if (name.empty()) return;
+    const int newRank = spellRankNumber(owner_.getSpellRank(spellId));
+
+    bool barChanged = false;
+    for (uint32_t known : knownSpells_) {
+        if (known == spellId) continue;
+        if (owner_.getSpellName(known) != name) continue;
+        if (spellRankNumber(owner_.getSpellRank(known)) >= newRank) continue;
+        if (retargetActionBarSpell(known, spellId)) barChanged = true;
+    }
+    if (!barChanged) return;
+    owner_.saveCharacterConfig();
+    // Zero means every slot - see handleSupercededSpell, which says why.
+    if (owner_.addonEventCallbackRef())
+        owner_.addonEventCallbackRef()("ACTIONBAR_SLOT_CHANGED", {"0"});
+}
+
 void SpellHandler::handleSupercededSpell(network::Packet& packet) {
     const bool classicSpellId = isClassicLikeExpansion();
     const size_t minSz = classicSpellId ? 4u : 8u;
@@ -2587,16 +2660,7 @@ void SpellHandler::handleSupercededSpell(network::Packet& packet) {
 
     LOG_INFO("Spell superceded: ", oldSpellId, " -> ", newSpellId);
 
-    bool barChanged = false;
-    for (auto& slot : owner_.actionBarRef()) {
-        if (slot.type == ActionBarSlot::SPELL && slot.id == oldSpellId) {
-            slot.id = newSpellId;
-            slot.cooldownRemaining = 0.0f;
-            slot.cooldownTotal = 0.0f;
-            barChanged = true;
-            LOG_DEBUG("Action bar slot upgraded: spell ", oldSpellId, " -> ", newSpellId);
-        }
-    }
+    const bool barChanged = retargetActionBarSpell(oldSpellId, newSpellId);
     if (barChanged) {
         owner_.saveCharacterConfig();
         // Zero, not nothing. The slot is the argument, and zero is how the

@@ -40,6 +40,12 @@ public:
         std::string name;
         std::string texture; // icon path
         std::vector<uint32_t> spellIds; // spells in this tab
+        /// How many of spellIds, from the front, are the highest known rank of
+        /// their name. GetSpellTabInfo hands FrameXML this as the second of its
+        /// two ranges, and SpellBook_GetTabInfo uses it whenever "Show all
+        /// spell ranks" is unticked - which is the default. See
+        /// game/spell_ranks.hpp.
+        size_t highestRankCount = 0;
     };
 
     // Unit cast state (aliased from handler_types.hpp)
@@ -359,6 +365,15 @@ public:
 
     // Known spells mutation (formerly accessed via friend)
     void addKnownSpell(uint32_t spellId) { knownSpells_.insert(spellId); }
+
+    /// Move any action slot holding a lower rank of this spell up to it.
+    /// WotLK does not supersede ranks, so nothing else does this. See the
+    /// definition for why it is gated on showAllSpellRanks.
+    void upgradeActionBarToRank(uint32_t spellId);
+
+    /// Point every action slot holding one spell at another. Returns whether
+    /// any slot moved.
+    bool retargetActionBarSpell(uint32_t oldSpellId, uint32_t newSpellId);
     [[nodiscard]] bool hasKnownSpell(uint32_t spellId) const { return knownSpells_.count(spellId) > 0; }
 
     // Target aura mutation (formerly accessed via friend)

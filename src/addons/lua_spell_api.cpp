@@ -615,8 +615,13 @@ static int lua_GetSpellTabInfo(lua_State* L) {
     // the first offset and count and keeps these. Returning four values left
     // numSpells nil and the page count divided by nothing. This client does
     // not track ranks separately, so the whole tab is the highest rank.
+    // The collapsed view: the highest known rank of each name, which
+    // getSpellBookTabs has already moved to the front of the tab. This
+    // answered the whole tab, so with "Show all spell ranks" unticked - the
+    // default - the book still listed every rank, two Lightning Bolts and two
+    // Earth Shocks, and the checkbox changed nothing.
     lua_pushnumber(L, offset);                     // highestRankOffset
-    lua_pushnumber(L, tab.spellIds.size());        // highestRankNumSpells
+    lua_pushnumber(L, tab.highestRankCount);       // highestRankNumSpells
     return 6;
 }
 
@@ -657,7 +662,10 @@ static int lua_GetSpellBookItemName(lua_State* L) {
             uint32_t spellId = tab.spellIds[idx - 1];
             const std::string& name = gh->getSpellName(spellId);
             lua_pushstring(L, name.empty() ? "Unknown" : name.c_str());
-            lua_pushstring(L, ""); // subName/rank
+            // The rank, which is the second half of a spellbook entry and was
+            // answered as an empty string - so the book named four Healing
+            // Waves with nothing to tell them apart.
+            lua_pushstring(L, gh->getSpellRank(spellId).c_str());
             return 2;
         }
         idx -= static_cast<int>(tab.spellIds.size());

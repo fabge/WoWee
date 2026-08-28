@@ -467,7 +467,14 @@ int main(int argc, char** argv) {
             // PickupSpell resolves slot 1 to nothing and every drag out of the
             // book is a no-op that looks like a broken drag.
             if (auto* sh = gh.getSpellHandler()) {
-                for (uint32_t id : {133u, 168u, 116u}) sh->addKnownSpell(id);
+                // Two ranks each of Fireball and Frostbolt, because one rank
+                // of everything cannot show whether the book collapses them.
+                // "Show all spell ranks" is unticked by default and the book
+                // is supposed to list only the highest of each name; with a
+                // rank-one-only fixture that is indistinguishable from listing
+                // everything, which is what it was doing.
+                for (uint32_t id : {133u, 143u, 168u, 116u, 205u})
+                    sh->addKnownSpell(id);
             }
             // A spell icon path for every id, so GetSpellTexture answers
             // non-empty. Without it SpellButton_UpdateButton hides the icon and
