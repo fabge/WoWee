@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/totem_expiry.hpp"
 #include "game/world_packets.hpp"
 #include "game/opcode_table.hpp"
 #include "game/spell_defines.hpp"
@@ -766,6 +767,9 @@ private:
     AchievementEarnedCallback achievementEarnedCallback_;
     // Shaman totem state
     TotemSlot activeTotemSlots_[NUM_TOTEM_SLOTS];
+    /// Fires PLAYER_TOTEM_UPDATE on the tick a totem runs out. See
+    /// game/totem_expiry.hpp - nothing on the wire says a totem has ended.
+    TotemExpiryWatch<NUM_TOTEM_SLOTS> totemExpiry_;
     ChargeCallback chargeCallback_;
     bool hasPlayerExploredZones_ = false;
     HearthstonePreloadCallback hearthstonePreloadCallback_;

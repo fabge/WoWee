@@ -2116,6 +2116,14 @@ target_link_libraries(test_input_binding_state PRIVATE SDL2::SDL2)
 wowee_add_test(test_area_zone_lookup
     SOURCES test_area_zone_lookup.cpp)
 
+# ── test_totem_expiry ───────────────────────────────────────
+#
+# Nothing on the wire says a totem has ended, so the interface was told when
+# one was placed and never when one ran out - the icon stayed under the player
+# portrait reading "0 s".
+wowee_add_test(test_totem_expiry
+    SOURCES test_totem_expiry.cpp)
+
 # ── test_corpse_fields ──────────────────────────────────────
 #
 # Bones keep the owner's guid, so "is this corpse mine" answered yes for a

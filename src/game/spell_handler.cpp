@@ -1618,6 +1618,30 @@ void SpellHandler::updateTimers(float dt) {
             }
         }
     }
+    // A totem running out, which nothing on the wire announces either.
+    //
+    // SMSG_TOTEM_CREATED is the only totem message this client receives, so
+    // the interface was told when one was placed and never when one ended.
+    // FrameXML's TotemFrame hides its button on PLAYER_TOTEM_UPDATE and its
+    // OnUpdate only rewrites the duration text - so the icon sat under the
+    // player portrait reading "0 s" for the rest of the session.
+    //
+    // The slot is emptied as well as announced: an expired totem is gone, and
+    // leaving the spell id behind would have GetTotemInfo naming it forever.
+    {
+        std::array<bool, NUM_TOTEM_SLOTS> active{};
+        for (int i = 0; i < NUM_TOTEM_SLOTS; ++i) active[i] = activeTotemSlots_[i].active();
+        const unsigned ended = totemExpiry_.expired(active);
+        for (int i = 0; i < NUM_TOTEM_SLOTS; ++i) {
+            if ((ended & (1u << i)) == 0) continue;
+            activeTotemSlots_[i] = TotemSlot{};
+            if (owner_.addonEventCallbackRef()) {
+                owner_.addonEventCallbackRef()("PLAYER_TOTEM_UPDATE",
+                                               {std::to_string(i + 1)});
+            }
+        }
+    }
+
     // Tick down spell cooldowns
     bool anyCooldownEnded = false;
     for (auto it = spellCooldowns_.begin(); it != spellCooldowns_.end(); ) {

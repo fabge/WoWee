@@ -106,11 +106,27 @@ Do each class quest as soon as it is available — they gate real damage, not fl
 - Quest-item totems (e.g. Winterhoof Cleansing Totem, Mulgore water wells) are one-shot quest items. Once the quest is turned in they are vendor trash.
 - **Smartstone** is a ChromieCraft server addition, not a Blizzard item. Right-click to see its menu; keep it.
 
-## Smartstone — resolved
+## Smartstone — what it actually is
 
-Tooltip reads `Use: Dummy`. A dummy spell has no client-side effect; the behaviour would live entirely in a server-side script. The hand-raise animation is the generic cast with nothing behind it, so the ChromieCraft module is either not enabled or not applicable at this level. Unique, BoP, no vendor value. Safe to delete; nothing depends on it.
+Real ChromieCraft feature, not a vestigial item. Module: https://github.com/chromiecraft/mod-chromiecraft-smartstone
 
-If it later turns out other players get a working gossip/menu from it, that would be a client packet-handling bug in this fork rather than a game question — worth a look then, not before.
+It repurposes item **32547** ("Tier 5 Mage Test Gear"), which is why the tooltip is bare and reads `Use: Dummy` — the item template was reused and all behaviour lives in a server-side script. Using it should open a **gossip menu** (same window as talking to an NPC) offering:
+
+- Companions and pets — free ones tied to PvE achievements (Serpentshrine Waterspawn, Hyjal Wisp), others subscriber-only
+- Costumes and cosmetic auras
+- Character services — name/race/faction change, Portable Barbershop, via tokens or subscription
+- Announcement toggles — BG/arena queue, PvP notifications (needs `EnablePlayerSettings = 1` server-side)
+
+Re-obtainable at any time with the `.smartstone` chat command, so **deleting it is reversible** — it is worth keeping only when the services are actually usable. At low level with no unlocks it is one bag slot for nothing.
+
+Before deleting, run `.smartstone` while still holding it to confirm the command works on this account. If it responds, delete freely. If it does nothing, keep the stone.
+
+### Nothing happens on use — two candidates
+
+1. **Empty menu (most likely, benign).** Almost every entry is gated behind achievements, tokens or a subscription. At low level with no unlocks there may be zero valid entries, and an empty gossip menu can result in no packet at all: cast animation, no window.
+2. **Gossip rendering in this fork.** The whole feature is a gossip packet. If the client does not display gossip triggered by *item* use, this is exactly the symptom.
+
+**Test to distinguish:** talk to an NPC with a real gossip menu — a flight master, or an innkeeper's "Make this inn your home". If NPC gossip renders correctly, client gossip handling is fine and the Smartstone is simply empty for this character; nothing to fix. If NPC gossip is also blank or missing options, that is a genuine client bug worth an entry in `TODO.md`.
 
 ## Progression checkpoint (level 11, Thunder Bluff)
 
@@ -124,3 +140,62 @@ Turn-in order for the backlog of completed quests:
 Use **Show Map** in the quest log to locate any turn-in.
 
 Next zone: Mulgore is done. Head south from Bloodhoof Village to **The Crossroads, The Barrens** — the standard Horde 10–20 zone, which covers the run up to Call of Water at 20.
+
+## Action bar layout
+
+Principle: everything pressed *during* a fight sits on `1`–`6` where the fingers already rest. Everything else goes on keys there is time to reach for.
+
+Main bar — combat:
+
+| Key | Spell |
+|---|---|
+| `1` | Lightning Bolt |
+| `2` | Flame Shock |
+| `3` | Earth Shock |
+| `4` | Searing Totem |
+| `5` | Healing Wave |
+| `6` | Stoneclaw Totem |
+
+Secondary — reachable, not urgent:
+
+| Key | Spell |
+|---|---|
+| `7` | Earthbind Totem |
+| `8` | Lightning Shield |
+| `9` | Flametongue Weapon |
+| `0` | Ghost Wolf (16) |
+| `-` | Healthstone / potions / food |
+| `=` | Hearthstone |
+
+## Shock cooldown — the key mechanic
+
+**All shocks share one 6 second cooldown.** Flame Shock, Earth Shock and later Frost Shock are not independent buttons; using one locks out the others. Every fight is a choice of which shock owns the current window, never a sequence of both. (Reverberation in the Elemental tree shortens this cooldown.)
+
+## Combat patterns
+
+Pre-pull, out of combat and free: Lightning Shield up, Flametongue Weapon on, **drop Searing Totem where you are standing and then pull**. ~20 yard range, 60 second duration — the fight must happen next to the totem.
+
+**Normal trash** (dead in under ~10s):
+1. Lightning Bolt as the opener while it closes
+2. **Earth Shock** — instant, front-loaded
+3. Lightning Bolt to finish, autoattacking in melee between casts
+
+No Flame Shock here; a 12 second DoT on an 8 second mob is wasted mana.
+
+**Tough mob / elite / higher level:**
+1. **Flame Shock** first — the DoT gets full value over a long fight
+2. Lightning Bolt
+3. Earth Shock when the shock cooldown returns
+4. Healing Wave below ~40%
+
+**Multiple mobs:**
+1. **Earthbind Totem** immediately — slows everything nearby
+2. Kill one at a time, fully. Never split damage.
+3. Back up while they are slowed for free casts
+4. **Stoneclaw Totem** when in trouble — briefly pulls mobs off, buying room to heal or run
+
+**Casters and ranged mobs** will not walk to you. Break line of sight behind terrain to force them to close, then fight them next to Searing Totem where they cannot cast.
+
+**Escape:** Stoneclaw Totem, then Ghost Wolf out. Do not try to out-heal a losing fight at low level — Healing Wave has a cast time and dying mid-cast is the usual outcome.
+
+**Between fights:** drink to full before anything dangerous, re-apply Lightning Shield if it dropped. Even with fast regen, opening a fight at half mana is how a bad add kills you.

@@ -1724,3 +1724,29 @@ without it nothing says the zone is under the cursor.
 Same class as the tracker fix earlier today: an AreaTable id used without being
 resolved to its zone. Two in one day is a pattern, and worth a sweep if a third
 turns up.
+
+## 2026-08-28 — the totem that never went away
+
+Reported as "this one keeps showing on my avatar after time has run out", with
+a screenshot of a totem icon under the player portrait reading "0 s".
+
+`SMSG_TOTEM_CREATED` is the only totem message this client receives, and
+`PLAYER_TOTEM_UPDATE` was fired from that one place. FrameXML's `TotemFrame`
+shows its button on that event and hides it on the same event; its `OnUpdate`
+only rewrites the duration text. So the interface was told when a totem was
+placed and never when one ended, the button stayed shown, and
+`AuraButton_UpdateDuration` went on writing a time left that had reached zero.
+
+Fired on expiry now, from `SpellHandler::updateTimers` - three lines below the
+spell-cooldown block that carries a comment saying the identical thing about
+cooldowns. The slot is emptied as well as announced, because an expired totem
+is gone and leaving the spell id behind would have `GetTotemInfo` naming it for
+the rest of the session.
+
+`TotemExpiryWatch` in `game/totem_expiry.hpp` is the edge trigger, so the event
+fires on the tick a slot empties and never again. Six cases, including a totem
+replaced in the same slot, which is not an expiry.
+
+That is the third fault this week of the shape "the server never says X, so
+nothing announced X": a cooldown ending, a target being dropped by a despawn,
+and now a totem running out.
