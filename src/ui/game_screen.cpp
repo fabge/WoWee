@@ -1654,6 +1654,23 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
 
     // Left-click targeting: only on mouse-up if the mouse didn't drag (camera rotate)
     // Record press position on mouse-down
+    //
+    // Why a press was not taken, when it was not. "Clicking somewhere else to
+    // deselect does not work reliably" has four candidate gates on this path -
+    // ImGui wanting the mouse, the interface owning it, the right button being
+    // held, and the drag threshold on release - and from the chair they are
+    // indistinguishable. The widget-input line above says a press hit no
+    // frame; this says what the world did with the same press. Only on a
+    // press that is refused, so it is silent while things work.
+    if (input.isMouseButtonJustPressed(SDL_BUTTON_LEFT) &&
+        (io.WantCaptureMouse || frameXmlOwnsMouse() ||
+         input.isMouseButtonPressed(SDL_BUTTON_RIGHT))) {
+        LOG_WARNING("World click refused at press: imguiWantsMouse=",
+                    io.WantCaptureMouse ? "yes" : "no",
+                    " interfaceOwnsMouse=", frameXmlOwnsMouse() ? "yes" : "no",
+                    " rightHeld=",
+                    input.isMouseButtonPressed(SDL_BUTTON_RIGHT) ? "yes" : "no");
+    }
     if (!io.WantCaptureMouse && !frameXmlOwnsMouse() &&
         input.isMouseButtonJustPressed(SDL_BUTTON_LEFT) && !input.isMouseButtonPressed(SDL_BUTTON_RIGHT)) {
         leftClickPressPos_ = input.getMousePosition();
@@ -1668,6 +1685,15 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
         float dragDistSq = glm::dot(dragDelta, dragDelta);
         const float CLICK_THRESHOLD = clickDragThreshold();
 
+        // The other gate, and the one with a number behind it: a click that
+        // moved further than the threshold is a camera drag and selects
+        // nothing. Said with both figures, so "it was a drag" can be told
+        // apart from "the threshold is too tight".
+        if (dragDistSq >= CLICK_THRESHOLD * CLICK_THRESHOLD) {
+            LOG_WARNING("World click refused as a drag: moved ",
+                        std::sqrt(dragDistSq), "px, threshold ", CLICK_THRESHOLD,
+                        "px");
+        }
         if (dragDistSq < CLICK_THRESHOLD * CLICK_THRESHOLD) {
             auto* renderer = services_.renderer;
             auto* camera = renderer ? renderer->getCamera() : nullptr;
@@ -1744,7 +1770,14 @@ void GameScreen::processTargetInput(game::GameHandler& gameHandler) {
                     } else {
                         gameHandler.setTarget(closestGuid);
                     }
-                } else if (core::storedCVarValue("deselectOnClick", "1") != "0") {
+                } else if (core::storedCVarValue("deselectOnClick", "1") == "0") {
+                    // The third outcome: the click reached the world, hit
+                    // nothing, and Sticky Targeting is on - so keeping the
+                    // target is what was asked for, and looks identical to
+                    // the click never arriving.
+                    LOG_WARNING("World click hit nothing and Sticky Targeting "
+                                "is on, so the target is kept");
+                } else {
                     // Clicked empty space - deselect current target, unless the
                     // player asked otherwise. The panel calls this Sticky
                     // Targeting and ticks it to mean "do not", which is why the

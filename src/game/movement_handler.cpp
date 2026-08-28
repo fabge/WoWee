@@ -12,6 +12,7 @@
 #include "pipeline/asset_manager.hpp"
 #include "pipeline/dbc_layout.hpp"
 #include "core/logger.hpp"
+#include "core/app_clock.hpp"
 #include <glm/gtx/quaternion.hpp>
 #include <algorithm>
 #include <cmath>
@@ -1620,6 +1621,29 @@ void MovementHandler::handleMonsterMove(network::Packet& packet) {
         // target to watch, or a fixed angle. Every other type leaves facing to
         // the path, and the entity turns along it as it goes.
         const bool holdFacing = (data.moveType == 3 || data.moveType == 4);
+
+        // What this move asked for, when what it asked for is a facing that
+        // will not follow the path.
+        //
+        // "Morin Cloudstalker was pointing in the wrong direction when
+        // walking, same as the wolf before" - the wolf was fixed by turning
+        // along travel, and this one was not, so the question is which of the
+        // two arms it took. A held facing on a long walk is the arm that can
+        // still get it wrong, and it is the only one worth a line: the other
+        // turns itself. Named by guid and by moveType, and rate-limited,
+        // because a busy zone sends these constantly.
+        if (holdFacing) {
+            static double lastSaid = 0.0;
+            const double now = core::appTimeSeconds();
+            if (now - lastSaid > 2.0) {
+                lastSaid = now;
+                LOG_WARNING("Creature move holds a facing: guid=0x", std::hex,
+                            data.guid, std::dec, " moveType=", static_cast<int>(data.moveType),
+                            " facing=", orientation, " rad, waypoints=",
+                            data.waypoints.size(), ", duration=", data.duration,
+                            "ms - it will not turn along the path");
+            }
+        }
 
         // Build full path: start → waypoints → destination (all in canonical coords)
         if (!data.waypoints.empty()) {

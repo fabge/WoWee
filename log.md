@@ -1780,3 +1780,35 @@ and 106 tall - six wrapped rows - where it had been about 1670 wide and one row.
 Noted while there and **not** fixed: that description reads "taunts creatures
 within yards", so `formatSpellDescription` left a radius token unsubstituted.
 Separate fault, no report behind it yet.
+
+## 2026-08-28 — two reports instrumented rather than guessed
+
+**Clicking empty ground to deselect works about one time in four.** The session
+log shows it plainly: four presses at nearly the same screen position between
+13:26:36 and 13:26:47, one of which cleared the target.
+
+Four gates can refuse that click and from the chair they are
+indistinguishable - ImGui wanting the mouse, the interface owning it, the right
+button being held, and the drag threshold on release. A fifth outcome looks the
+same again: the click reaching the world, hitting nothing, and Sticky Targeting
+being on, which is the target being kept on purpose.
+
+Each of the five says which it was now, and the drag line carries both the
+distance moved and the threshold, so "it was a drag" can be told apart from
+"the threshold is too tight". Silent while things work.
+
+**Morin Cloudstalker walked facing the wrong way, "same as the wolf before".**
+The wolf was fixed by turning along travel; this one was not, so the question
+is which arm of `movement_handler` the move took. The arithmetic was re-checked
+against `core/coordinates.hpp` first and is right: the entity's x/y are
+canonical, its orientation is canonical, and canonical yaw is `atan2(-dy, dx)`
+exactly as `faceAlongTravel` computes it.
+
+That leaves the held-facing arm - move types 3 and 4, where the creature is
+told to watch a target or hold an angle and deliberately does *not* turn along
+the path. A long walk under a held facing is the one shape that still produces
+the report, and it now says so: guid, move type, facing, waypoint count and
+duration, rate-limited.
+
+Both need one play session to answer. Neither was guessed at, which is the
+third time today that static reasoning about this client would have been wrong.
