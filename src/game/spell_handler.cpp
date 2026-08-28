@@ -3110,9 +3110,12 @@ void SpellHandler::loadSpellNameCache() const {
     uint32_t schoolMaskField = 0, schoolEnumField = 0;
     bool hasSchoolMask = false, hasSchoolEnum = false;
     if (spellL) {
-        uint32_t f = spellL->field("SchoolMask");
+        // Both names asked for quietly: the expansions disagree on which one
+        // this column has, and finding it under the other is the normal case
+        // rather than a fault worth reporting.
+        uint32_t f = spellL->fieldOptional("SchoolMask");
         if (f != 0xFFFFFFFF && f < dbc->getFieldCount()) { schoolMaskField = f; hasSchoolMask = true; }
-        f = spellL->field("SchoolEnum");
+        f = spellL->fieldOptional("SchoolEnum");
         if (f != 0xFFFFFFFF && f < dbc->getFieldCount()) { schoolEnumField = f; hasSchoolEnum = true; }
     }
 

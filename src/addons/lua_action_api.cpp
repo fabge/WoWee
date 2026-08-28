@@ -286,17 +286,9 @@ static int lua_IsActionInRange(lua_State* L) {
     }
 
     // Need a target to check range against
-    uint64_t targetGuid = gh->getTargetGuid();
-    if (targetGuid == 0) { return luaReturnNil(L); }
-    auto targetEnt = gh->getEntityManager().getEntity(targetGuid);
-    auto playerEnt = gh->getEntityManager().getEntity(gh->getPlayerGuid());
-    if (!targetEnt || !playerEnt) { return luaReturnNil(L); }
-
-    float dx = playerEnt->getX() - targetEnt->getX();
-    float dy = playerEnt->getY() - targetEnt->getY();
-    float dz = playerEnt->getZ() - targetEnt->getZ();
-    float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
-    lua_pushnumber(L, dist <= data.maxRange ? 1 : 0);
+    const auto dist = gh->distanceFromPlayerTo(gh->getTargetGuid());
+    if (!dist) { return luaReturnNil(L); }
+    lua_pushnumber(L, *dist <= data.maxRange ? 1 : 0);
     return 1;
 }
 

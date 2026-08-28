@@ -177,6 +177,12 @@ CHECKS = [
     ("silent_target_drop_check.py",
      r"^(\d+) outside src/game/combat_handler\.cpp", 0,
      "target-guid writes that never fire PLAYER_TARGET_CHANGED"),
+    # A layout column name the code asks for and no layout declares resolves to
+    # 0xFFFFFFFF, which every caller turns into a read it simply does not do -
+    # so the feature behind it is off in silence.
+    ("dbc_layout_name_check.py",
+     r"^(\d+) that no layout declares", 3,
+     "DBC column names asked for that no layout declares"),
     ("posix_only_check.py",
      r"^(\d+) called directly instead", 0,
      "POSIX-only calls that break the Windows build"),

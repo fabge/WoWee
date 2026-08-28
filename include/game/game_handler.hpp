@@ -3340,6 +3340,34 @@ public:
     uint64_t& focusGuidRef() { return focusGuid; }
     uint64_t& mouseoverGuidRef() { return mouseoverGuid_; }
     MovementInfo& movementInfoRef() { return movementInfo; }
+
+    /// How far a unit is from the player, or nullopt when it cannot be placed.
+    ///
+    /// The player's position comes from movementInfo and the unit's from
+    /// getLatest*(), and neither is arbitrary. The player's own Entity is
+    /// written on a world transfer and at the start of a taxi flight and at no
+    /// other time, so while walking it holds wherever the player last teleported
+    /// to; every range check that read it was measuring from there. getLatest*
+    /// is the unit's last server-authoritative position - its destination while
+    /// it is moving - where getX/Y/Z is the interpolated one and stops updating
+    /// under distance culling.
+    ///
+    /// One implementation because there were three, and two of them were wrong
+    /// in the same way: IsActionInRange and IsSpellInRange both measured from
+    /// the player's stale Entity, so a caster who had walked anywhere since
+    /// logging in was out of range of everything. FrameXML paints the hotkey
+    /// number red on IsActionInRange returning 0, which is "the Lightning Bolt
+    /// number is always red even if I can use it".
+    [[nodiscard]] std::optional<float> distanceFromPlayerTo(uint64_t guid) const {
+        if (guid == 0) return std::nullopt;
+        auto unit = getEntityManager().getEntity(guid);
+        if (!unit) return std::nullopt;
+        if (guid == getPlayerGuid()) return 0.0f;
+        const float dx = movementInfo.x - unit->getLatestX();
+        const float dy = movementInfo.y - unit->getLatestY();
+        const float dz = movementInfo.z - unit->getLatestZ();
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
     Inventory& inventoryRef() { return inventory; }
 
     // ── Core / Session ───────────────────────────────────────────────

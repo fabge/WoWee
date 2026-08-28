@@ -306,11 +306,11 @@ void CombatHandler::startAutoAttack(uint64_t targetGuid) {
 
     // Client-side range gate to avoid starting "swing forever" loops when
     // target is already clearly out of range.
-    if (auto target = owner_.getEntityManager().getEntity(targetGuid)) {
-        float dx = owner_.movementInfoRef().x - target->getLatestX();
-        float dy = owner_.movementInfoRef().y - target->getLatestY();
-        float dz = owner_.movementInfoRef().z - target->getLatestZ();
-        float dist3d = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (const auto dist3dOpt = owner_.distanceFromPlayerTo(targetGuid)) {
+        // Through the shared helper, which this block is the original of: the
+        // two Lua range checks had each grown their own copy and both measured
+        // from the player's Entity, which is not where the player is.
+        const float dist3d = *dist3dOpt;
         // Use longer range limit when a ranged weapon is equipped
         const auto& rangedSlot = owner_.getInventory().getEquipSlot(game::EquipSlot::RANGED);
         bool hasRangedWeapon = !rangedSlot.empty() &&

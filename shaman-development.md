@@ -95,11 +95,25 @@ The four elemental totem *items* are permanent tools. They live in the bags, are
 | Item | From | Gates |
 |---|---|---|
 | Earth Totem | Call of Earth (~lvl 4) | Stoneclaw, Stoneskin, Earthbind, Strength of Earth |
-| Fire Totem | **Call of Fire (lvl 10)** | Searing Totem, Fire Nova, Magma, Totem of Wrath |
+| Fire Totem | **Call of Fire chain (starts lvl 10, see below)** | Searing Totem, Fire Nova, Magma, Totem of Wrath |
 | Water Totem | Call of Water (lvl 20) | Healing Stream, Mana Spring, Fire Resistance |
 | Air Totem | Call of Air (lvl 30) | Windfury, Grace of Air, Wrath of Air, Grounding |
 
-Do each class quest as soon as it is available — they gate real damage, not flavour. Call of Fire in particular is what unlocks Searing Totem.
+Do each class quest as soon as it is available — they gate real damage, not flavour.
+
+### Call of Fire is a chain, not a turn-in
+
+The Fire Totem arrives at the **end** of a multi-zone chain, not from the first turn-in at level 10.
+
+1. Turn in the completed part — **Kranal Fiss** sends you on
+2. **Telf Joolam**, atop a mountain in **Durotar**; approach from ~**36, 57** and climb
+3. Collect **Fire Tar** from Razormane Water Seekers (Barrens, ~12–13) and a **Reagent Pouch** from Burning Blade Cultists (Durotar, ~10–12)
+4. Use the Fire Sapta, kill the summoned **Minor Manifestation of Fire**
+5. Return the Torch of the Eternal Flame to Kranal Fiss → **Fire Totem**
+
+Sources disagree on Kranal Fiss (Icy Veins says Orgrimmar, WoWWiki says the Barrens) — **trust the quest log's Show Map**.
+
+Routing: most of this is Durotar, which is a gentle 10–13 zone. **Fly, never walk** — Thunder Bluff → Crossroads → Orgrimmar; flight paths ignore ground mobs. Level 11→13 in Durotar (Sen'jin Village, Echo Isles) since the chain goes there anyway, and save the Barrens Fire Tar step for last at 13.
 
 ## Bag triage
 
@@ -150,7 +164,7 @@ Main bar — combat:
 | Key | Spell |
 |---|---|
 | `1` | Lightning Bolt |
-| `2` | Flame Shock |
+| `2` | Flame Shock (from level 12) |
 | `3` | Earth Shock |
 | `4` | Searing Totem |
 | `5` | Healing Wave |
@@ -167,6 +181,25 @@ Secondary — reachable, not urgent:
 | `-` | Healthstone / potions / food |
 | `=` | Hearthstone |
 
+## One totem per element
+
+Up to four totems can be active at once, but only **one per element** — one Earth, one Fire, one Water, one Air. Dropping a second totem of the same element replaces the first.
+
+With only the Earth Totem tool, *every* available totem is Earth (Stoneclaw, Earthbind, Stoneskin), so **only one totem can ever be down**. Earthbind deletes Stoneclaw. Pick one per fight: **Earthbind** to win it, **Stoneclaw** to survive it.
+
+### Which Earth totem, right now
+
+**Stoneskin Totem is the default.** Flat reduction on every physical hit, ~2 minute duration (vs ~45s Earthbind, ~15s Stoneclaw). At level 11 mobs hit for 15–25, so it removes roughly 15–20% of all incoming melee — and melee weaving means eating that on every fight. Drop it near 2–3 mobs and pull them to it one at a time: one cast, three fights.
+
+Swap off only when the fight is already going wrong:
+
+- **Earthbind** — two mobs pulled, or a low-health mob fleeing for friends. The 50% snare rescues the fight.
+- **Stoneclaw** — escaping. Briefly grabs mobs off you for a break-away or a Healing Wave.
+
+Both overwrite Stoneskin; re-drop it once things settle.
+
+This is the real value of each class quest: the Fire Totem does not just add Searing Totem, it allows Earthbind **and** Searing at the same time. Same jump again at 20 (Water) and 30 (Air).
+
 ## Shock cooldown — the key mechanic
 
 **All shocks share one 6 second cooldown.** Flame Shock, Earth Shock and later Frost Shock are not independent buttons; using one locks out the others. Every fight is a choice of which shock owns the current window, never a sequence of both. (Reverberation in the Elemental tree shortens this cooldown.)
@@ -174,6 +207,8 @@ Secondary — reachable, not urgent:
 ## Combat patterns
 
 Pre-pull, out of combat and free: Lightning Shield up, Flametongue Weapon on, **drop Searing Totem where you are standing and then pull**. ~20 yard range, 60 second duration — the fight must happen next to the totem.
+
+**Before the Fire Totem is earned there is no Searing Totem.** Until the Call of Fire chain is finished: Lightning Bolt on approach, Earth Shock on contact, then melee autoattack with Lightning Shield up and Lightning Bolt between swings. Earthbind the moment a second mob appears, Stoneclaw to break off. Slower, but it works.
 
 **Normal trash** (dead in under ~10s):
 1. Lightning Bolt as the opener while it closes
@@ -194,8 +229,24 @@ No Flame Shock here; a 12 second DoT on an 8 second mob is wasted mana.
 3. Back up while they are slowed for free casts
 4. **Stoneclaw Totem** when in trouble — briefly pulls mobs off, buying room to heal or run
 
+Note the element limit above: pre-Fire Totem these two are mutually exclusive, so commit to one at the start of the fight.
+
 **Casters and ranged mobs** will not walk to you. Break line of sight behind terrain to force them to close, then fight them next to Searing Totem where they cannot cast.
 
 **Escape:** Stoneclaw Totem, then Ghost Wolf out. Do not try to out-heal a losing fight at low level — Healing Wave has a cast time and dying mid-cast is the usual outcome.
 
 **Between fights:** drink to full before anything dangerous, re-apply Lightning Shield if it dropped. Even with fast regen, opening a fight at half mana is how a bad add kills you.
+
+## Spell ranks on the action bar
+
+**Flame Shock is learned at level 12**, not 10.
+
+New ranks should upgrade on the bar automatically. The **"Show all spell ranks"** checkbox at the top of the spellbook is the mechanism: unchecked, the book collapses each spell to its highest rank, and a button dragged from that collapsed view auto-upgrades on every new rank trained.
+
+**Observed anomaly:** with the box unchecked, the spellbook still lists two Lightning Bolt and two Earth Shock entries. Ranks are not collapsing, so auto-upgrade is likely not working either — meaning the bar may have been stuck on rank 1.
+
+Check: hover the action button and read the rank and damage in the tooltip, compare against the top spellbook entry.
+
+Workaround until fixed: re-drag Lightning Bolt, Earth Shock and Healing Wave after every trainer visit.
+
+**Possible fork bug.** The checkbox drives `SpellBookFrame` rank filtering client-side, so a failure here is WoWee's, not ChromieCraft's. Candidate for `TODO.md` once the tooltip rank mismatch is confirmed.

@@ -1812,3 +1812,52 @@ duration, rate-limited.
 
 Both need one play session to answer. Neither was guessed at, which is the
 third time today that static reasoning about this client would have been wrong.
+
+## 2026-08-28 — the always-red hotkey, and a warning that cried wolf
+
+**"The Lightning Bolt number is always red even if I can use it."** FrameXML
+paints the hotkey number red when `IsActionInRange` answers 0, and it was
+answering 0 for everything.
+
+The distance was measured from the *player's own Entity*. That entity is
+written on a world transfer and at the start of a taxi flight, and at no other
+time - so while walking it holds wherever the player last teleported to, and
+every spell was out of range from the moment they took a step. The target side
+was wrong too: `getX/Y/Z` is the interpolated position and stops updating under
+distance culling, where `getLatest*` is the last the server actually said.
+
+The auto-attack range gate in `CombatHandler` had it right all along -
+`movementInfo` for the player, `getLatest*` for the target - and the two Lua
+checks had each grown their own copy of the wrong thing.
+`GameHandler::distanceFromPlayerTo` is the one implementation now, and all
+three use it.
+
+Ruled out on the way, each with a measurement rather than a guess: the range
+data itself (Lightning Bolt resolves to 30 yards through `RangeIndex` 4 and
+`SpellRange.dbc`), and the stale `dbc_layouts.json` in the data directory,
+which is missing 31 Spell keys but not the two that matter here.
+
+**And the layout warning that fires when nothing is wrong.** Every session
+logged that the Spell layout "does not declare 'SchoolEnum'" and told the
+player to re-extract their game data. It is a deliberate probe: the expansions
+disagree on that column's name, so both sites try `SchoolMask` first and
+`SchoolEnum` second, and on WotLK and TBC the second try always misses after
+the first has already found it. `DBCLayout::fieldOptional` is the lookup that
+does not report, and the two probing sites use it. The file it told people to
+copy does not declare the name either, so the advice was wrong as well as
+unnecessary.
+
+**A sweep for the class**: `tools/dbc_layout_name_check.py`. A column name no
+layout declares comes back as 0xFFFFFFFF and every caller turns that into a
+read it does not do - silent, with a plausible zero everywhere downstream. The
+two existing DBC sweeps find an index past the end of the file and an index
+that is in range and wrong; this one finds the name that resolves to nothing.
+Three stand today - `DisplayID`, `ItemVisual`, `SrcItemID` - and are pinned so
+a fourth cannot be added quietly.
+
+Not reproduced and therefore not touched: "invalid target" when healing
+yourself. Auto self-cast is on by default, is not overridden in the stored
+CVars, and Healing Wave's implicit target reads 45, which
+`requiresFriendlyTarget` accepts - checked against the shipped Spell.dbc
+directly. Three plausible causes were each ruled out by measurement rather than
+by argument. It needs a session.

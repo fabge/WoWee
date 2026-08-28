@@ -166,10 +166,16 @@ void SpellbookScreen::loadSpellDBC(pipeline::AssetManager* assetManager) {
         // Try SchoolMask (TBC/WotLK bitmask) then SchoolEnum (Classic/Turtle 0-6 value)
         schoolField_  = UINT32_MAX;
         isSchoolEnum_ = false;
-        try { schoolField_ = (*spellL)["SchoolMask"]; } catch (...) {}
-        if (schoolField_ == UINT32_MAX) {
-            try { schoolField_ = (*spellL)["SchoolEnum"]; isSchoolEnum_ = true; } catch (...) {}
+        // Quietly, both of them - see DBCLayout::fieldOptional. Through the
+        // subscript these went to field(), which reports a miss, so the probe
+        // for the name this expansion does not use logged a warning telling
+        // the player to re-extract their game data every session.
+        schoolField_ = spellL->fieldOptional("SchoolMask");
+        if (schoolField_ == 0xFFFFFFFFu) {
+            schoolField_ = spellL->fieldOptional("SchoolEnum");
+            isSchoolEnum_ = (schoolField_ != 0xFFFFFFFFu);
         }
+        if (schoolField_ == 0xFFFFFFFFu) schoolField_ = UINT32_MAX;
         tryLoad((*spellL)["ID"], (*spellL)["Attributes"], (*spellL)["IconID"],
                 (*spellL)["Name"], (*spellL)["Rank"], tooltipField, descriptionField,
                 powerTypeField, manaCostField, castTimeIdxField, rangeIdxField,
