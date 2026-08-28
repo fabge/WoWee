@@ -1102,13 +1102,27 @@ bool AddonManager::loadFrameXml(const std::string& frameXmlDir) {
         "  local original = WatchFrame_Collapse\n"
         "  WatchFrame_Collapse = function(self)\n"
         "    self = self or WatchFrame\n"
+        // The zone filter alongside it, because that is what emptied the
+        // tracker the one time this fired for real: a collapse with watches
+        // held and an empty zone table is the filter, and a collapse with a
+        // full one is not. Only on the collapse, so it costs nothing until
+        // something is wrong.
+        "    local inZone = 0\n"
+        "    if type(CURRENT_MAP_QUESTS) == 'table' then\n"
+        "      for _ in pairs(CURRENT_MAP_QUESTS) do inZone = inZone + 1 end\n"
+        "    end\n"
         "    __WoweeWarn(string.format(\n"
-        "      'objectives tracker collapsing: %s (userCollapsed=%s, lines=%s)',\n"
+        "      'objectives tracker collapsing: %s (userCollapsed=%s, lines=%s, "
+        "watched=%d, inZone=%d, zone=%s, filter=%s)',\n"
         "      self.userCollapsed and 'the player asked' or\n"
         "        'BY ITSELF - an update measured nothing, and that also disables "
         "the expand button',\n"
         "      tostring(self.userCollapsed),\n"
-        "      tostring(WatchFrameLines and WatchFrameLines:IsShown())))\n"
+        "      tostring(WatchFrameLines and WatchFrameLines:IsShown()),\n"
+        "      GetNumQuestWatches and GetNumQuestWatches() or -1,\n"
+        "      inZone,\n"
+        "      tostring(GetRealZoneText and GetRealZoneText()),\n"
+        "      tostring(WATCHFRAME_FILTER_TYPE)))\n"
         "    return original(self)\n"
         "  end\n"
         "end\n");
@@ -1284,6 +1298,19 @@ bool AddonManager::loadFrameXml(const std::string& frameXmlDir) {
         "      CURRENT_MAP_QUESTS[questId] = logIndex\n"
         "    end\n"
         "  end\n"
+        "else\n"
+        // Said, not skipped. The guard exists because this runs after FrameXML
+        // and any of the three names could be absent - but falling through it
+        // silently restores the POI-based original, which answers nothing on
+        // this client and is exactly the state that emptied the tracker and
+        // disabled its own expand button. A quiet fallback to the bug is the
+        // worst of the three outcomes.
+        "  __WoweeWarn(string.format(\n"
+        "    'objectives tracker: the zone filter is NOT installed "
+        "(GetCurrentMapQuests=%s, CURRENT_MAP_QUESTS=%s, ids=%s) - "
+        "FrameXML will filter on map POIs, which this client does not send',\n"
+        "    type(WatchFrame_GetCurrentMapQuests), type(CURRENT_MAP_QUESTS),\n"
+        "    type(__WoweeCurrentZoneQuestIds)))\n"
         "end\n");
 
     // The browse tab's column headers, which sort nothing on a single page.

@@ -1667,3 +1667,22 @@ it was spent underneath that.
 
 The rule it earns: when a chain of reasoning gets long without a reading in it,
 the fault is usually above where the chain starts.
+
+## 2026-08-28 — two diagnostics before the next session
+
+Both are about the four fixes above being *verifiable* rather than inferred
+from silence.
+
+The tracker's collapse line now carries the filter's own numbers -
+`watched=8, inZone=0, zone=, filter=3`. The one time it fired for real it said
+that an update measured nothing and left the reason to a morning of narrowing;
+a collapse with watches held and an empty zone table is the filter, and one
+with a full table is not. Only on the collapse, so it costs nothing until
+something is wrong.
+
+And the zone-filter override no longer falls through its guard in silence. It
+runs after FrameXML and any of its three names could be absent, in which case
+FrameXML's POI-based original is restored - which answers nothing on this
+client and is precisely the state that emptied the tracker and disabled its own
+expand button. A quiet fallback to the bug is the worst of the three outcomes,
+so it says so now.
