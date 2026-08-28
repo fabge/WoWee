@@ -19,7 +19,7 @@ validation policy, including which checks are cheap and which are not.
 Bounded, each with a stated failure mode. A regression test is expected with
 each fix; every one of these is testable headlessly.
 
-One, from the play session on 2026-08-27:
+Three, from the play sessions on 2026-08-27 and 2026-08-28:
 
 1. **The objectives tracker's collapse button does not answer a click.**
    `WatchFrameCollapseExpandButton`. Everything checkable without a screen is
@@ -36,53 +36,32 @@ One, from the play session on 2026-08-27:
    went into narrowing it this far and every remaining candidate needs the
    screen. Half an hour once the line is in hand.
 
-2. **The objectives tracker collapses itself and disables its own expand
-   button, intermittently.** Narrowed on 2026-08-27/28 with
-   `framexml_run --player`, which now reaches the tracker properly. What is
-   ruled *out*: the click (the log showed it landing on the button, which was
-   disabled), the font-string measurement (fixed, and the layout answers
-   correctly with it), and the layout itself - a watched quest with objectives
-   that passes the filter gives `heightUsed=44` and an enabled button.
-
-   Overflow is ruled out too, since: the fixture carries eight watched quests
-   now, which is what the report had, and reports `heightUsed=260` with the
-   button enabled and the title reading "Objectives (8)" - the reported screen,
-   working. So the harness reproduces the *shape* of the case and not the fault.
-
-   The one concrete anomaly left in the reported log is a red herring worth
-   recording so it is not chased twice: `WatchFrame` measured 119.59 wide where
-   the harness measures 204. That is not a mis-set width - `WatchFrame_SetWidth`
-   only ever chooses 204 or 306 - it is the *collapsed* width, derived from the
-   title. It is the symptom, not the cause.
-
-   What the harness still lacks is quest POI buttons, which come from server POI
-   data and are the one thing `WatchFrame_DisplayTrackedQuests` places that is
-   not a line of its own making. That is the next thing to try.
-
-   One divergence found while looking and **not** proven to be the cause, worth
-   recording because it is real either way: `GetBottom`/`GetTop`/`GetLeft`/
-   `GetRight` answer `0` for a frame whose rect has not been resolved, where
-   WoW answers **nil**. watchframe.lua:858 branches on exactly that -
-   `if ( lastBottom and lastBottom < WatchFrame:GetBottom() )` is the tracker's
-   overflow break, and a zero there reads as "below the bottom" and breaks out
-   on the first quest, leaving `heightUsed` at its initial 0. That is the
-   reported symptom exactly, including `lines=true`. It was not reproduced: a
-   freshly created frame resolves on demand and answers a real number, so the
-   zero needs a frame that cannot resolve - `resolveWidget` bails while
-   `layingOut_` is set. Fixing the divergence properly means answering nil only
+2. **`GetBottom`/`GetTop`/`GetLeft`/`GetRight` answer `0` where WoW answers
+   `nil`.** Found on 2026-08-27 while chasing the tracker, not the cause of it,
+   and real either way. WoW answers nil for a frame whose rect has not been
+   calculated; this client answers zero. watchframe.lua:858 branches on exactly
+   that - `if ( lastBottom and lastBottom < WatchFrame:GetBottom() )` is the
+   tracker's overflow break, and a zero there reads as "below the bottom". It
+   was not reproduced: a freshly created frame resolves on demand and answers a
+   real number, so the zero needs a frame that cannot resolve - `resolveWidget`
+   bails while `layingOut_` is set. Fixing it properly means answering nil only
    where `resolvedGen == 0`, which is WoW's own "not yet calculated" case;
-   answering nil more widely than that would put a nil into the arithmetic
-   these getters are read into all over the interface, which the comment above
+   answering nil more widely would put a nil into the arithmetic these getters
+   are read into all over the interface, which the comment above
    `lua_Region_GetLeft` already warns about.
 
-   Two real fragilities found on the way, both worth fixing whatever the cause
-   turns out to be. A quest with **no objectives** is treated as complete
-   (`numObjectives == 0 and playerMoney >= requiredMoney`) and filtered out by
-   default. And the zone filter drops **every** watched quest whose log header
-   does not match `GetRealZoneText()` exactly, with no fallback - so a
-   disagreement between those two names empties the tracker, and an empty
-   tracker is indistinguishable from a broken one. `CURRENT_MAP_QUESTS` is
-   rebuilt by a shim in `addon_manager.cpp` that does that matching.
+3. **A quest with no objectives is treated as complete.**
+   `numObjectives == 0 and playerMoney >= requiredMoney` in
+   `WatchFrame_DisplayTrackedQuests`, which is FrameXML's own rule - but it
+   means a quest whose objectives this client failed to load is filtered out of
+   the tracker by default rather than showing as unfinished. Noticed while
+   building the harness fixture on 2026-08-27; no report behind it yet.
+
+The tracker's intermittent self-collapse, listed here on 2026-08-27 and again
+on 2026-08-28 ("sometimes it is togglable, sometimes not, and it sometimes
+correlates with going into a new area"), was fixed on 2026-08-28: the zone
+filter matched quest-log header *text* against `GetRealZoneText()`, which
+disagrees for every quest filed under a sub-area. See `log.md`.
 
 The pet-state item found on 2026-08-26 was fixed the same day with a
 regression test. The eight that stood here on 2026-08-25 and the three that

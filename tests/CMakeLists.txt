@@ -2108,6 +2108,14 @@ wowee_add_test(test_input_binding_state
             ${CMAKE_SOURCE_DIR}/src/core/input.cpp)
 target_link_libraries(test_input_binding_state PRIVATE SDL2::SDL2)
 
+# ── test_quest_zone ─────────────────────────────────────────
+#
+# The tracker's zone filter: header-name matching dropped every quest filed
+# under a sub-area, and an empty filter result collapses the tracker and
+# disables its expand button.
+wowee_add_test(test_quest_zone
+    SOURCES test_quest_zone.cpp)
+
 # ── test_quest_poi_order ────────────────────────────────────
 # FrameXML allocates completed and incomplete map markers as dense ranges and
 # crashes while hiding them if the API interleaves those groups.

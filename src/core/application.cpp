@@ -81,6 +81,7 @@
 #include "game/faction_hostility.hpp"
 #include "game/transport_manager.hpp"
 #include "game/world.hpp"
+#include "game/zone_manager.hpp"
 #include "game/expansion_profile.hpp"
 #include "game/packet_parsers.hpp"
 #include "pipeline/asset_manager.hpp"
@@ -666,6 +667,10 @@ bool Application::initialize() {
         };
         luaSvc.getLiveZoneId = [r = renderer.get()]() -> uint32_t {
             return r ? r->getCurrentZoneId() : 0u;
+        };
+        luaSvc.resolveAreaZoneId = [r = renderer.get()](uint32_t areaId) -> uint32_t {
+            auto* zm = r ? r->getZoneManager() : nullptr;
+            return zm ? zm->resolveAreaZoneId(areaId) : areaId;
         };
         luaSvc.isOnOutdoorPvpObjective = [r = renderer.get()]() -> bool {
             return r && r->isOnOutdoorPvpObjective();

@@ -1510,3 +1510,53 @@ loading Blizzard_DebugTools, which is where a real error would now be named.
 That is the fixture paying for itself the first time it was asked, and on a
 fault nobody had reported - which is the whole argument for reaching state
 rather than writing more tests.
+
+## 2026-08-28 — the objectives tracker's zone filter
+
+Reported as "sometimes it is togglable, sometimes not, and it sometimes
+correlates with going into a new area". The diagnostic shipped the day before
+said it in one line, twice in one session:
+
+```
+objectives tracker collapsing: BY ITSELF - an update measured nothing, and
+that also disables the expand button (userCollapsed=nil, lines=true)
+```
+
+`WatchFrame_Update` collapses the tracker and *disables the button that
+expands it* when the objective handlers report that nothing was laid out. It
+is FrameXML's own behaviour and it is correct: there is nothing to show. So
+the fault was upstream, in what emptied the list.
+
+`WatchFrame_DisplayTrackedQuests` drops a watched quest unless
+`CURRENT_MAP_QUESTS` holds it. The real client fills that from the world map's
+POI markers; this client cannot, because those markers are whatever the server
+was last asked about rather than the zone the player is standing in - so a shim
+in `addon_manager.cpp` rebuilt the table from the quest log, matching each
+quest's **log header text** against `GetRealZoneText()`.
+
+Those two strings disagree for every quest filed under a sub-area. The header
+comes from the quest's `zoneOrSort`, an AreaTable id, and that is often the
+sub-area - Camp Narache - while the player standing in it is in Mulgore. Each
+such quest was dropped, and when that was all of them the tracker collapsed and
+locked itself shut. Which quests those are changes as quests are accepted and
+handed in, and the zone under the player changes as they walk: intermittent,
+and correlated with walking into a new area.
+
+Matched by id now. `game::questIsInZone` resolves both sides through
+`ZoneManager::resolveAreaZoneId` before comparing, exposed to Lua as
+`__WoweeCurrentZoneQuestIds`, and the shim is four lines of table copying. Two
+things are deliberately kept rather than filtered: a quest with no area (a
+QuestSort group, or one whose query response has not landed) and *every* quest
+when the zone itself is unknown. Too many lines is a nuisance; a tracker that
+cannot be opened is a dead frame.
+
+Reproduced in `framexml_run --player` before the fix - `mapquests=0`,
+`collapsed=true`, button disabled, title "Objectives (8)", the client's log
+exactly - and green after it. Six cases in `tests/test_quest_zone.cpp`.
+
+Two harness notes went into `AGENTS.md`. `argv[1]` is the asset path and
+nothing else parses it, so `framexml_run --player ...` makes `--player` the
+path: FrameXML never loads, every interface global answers from the missing-API
+stub, and the run reads as a client with no tracker. And `VARIABLES_LOADED`
+never fires there, so `WATCHFRAME_FILTER_TYPE` sits at watchframe.lua's own `0`
+rather than the `3` the `trackerFilter` CVar supplies.

@@ -8,6 +8,7 @@
 #include "game/game_utils.hpp"
 #include "game/packed_time.hpp"
 #include "game/quest_poi_order.hpp"
+#include "game/quest_zone.hpp"
 #include "ui/chat/chat_utils.hpp"
 #include "core/logger.hpp"
 
@@ -957,6 +958,53 @@ static int lua_QuestPOIGetIconInfo(lua_State* L) {
 /// refresh on demand - but the map asks before drawing and expects the call to
 /// exist.
 static int lua_QuestPOIUpdateIcons(lua_State* L) { (void)L; return 0; }
+
+/// __WoweeCurrentZoneQuestIds() -> { [questId] = questLogIndex }
+///
+/// The tracker's "quests in this zone" table, which the real client fills from
+/// the world map's POI markers and this one cannot: those markers are whatever
+/// the server was last asked about, not the zone the player is standing in.
+///
+/// watchframe.lua drops a watched quest unless CURRENT_MAP_QUESTS holds it,
+/// and when that drops every quest WatchFrame_Update collapses the tracker and
+/// disables the button that would expand it again - so an empty table is not a
+/// short list, it is a tracker that cannot be opened. That is what was being
+/// reported as "sometimes it toggles, sometimes it does not, and it has
+/// something to do with walking into a new area".
+///
+/// The quest log answers this without the server sending anything: each entry
+/// carries the area it is filed under. Matched by id rather than by the name
+/// the two sides render to - see game/quest_zone.hpp for why a sub-area makes
+/// the name comparison wrong.
+static int lua_WoweeCurrentZoneQuestIds(lua_State* L) {
+    auto* gh = getGameHandler(L);
+    lua_newtable(L);
+    if (!gh) return 1;
+
+    uint32_t zoneId = 0;
+    std::function<uint32_t(uint32_t)> resolve;
+    if (auto* svc = getLuaServices(L)) {
+        if (svc->getLiveZoneId) zoneId = svc->getLiveZoneId();
+        resolve = svc->resolveAreaZoneId;
+    }
+    if (zoneId == 0) {
+        const uint32_t worldState = gh->getWorldStateZoneId();
+        if (worldState != 0) zoneId = resolve ? resolve(worldState) : worldState;
+    }
+
+    // Display indices, because that is what every index-taking quest function
+    // in this interface counts - headers included.
+    const auto rows = questRows(gh);
+    for (size_t i = 0; i < rows.size(); ++i) {
+        const auto* q = rows[i].quest;
+        if (!q || q->questId == 0) continue;
+        if (!game::questIsInZone(q->zoneOrSort, zoneId, resolve)) continue;
+        lua_pushnumber(L, static_cast<lua_Number>(q->questId));
+        lua_pushnumber(L, static_cast<lua_Number>(i + 1));
+        lua_rawset(L, -3);
+    }
+    return 1;
+}
 
 /// GetQuestPOILeaderBoard(objectiveIndex, questId) → the objective's text and
 /// counts, the same as the quest log's version - except that this one is given
@@ -3099,6 +3147,7 @@ void registerQuestLuaAPI(lua_State* L) {
                 {"QuestMapUpdateAllQuests", lua_QuestMapUpdateAllQuests},
                 {"QuestPOIGetQuestIDByVisibleIndex", lua_QuestPOIGetQuestIDByVisibleIndex},
                 {"QuestPOIGetIconInfo",     lua_QuestPOIGetIconInfo},
+                {"__WoweeCurrentZoneQuestIds", lua_WoweeCurrentZoneQuestIds},
                 {"QuestPOIUpdateIcons",     lua_QuestPOIUpdateIcons},
                 {"GetQuestPOILeaderBoard",  lua_GetQuestPOILeaderBoard},
                 {"ExpandQuestHeader",       lua_ExpandQuestHeader},

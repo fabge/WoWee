@@ -130,12 +130,26 @@ the real emitter and no window:
 ```bash
 cmake -S . -B build-review -DWOWEE_BUILD_FRAMEXML_RUN=ON
 cmake --build build-review --target framexml_run -j4
-./build-review/bin/framexml_run Data '--lua:__WoweeWarn("x=" .. tostring(x))'
+./build-review/bin/framexml_run "$DATA" '--lua:__WoweeWarn("x=" .. tostring(x))'
 ```
 
-`--lua:` runs a chunk (use `__WoweeWarn`, not `print`), `--drawn:NAME` reports
-whether a frame is drawn and its resolved rect, `--hit:X,Y` runs the real hit
-test, `--mouse:X,Y,L` presses and releases, and `--fire:` raises an event.
+**`argv[1]` is the asset path and nothing else parses it.** The expansion's
+interface lives at
+`~/Library/Application Support/Wowee/Data/expansions/wotlk`, and passing a flag
+first makes that flag the path: the runner logs one line - `FrameXML: no
+directory at --player/interface/FrameXML` - and then answers every question
+about the interface from the missing-API stub table, so `WatchFrame_Update`
+comes back as a `table`, `GetNumQuestWatches()` as `0`, and every global
+watchframe.lua declares as `nil`. It reads as a client with no tracker rather
+than as a runner given no data. Check for that line before believing anything
+the run says. This cost a round on 2026-08-28.
+
+`--lua:` runs a chunk (use `__WoweeWarn`, not `print` - `print` goes to the
+chat frame once FrameXML has loaded and the log de-duplicates it), `--drawn:NAME`
+reports whether a frame is drawn and its resolved rect, `--hit:X,Y` runs the
+real hit test, `--mouse:X,Y,L` presses and releases, `--fire:` raises an event,
+and `--player` attaches a real `GameHandler` with a character, stats, spells,
+action bar slots and a tracked quest log.
 
 `--hit` and `--mouse` take **window pixels from the top-left**, while `--drawn`
 reports the widget tree's own space: origin bottom-left, y upward, and divided
@@ -144,10 +158,20 @@ by the UI scale. Converting a rect from one to the other is
 height is 1080 and the scale is `1080 / UIParent:GetHeight()` - typically
 1.40625, not 1. Getting this wrong reports "nothing" for a frame that is
 plainly there and reads as a broken hit test; it wasted two rounds on
-2026-08-27. It answers "is this wired up at all" in seconds. It does not
-answer "why does this not happen in the client" - it has no game handler, and
+2026-08-27. It answers "is this wired up at all" in seconds.
+
+With `--player` it answers a good deal more than that, but not everything:
 `GameScreen` is handed an empty `UIServices`, so anything reached through an
-injected pointer is inert there. Which is the next entry.
+injected pointer is inert there - which is the next entry. It also loads no
+terrain, so `GetRealZoneText()` is empty and everything keyed on the player's
+zone takes its unknown-zone branch. That is a fair state to test, not a defect:
+it is the state the client is in at every login, and the objectives tracker's
+zone filter was found dead in exactly it on 2026-08-28.
+
+The events the client fires are not fired here either. `VARIABLES_LOADED` in
+particular never arrives, so `WATCHFRAME_FILTER_TYPE` sits at watchframe.lua's
+own `0` rather than the `3` the client's `trackerFilter` CVar supplies - set it
+in the `--lua:` chunk before reproducing anything that reads it.
 
 ## Where bugs actually come from
 

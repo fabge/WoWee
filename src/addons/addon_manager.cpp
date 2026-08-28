@@ -1260,36 +1260,28 @@ bool AddonManager::loadFrameXml(const std::string& frameXmlDir) {
     // markers - QuestMapUpdateAllQuests and QuestPOIGetQuestIDByVisibleIndex,
     // both of which answer from the POIs the server has sent for whatever it
     // was asked about rather than from the zone the player is standing in. So
-    // the table was never the current zone's quests, and the only way to see a
-    // tracker at all was to leave the remote-zones bit set and show every
-    // watched quest in the log.
+    // the table was never the current zone's quests.
     //
-    // Rebuilt from the quest log instead. The log is already grouped under
-    // zone headers, and the header a quest sits under is the zone it belongs
-    // to - which is the question being asked, and one this client can answer
-    // without the server sending anything. Quests under a profession or class
-    // header match no zone name and are correctly left out.
+    // Rebuilt from the quest log instead, which already knows the area each
+    // quest is filed under. __WoweeCurrentZoneQuestIds does the matching by
+    // area id - see game/quest_zone.hpp - because the first version of this
+    // compared the quest log's *header text* with GetRealZoneText(), and those
+    // two strings disagree for every quest filed under a sub-area: a quest in
+    // Camp Narache reads "Camp Narache" while the player standing in it is in
+    // "Mulgore". Every such quest was filtered out, and when that was all of
+    // them WatchFrame_Update collapsed the tracker and disabled the button
+    // that expands it - reported as a tracker that toggles sometimes, does not
+    // others, and changes its mind on walking into a new area.
     //
     // After FrameXML, because this replaces one of its functions. The tracker
-    // re-runs it on ZONE_CHANGED_NEW_AREA, so walking out of a zone empties it
-    // and walking into one fills it again.
+    // re-runs it on every QUEST_LOG_UPDATE, so it follows the player.
     luaEngine_.executeString(
-        "if WatchFrame_GetCurrentMapQuests and CURRENT_MAP_QUESTS then\n"
+        "if WatchFrame_GetCurrentMapQuests and CURRENT_MAP_QUESTS and\n"
+        "   __WoweeCurrentZoneQuestIds then\n"
         "  WatchFrame_GetCurrentMapQuests = function()\n"
         "    table.wipe(CURRENT_MAP_QUESTS)\n"
-        "    local zone = GetRealZoneText and GetRealZoneText() or nil\n"
-        "    if not zone or zone == '' then return end\n"
-        "    local header = nil\n"
-        "    for i = 1, GetNumQuestLogEntries() do\n"
-        "      local title, _, _, _, isHeader, _, _, _, questID = GetQuestLogTitle(i)\n"
-        "      if isHeader then\n"
-        "        header = title\n"
-        // A collapsed header still holds its quests, and the tracker watches
-        // them whether the log shows them or not - so this walks the whole log
-        // rather than what is on screen.
-        "      elseif header == zone and questID and questID ~= 0 then\n"
-        "        CURRENT_MAP_QUESTS[questID] = i\n"
-        "      end\n"
+        "    for questId, logIndex in pairs(__WoweeCurrentZoneQuestIds()) do\n"
+        "      CURRENT_MAP_QUESTS[questId] = logIndex\n"
         "    end\n"
         "  end\n"
         "end\n");

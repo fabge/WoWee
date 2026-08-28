@@ -203,6 +203,15 @@ struct LuaServices {
     /// client works this out locally for exactly that reason.
     std::function<uint32_t()> getLiveZoneId;
 
+    /// The zone an AreaTable id belongs to, or the id itself when it is
+    /// already a zone.
+    ///
+    /// A quest's zoneOrSort names an area rather than a zone, and the two are
+    /// only the same when the quest happens to be filed under the zone row -
+    /// so the tracker's "quests in this zone" filter has to resolve both sides
+    /// before it compares them. See game/quest_zone.hpp.
+    std::function<uint32_t(uint32_t)> resolveAreaZoneId;
+
     /// Whether the player is standing on a world PvP objective.
     ///
     /// The *area* rather than the zone, which is why it is not derived from
