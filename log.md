@@ -2104,7 +2104,49 @@ Two things in the same report are **not** fixed and are not this:
   `WorldMapFacade::zoneNames(1)` is returning nothing - either
   `continentZoneIdx` fails to find Kalimdor's `areaID == 0` row or
   `zoneBelongsToContinent` rejects every zone against it. Not narrowed further.
-- "Camp Taurajo is elongated" is the continent art stretched to the frame, which
-  is what is on screen *because* of the point above: with no zone to enter, the
-  map stays on the continent and the flags scattered across it are zone-relative
-  POI coordinates drawn on a continent projection.
+- "Camp Taurajo is elongated" is not diagnosed. It was written here first as a
+  consequence of the point above - continent art stretched into a zone-shaped
+  frame - and that reading was wrong: the screenshot is the Barrens *zone* map,
+  and the zone names around its edge are neighbours, which is what a WoW zone
+  map draws. See the entry below.
+
+## The zone dropdown was empty because no continent was a continent
+
+Reported with the map above: the Zone dropdown is blank, and the map cannot be
+taken to another zone.
+
+The log says it on every open:
+
+    GetMapZones(1): the map lists no zones on that continent, so the zone
+    dropdown is empty
+
+`zoneNames(continent)` finds the continent's row with `continentZoneIdx`, which
+wants a row that is `mapID == wanted`, `areaID == 0`, and `isLeafContinent`.
+That last one asked for `parentWorldMapID != 0`, and **no continent in 3.3.5 has
+a parent**. Dumping the file settles it: of 109 rows in WorldMapArea.dbc exactly
+three carry a non-zero ParentWorldMapID - Dalaran, the Obsidian Sanctum and the
+Pit of Saron - and all three are zones. `areaID == 0 && parentWorldMapID != 0`
+was a combination no row in the file satisfied, so every continent classified as
+neither root nor leaf and `continentZoneIdx` returned -1 for all four.
+
+A leaf continent is a continent map that is not subdivided into further
+continent maps, which is `areaID == 0 && !isRootContinent` - and that is how the
+rest of the module already spelled it, inline, in `findZoneForPlayer` and in the
+facade's continent-index loop. Only this one function asked the other way, and
+the two disagreed about which continents existed depending on which line asked.
+
+The old test is why it survived: its fixture was a root continent with a child
+continent nested under it by `parentWorldMapID`, a shape 3.3.5 does not contain.
+It passed on invented data. The new cases use the file's own shape - continents
+with no parent and no children, a zone, and Dalaran as the one row that does
+carry a parent - and add the agreement check between the two spellings.
+
+Checked against the real file rather than the fixture: replaying
+`loadZones(1)`'s filter over WorldMapArea.dbc gives 25 rows, one of them the
+Kalimdor continent row, which now classifies as a leaf - and 24 zones to fill
+the dropdown, from Ashenvale to Winterspring. It listed none.
+
+`map_resolver.cpp`'s `findContinentForMapId` had a first branch that was dead
+for the same reason and is now live. It prefers a continent whose DisplayMapID
+matches, which for the four continents is -1, so it still falls through to the
+second branch as before - no change today, and a correct branch when it matters.

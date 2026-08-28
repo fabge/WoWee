@@ -30,7 +30,24 @@ bool isLeafContinent(const std::vector<Zone>& zones, int idx) {
     if (idx < 0 || idx >= static_cast<int>(zones.size())) return false;
     const auto& c = zones[idx];
     if (c.areaID != 0) return false;
-    return c.parentWorldMapID != 0;
+    // A continent map that is not subdivided into further continent maps.
+    //
+    // This asked for a parent instead, and no continent in 3.3.5 has one:
+    // WorldMapArea.dbc carries a non-zero ParentWorldMapID on exactly three
+    // rows - Dalaran, the Obsidian Sanctum and the Pit of Saron - and all
+    // three are zones, not continents. So `areaID == 0 && parentWorldMapID
+    // != 0` was a combination no row in the file satisfied, and every
+    // continent was neither root nor leaf.
+    //
+    // continentZoneIdx is the caller that showed it: it could not find
+    // Kalimdor, so GetMapZones answered with nothing, the zone dropdown was
+    // empty, the map could not be taken into a zone, and what stayed on
+    // screen was continent art stretched to a zone-shaped frame.
+    //
+    // Spelled the way the rest of this file already spells it - see the
+    // hasLeaf loop below, which asks `areaID == 0 && !isRootContinent`
+    // directly rather than calling this.
+    return !isRootContinent(zones, idx);
 }
 
 // ── UV projection ────────────────────────────────────────────

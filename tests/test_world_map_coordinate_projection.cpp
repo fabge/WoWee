@@ -130,6 +130,65 @@ TEST_CASE("isRootContinent: lone continent is not root (no children)", "[world_m
     REQUIRE(isRootContinent(zones, 0) == false);
 }
 
+// The shape WorldMapArea.dbc actually has, which is the shape the fixtures
+// above do not. Every continent row in 3.3.5 carries ParentWorldMapID 0 - the
+// only three non-zero ones in the file are Dalaran, the Obsidian Sanctum and
+// the Pit of Saron, all zones - so a continent that is nobody's parent and
+// nobody's child has to classify as a leaf. It did not: isLeafContinent asked
+// for a parent, no continent has one, and continentZoneIdx could then find
+// none of the four. GetMapZones answered empty, the zone dropdown stayed
+// blank, and the map could never be taken into a zone.
+TEST_CASE("a continent with no parent and no children is a leaf",
+          "[world_map][coordinate_projection]") {
+    std::vector<Zone> zones;
+    // Kalimdor, Azeroth, Expansion01, Northrend as the file lists them:
+    // areaID 0, parentWorldMapID 0, and no continent claiming another.
+    zones.push_back(makeZone(13, 0, 5000.0f, -5000.0f, 5000.0f, -5000.0f, 0, 0, "Kalimdor"));
+    zones.push_back(makeZone(14, 0, 5000.0f, -5000.0f, 5000.0f, -5000.0f, 0, 0, "Azeroth"));
+    // A zone on one of them, and the one kind of row that does carry a parent:
+    // Dalaran, which is a zone rather than a continent and must stay one.
+    zones.push_back(makeZone(4, 14, 3000.0f, -3000.0f, 3000.0f, -3000.0f, 0, 0, "Durotar"));
+    zones.push_back(makeZone(504, 4395, 100.0f, -100.0f, 100.0f, -100.0f, 0, 510, "Dalaran"));
+
+    CHECK(isLeafContinent(zones, 0));
+    CHECK(isLeafContinent(zones, 1));
+    CHECK_FALSE(isRootContinent(zones, 0));
+    CHECK_FALSE(isRootContinent(zones, 1));
+
+    // A zone is neither, whether or not it names a parent.
+    CHECK_FALSE(isLeafContinent(zones, 2));
+    CHECK_FALSE(isLeafContinent(zones, 3));
+    CHECK_FALSE(isRootContinent(zones, 3));
+
+    // And the property the dropdown depends on: every continent row in the
+    // list is reachable as a leaf. None were.
+    int leaves = 0;
+    for (int i = 0; i < static_cast<int>(zones.size()); ++i) {
+        if (zones[i].areaID == 0 && isLeafContinent(zones, i)) ++leaves;
+    }
+    CHECK(leaves == 2);
+}
+
+// The two spellings of "leaf" in this module have to agree. coordinate_projection
+// and world_map_facade both ask `areaID == 0 && !isRootContinent` inline in
+// places and call isLeafContinent in others; while the two disagreed, which
+// continents existed depended on which line asked.
+TEST_CASE("isLeafContinent agrees with the inline spelling of it",
+          "[world_map][coordinate_projection]") {
+    std::vector<Zone> zones;
+    zones.push_back(makeZone(1, 0, 5000.0f, -5000.0f, 5000.0f, -5000.0f, 0, 0, "Root"));
+    zones.push_back(makeZone(2, 0, 3000.0f, -3000.0f, 3000.0f, -3000.0f, 0, 1, "Child"));
+    zones.push_back(makeZone(3, 0, 3000.0f, -3000.0f, 3000.0f, -3000.0f, 0, 0, "Lone"));
+    zones.push_back(makeZone(4, 77, 100.0f, -100.0f, 100.0f, -100.0f, 0, 0, "AZone"));
+
+    for (int i = 0; i < static_cast<int>(zones.size()); ++i) {
+        const bool inlineSpelling =
+            zones[i].areaID == 0 && !isRootContinent(zones, i);
+        INFO("row " << i << " " << zones[i].areaName);
+        CHECK(isLeafContinent(zones, i) == inlineSpelling);
+    }
+}
+
 TEST_CASE("isRootContinent: out of bounds returns false", "[world_map][coordinate_projection]") {
     std::vector<Zone> zones;
     REQUIRE(isRootContinent(zones, 0) == false);
