@@ -171,6 +171,12 @@ CHECKS = [
     # error for something greppable on any host.
     # Three Windows failures in a row were a POSIX-only function called
     # directly in one place among several that had all remembered the #ifdef.
+    # The target frame redraws on PLAYER_TARGET_CHANGED and on nothing else, so
+    # a path that drops the target by assigning the guid leaves a frame nothing
+    # can clear - reported as a slain enemy that stays selected.
+    ("silent_target_drop_check.py",
+     r"^(\d+) outside src/game/combat_handler\.cpp", 0,
+     "target-guid writes that never fire PLAYER_TARGET_CHANGED"),
     ("posix_only_check.py",
      r"^(\d+) called directly instead", 0,
      "POSIX-only calls that break the Windows build"),

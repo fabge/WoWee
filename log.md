@@ -1594,3 +1594,30 @@ This is the jump grunt, the swim strokes, the hard landing, the attack grunts,
 the wound and death vocals - every clip filed under the character's own voice.
 No regression test: the whole path is `AssetManager` file reads, and a fake for
 it would be testing the fake.
+
+## 2026-08-28 — the slain target that would not deselect
+
+Reported as "when I slayed an enemy it is still selected and shows in the top
+left next to my avatar but I cannot deselect it, while entities I select and
+deselect that are alive work without problem".
+
+The target diagnostics shipped for it did not fire, and that was the answer.
+The session log showed the target going from a guid to zero with **no** "Target
+cleared" line between - so something was dropping the target by a path that
+neither logged nor told anyone.
+
+Three places assigned `setTargetGuidRaw(0)` directly: a looted corpse despawned
+locally, a game object despawned locally, and every `SMSG_DESTROY_OBJECT` for
+the selected unit. The interface redraws the target frame on
+`PLAYER_TARGET_CHANGED` and on nothing else, so each of those left the frame
+drawing a unit the client had already forgotten - and pressing Escape reached
+`CombatHandler::clearTarget`, which saw a guid of zero and did nothing at all.
+Two half-states that add up to a frame nothing can clear. Only dead things go
+through those paths, which is why living targets were fine.
+
+All three go through `clearTarget()` now, which zeroes the guid, fires the
+event and logs the change.
+
+The class rather than the instance: `tools/silent_target_drop_check.py` pins
+`setTargetGuidRaw` to `combat_handler.cpp`, the one file that fires the event
+alongside every call. Four call sites, all where they belong.

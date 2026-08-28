@@ -160,6 +160,7 @@ hand - fix the tool's docstring and run `tools/tools_readme_check.py --write`.
 | `parsed_never_read_check.py` | Packet fields the parser fills in and nothing ever reads. | pinned by sweep_guard |
 | `persisted_but_unread_check.py` | Config keys read into a field nothing else looks at. | pinned by sweep_guard |
 | `pipeline_recreate_check.py` | Renderers that rebuild a different pipeline than they first built. | pinned by sweep_guard |
+| `silent_target_drop_check.py` | Target-guid writes that do not tell the interface. | pinned by sweep_guard |
 | `posix_only_check.py` | POSIX-only functions called outside the header that makes them portable. | pinned by sweep_guard |
 | `read_never_written_check.py` | Struct fields everything reads and nothing ever fills in. | pinned by sweep_guard |
 | `redefined_macro_check.py` | Macros the build already defines, redefined unguarded in a source file. | pinned by sweep_guard |

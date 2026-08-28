@@ -11,6 +11,7 @@
 #include "game/transport_manager.hpp"
 #include "game/movement_handler.hpp"
 #include "game/spell_handler.hpp"
+#include "game/combat_handler.hpp"
 #include "core/logger.hpp"
 #include "core/coordinates.hpp"
 #include "network/world_socket.hpp"
@@ -2778,8 +2779,13 @@ void EntityController::handleDestroyObject(network::Packet& packet) {
     if (owner_.getCombatHandler() && data.guid == owner_.getCombatHandler()->getAutoAttackTargetGuid()) {
         owner_.stopAutoAttack();
     }
-    if (data.guid == owner_.getTargetGuid()) {
-        owner_.setTargetGuidRaw(0);
+    // Through clearTarget, so the interface is told. This is the widest of the
+    // three: every SMSG_DESTROY_OBJECT for the selected unit came through here
+    // and dropped the target without a PLAYER_TARGET_CHANGED, leaving the
+    // target frame drawing a unit the client had already forgotten and Escape
+    // with nothing left to clear. See despawnCreatureLocally.
+    if (data.guid == owner_.getTargetGuid() && owner_.getCombatHandler()) {
+        owner_.getCombatHandler()->clearTarget();
     }
     if (owner_.getCombatHandler()) owner_.getCombatHandler()->removeHostileAttacker(data.guid);
 

@@ -2783,7 +2783,15 @@ void GameHandler::despawnCreatureLocally(uint64_t guid) {
     entityManager.removeEntity(guid);
 
     if (combatHandler_ && guid == combatHandler_->getAutoAttackTargetGuid()) stopAutoAttack();
-    if (getTargetGuid() == guid) setTargetGuidRaw(0);
+    // Through clearTarget, not by zeroing the guid.
+    //
+    // Reported as "I slayed an enemy and it is still selected next to my
+    // avatar and I cannot deselect it, while living targets deselect fine".
+    // Zeroing targetGuid here skipped PLAYER_TARGET_CHANGED, so the target
+    // frame went on drawing a unit that no longer existed - and pressing
+    // Escape reached clearTarget, which saw a guid of zero and did nothing at
+    // all. The frame was stuck on a target the client had already dropped.
+    if (getTargetGuid() == guid && combatHandler_) combatHandler_->clearTarget();
     tabCycleStale = true;
 
     LOG_INFO("Locally despawned looted corpse: 0x", std::hex, guid, std::dec);
@@ -2802,7 +2810,8 @@ void GameHandler::despawnGameObjectLocally(uint64_t guid) {
     clearPendingGameObjectLootOpen(guid);
     if (lastInteractedGoGuid_ == guid) lastInteractedGoGuid_ = 0;
     if (pendingGameObjectInteractGuid_ == guid) pendingGameObjectInteractGuid_ = 0;
-    if (getTargetGuid() == guid) setTargetGuidRaw(0);
+    // Told, for the same reason as the creature above.
+    if (getTargetGuid() == guid && combatHandler_) combatHandler_->clearTarget();
     tabCycleStale = true;
 
     LOG_INFO("Locally despawned game object: 0x", std::hex, guid, std::dec);
