@@ -1750,3 +1750,33 @@ replaced in the same slot, which is not an expiry.
 That is the third fault this week of the shape "the server never says X, so
 nothing announced X": a cooldown ending, a target being dropped by a despawn,
 and now a totem running out.
+
+## 2026-08-28 — tooltips that ran off both edges of the screen
+
+Reported as "we don't have any line breaks or max lengths for the description
+tooltip windows", with a Stoneclaw Totem tooltip drawn as one unbroken line
+across the whole screen and past it at both ends.
+
+`TooltipLine::wrap` gates both the sizing pass and the painter, and every
+C-side setter here - spell, talent, trade skill, and the rest - pushes its
+description line with the flag at its default of `false`. `sizeTooltips` then
+took the width from the widest non-wrapping line, so one long sentence set the
+tooltip's width to the length of the sentence.
+
+The flag is being read as "may this line be broken", and what FrameXML means by
+it is "may this line *set* the width": a title or a stat line widens the
+tooltip to hold it, a body of prose is poured into whatever width the rest
+settled on. Neither meaning permits running off the end.
+
+Every line is now broken to the tooltip's own width, and the width comes from
+`wrapW` - already clamped to 320 - rather than from the unclamped widest line.
+Fixed here rather than at the twenty-odd setters, because the next setter
+written would forget the flag too, and a tooltip wider than the screen is not
+something any of them should be able to ask for.
+
+Checked in `framexml_run`: the tooltip from the screenshot measures 340 wide
+and 106 tall - six wrapped rows - where it had been about 1670 wide and one row.
+
+Noted while there and **not** fixed: that description reads "taunts creatures
+within yards", so `formatSpellDescription` left a radius token unsubstituted.
+Separate fault, no report behind it yet.

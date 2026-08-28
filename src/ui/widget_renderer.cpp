@@ -456,10 +456,22 @@ void WidgetRenderer::sizeTooltips(WidgetTree& tree) {
 
         int rows = 0;
         for (const auto& line : w->tooltipLines) {
-            // Every line, wrapping or not: one carrying |n is two rows tall
-            // whether or not it is also being broken to fit.
+            // Every line is broken to the tooltip's width, wrap flag or not.
+            //
+            // The flag says whether a line may *set* the width, which is what
+            // FrameXML means by it: a title or a stat line widens the tooltip
+            // to hold it, a body of prose is poured into whatever width the
+            // rest settled on. It does not mean the line may run off the end -
+            // and reading it that way put a spell description on one unbroken
+            // line that crossed the whole screen and left it at both edges,
+            // because every C-side setter here pushes its description with the
+            // flag at its default of false.
+            //
+            // Fixed here rather than at the twenty-odd setters: the next one
+            // written would forget it too, and a tooltip wider than the screen
+            // is not a thing any of them should be able to ask for.
             line.lines = static_cast<int>(
-                wrapText(parseMarkup(line.left), line.wrap ? wrapW : 0.0f, false,
+                wrapText(parseMarkup(line.left), wrapW, false,
                          [&](const std::string& piece) {
                              return font->CalcTextSizeA(size, FLT_MAX, 0.0f,
                                                         piece.c_str()).x;
@@ -467,12 +479,16 @@ void WidgetRenderer::sizeTooltips(WidgetTree& tree) {
             rows += line.lines;
         }
 
+        // wrapW rather than widest, which is the same number until a single
+        // line runs past kMaxWrap - and past that point widest is how wide the
+        // tooltip would have to be to avoid breaking a line it is now
+        // breaking anyway.
+        //
         // The floor SetMinimumWidth asked for, applied to the finished width
         // rather than to the text box, because that is what FrameXML measures
         // against: it compares the money frame's width to GetMinimumWidth and
         // widens the tooltip to hold it.
-        w->width  = std::max(std::max(widest, wrapW) + kPad * 2.0f,
-                             w->tooltipMinWidth);
+        w->width  = std::max(wrapW + kPad * 2.0f, w->tooltipMinWidth);
         w->height = lineH * static_cast<float>(rows) + kPad * 2.0f;
     }
 }
@@ -1933,9 +1949,13 @@ void WidgetRenderer::draw(WidgetTree& tree, float screenW, float screenH) {
                 const float textW = (x1 - x0) - pad * 2.0f;
                 for (const auto& line : w->tooltipLines) {
                     float lc[4] = {line.lc[0], line.lc[1], line.lc[2], line.lc[3]};
+                    // Always to the tooltip's width - see sizeTooltips, which
+                    // counted the rows the same way. Painting a line unwrapped
+                    // that was measured wrapped puts the lines below it over
+                    // the top of it.
                     drawMarkupText(dl, font, size, ImVec2(x0 + pad, y),
                                    packColor(lc, w->alpha), w->alpha, line.left,
-                                   line.wrap ? textW : 0.0f);
+                                   textW);
                     if (!line.right.empty()) {
                         float rc[4] = {line.rc[0], line.rc[1], line.rc[2], line.rc[3]};
                         const float rw = font->CalcTextSizeA(
