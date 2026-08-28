@@ -494,6 +494,22 @@ int main(int argc, char** argv) {
                         "through my veins, and yet I feel nothing but the "
                         "endless winter of the grave. Seek out Johaan - he "
                         "alone may know what has become of me.";
+                    // Two kill objectives, part-done.
+                    //
+                    // Not decoration: a quest with no objectives is treated as
+                    // *complete* by watchframe.lua - `numObjectives == 0 and
+                    // playerMoney >= requiredMoney` - and completed quests are
+                    // filtered out of the tracker by default. So a quest
+                    // without these is dropped before a single line is laid
+                    // out, and every question about the objectives tracker
+                    // answers "nothing was drawn" for a reason that has nothing
+                    // to do with what is being asked. Two rather than one so
+                    // the multi-line block that broke the world map's quest
+                    // list has a counterpart here.
+                    q.killObjectives[0] = {.npcOrGoId = 1890, .required = 8};
+                    q.killObjectives[1] = {.npcOrGoId = 1891, .required = 5};
+                    q.killCounts[1890] = {3, 8};
+                    q.killCounts[1891] = {1, 5};
                     q.zoneOrSort = 130;  // Silverpine Forest
                     q.level = 1;
                     q.rewardXPId = 5;    // QuestXP.dbc row 0 (level 1) col 5 = 80
@@ -503,6 +519,27 @@ int main(int argc, char** argv) {
                     q.rewardTitleId = 6;  // CharTitles.dbc id 6 = "Knight %s"
                     q.factionRewards[0] = {69, 5, 0};  // faction 69, value idx 5 -> 250 rep
                     log.push_back(q);
+
+                    // And enough more of them to overflow the tracker.
+                    //
+                    // One quest fits, and a tracker that fits is the case that
+                    // was already working. WatchFrame_DisplayTrackedQuests has
+                    // an overflow break for when the lines stop fitting -
+                    // `lastBottom < WatchFrame:GetBottom()` - and that branch
+                    // had never been reached by anything but a player with a
+                    // full log, which is where the tracker was reported
+                    // collapsing itself. Eight is what that report had.
+                    //
+                    // Copies of the first, renumbered: the point is the count
+                    // of lines, not the content, and inventing eight different
+                    // quests would be inventing game data rather than starting
+                    // state.
+                    for (uint32_t extra = 1; extra < 8; ++extra) {
+                        auto more = q;
+                        more.questId = 375 + extra;
+                        more.title = "Tracked Quest " + std::to_string(extra + 1);
+                        log.push_back(more);
+                    }
                     gh.setSelectedQuestLogIndex(1);
                 }
             }

@@ -1446,3 +1446,67 @@ enforces on every sweep it runs.
 This is the shape worth repeating. Both of today's measurement bugs were
 instances of one pattern, and a sweep for the pattern would have found both
 before either was reported - where a test for either would have found neither.
+
+## The tracker, narrowed; and a corpse guid that outlived its corpse
+
+The objectives tracker was chased with the fixture rather than with another
+play session, and the fixture had to grow twice to get there. Its quest had no
+objectives, and watchframe.lua treats a quest with none as *complete* -
+`numObjectives == 0 and playerMoney >= requiredMoney` - which the default
+filter then drops, so not one line was laid out and every question answered
+"nothing was drawn" for a reason unrelated to what was being asked. With two
+kill objectives on it and the zone filter satisfied, the handler reports
+`heightUsed=44` and the collapse button is enabled.
+
+So the layout is sound, the measurement fix holds, and the click was never the
+problem. The fixture then grew to eight watched quests - what the report had -
+to reach the handler's overflow break, and that is ruled out as well:
+`heightUsed=260`, button enabled, title "Objectives (8)". The harness now
+reproduces the reported screen and it works.
+
+One anomaly from the reported log is recorded as a red herring so it is not
+chased twice: `WatchFrame` measured 119.59 wide against the harness's 204.
+`WatchFrame_SetWidth` only ever chooses 204 or 306, so that is the *collapsed*
+width derived from the title - the symptom, not the cause.
+
+What is left is written into `TODO.md` rather than guessed at here. Three times
+today a confident static theory has been wrong, and each time the harness or
+the log was what said so.
+
+Two fragilities found on the way and recorded with it: a quest with no
+objectives reads as complete, and the zone filter drops *every* watched quest
+whose log header does not match `GetRealZoneText()` exactly, with no fallback.
+
+Separately, the release-spirit report. `SMSG_DESTROY_OBJECT` never cleared the
+tracked corpse, so `corpseGuid_` went on naming an object the server had
+already taken away - after a reclaim, a decay, or a later death - and
+`reclaimCorpse` would send `CMSG_RECLAIM_CORPSE` for it. Cleared now, and only
+the guid: the *position* is what a ghost navigates by, it comes from
+`MSG_CORPSE_QUERY` rather than from the object, and a corpse going out of sight
+must not erase where it is. The guid returns with the create block when the
+ghost walks back into range, so it is self-healing.
+
+Whether that is the whole of "it jumps around" is not established, so all four
+places that write the corpse position now name themselves in the log - death,
+forced death update, corpse object, and corpse query. A stale one will say
+which writer put it there.
+
+## The harness finds one on its first outing
+
+Extending `--player` to eight watched quests and an action bar made
+`sweep_guard`'s dialog arm reach a path it never had, and it failed:
+
+    QUEST_COMPLETE: attempt to call global 'debuginfo' (a nil value)
+
+`debuginfo()` is the first line of `_ERRORMESSAGE`, which is FrameXML's own
+script-error handler. Undefined, it meant every script error raised a *second*
+error inside the handler meant to report the first - so whatever had actually
+gone wrong, what surfaced was always "attempt to call global 'debuginfo'".
+Every real fault in the interface has been reporting under that name. It is a
+no-op now, which is what it is: the retail one writes to a debug channel and
+returns nothing a script can see. With it defined the handler runs through to
+loading Blizzard_DebugTools, which is where a real error would now be named.
+
+That is the fixture paying for itself the first time it was asked, and on a
+fault nobody had reported - which is the whole argument for reaching state
+rather than writing more tests.

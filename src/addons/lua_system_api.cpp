@@ -4787,6 +4787,18 @@ void registerSystemLuaAPI(lua_State* L) {
                 {"IsXPUserDisabled",         lua_IsXPUserDisabled},
                 {"GetAddOnMemoryUsage",      lua_GetAddOnMemoryUsage},
                 {"UpdateAddOnMemoryUsage",   lua_ReturnNothing},
+                // The real client's own error handler calls this first thing.
+                //
+                // `_ERRORMESSAGE` opens with `debuginfo() -- Debugging
+                // information for internal use`, so with it undefined *every*
+                // script error raised a second error inside the handler meant
+                // to report the first, and what surfaced was "attempt to call
+                // global 'debuginfo'" - the same line whatever had actually
+                // gone wrong. Every real fault in the interface has been
+                // reporting under that name. A no-op is what it is: the retail
+                // one writes to a debug channel and returns nothing a script
+                // can see.
+                {"debuginfo",                lua_ReturnNothing},
                 {"RunScript",                lua_RunScript},
                 {"IsMouseButtonDown",        lua_IsMouseButtonDown},
                 {"GetCVarDefault",           lua_GetCVarDefault},

@@ -967,9 +967,9 @@ void EntityController::markPlayerDead(const char* source) {
     owner_.corpseZRef()     = owner_.movementInfoRef().z;
     owner_.corpseMapIdRef() = owner_.currentMapIdRef();
     owner_.corpsePositionValidRef() = true;
-    LOG_INFO("Player died (", source, "). Corpse cached at server=(",
-             owner_.corpseXRef(), ",", owner_.corpseYRef(), ",", owner_.corpseZRef(),
-             ") map=", owner_.corpseMapIdRef());
+    LOG_WARNING("Corpse position <- death (", source, "): server=(",
+                owner_.corpseXRef(), ",", owner_.corpseYRef(), ",", owner_.corpseZRef(),
+                ") map=", owner_.corpseMapIdRef());
 }
 
 // 3c: Apply unit fields during VALUES update - tracks health/power/display changes
@@ -2207,6 +2207,14 @@ void EntityController::onCreateCorpse(const UpdateBlock& block) {
                 owner_.corpseZRef()     = block.z;
                 owner_.corpseMapIdRef() = owner_.currentMapIdRef();
                 owner_.corpsePositionValidRef() = true;
+                // Four places write this position and a wrong one sends a
+                // ghost to the wrong field, so each says which it was. This
+                // one is the corpse object itself, and it is the one that can
+                // arrive for a corpse other than the newest.
+                LOG_WARNING("Corpse position <- corpse object 0x", std::hex,
+                            block.guid, std::dec, ": server=(",
+                            owner_.corpseXRef(), ",", owner_.corpseYRef(), ",",
+                            owner_.corpseZRef(), ") map=", owner_.corpseMapIdRef());
             }
 
             // Corpse objects carry ownership and position but not a standalone
@@ -2744,6 +2752,21 @@ void EntityController::handleDestroyObject(network::Packet& packet) {
             }
         }
         owner_.clearTransportAttachment(data.guid);
+        // The tracked corpse going away takes its GUID with it.
+        //
+        // Nothing cleared it, so after the corpse was reclaimed, decayed or
+        // replaced by a later death, corpseGuid_ still named an object the
+        // server no longer has - and reclaimCorpse would send
+        // CMSG_RECLAIM_CORPSE for it. The *position* deliberately stays: it is
+        // the thing a ghost navigates by, it comes from MSG_CORPSE_QUERY rather
+        // than from the object, and a corpse simply going out of sight must not
+        // erase where it is. The guid comes back with the create block when the
+        // ghost walks back into range, so this is self-healing.
+        if (owner_.corpseGuidRef() == data.guid) {
+            LOG_WARNING("Corpse object destroyed: 0x", std::hex, data.guid, std::dec,
+                        " - guid cleared, cached position kept");
+            owner_.corpseGuidRef() = 0;
+        }
         entityManager.removeEntity(data.guid);
         LOG_INFO("Destroyed entity: 0x", std::hex, data.guid, std::dec,
                  " (", (data.isDeath ? "death" : "despawn"), ")");

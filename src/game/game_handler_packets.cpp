@@ -546,6 +546,8 @@ void GameHandler::registerCoreOpcodes() {
         corpseZ_ = movementInfo.z;
         corpseMapId_ = currentMapId_;
         corpsePositionValid_ = true;
+        LOG_WARNING("Corpse position <- forced death update: server=(",
+                    corpseX_, ",", corpseY_, ",", corpseZ_, ") map=", corpseMapId_);
         if (ghostStateCallback_) ghostStateCallback_(false);
         fireAddonEvent("PLAYER_DEAD", {});
         addSystemChatMessage("You have been killed.");
@@ -624,6 +626,8 @@ void GameHandler::registerCoreOpcodes() {
         corpseZ_ = cz;
         corpseMapId_ = travelMapId;
         corpsePositionValid_ = true;
+        LOG_WARNING("Corpse position <- MSG_CORPSE_QUERY: server=(", cx, ",", cy,
+                    ",", cz, ") map=", corpseMapId_);
         LOG_INFO("MSG_CORPSE_QUERY: walk to (", cx, ",", cy, ",", cz,
                  ") on map ", travelMapId,
                  corpseMapId != travelMapId

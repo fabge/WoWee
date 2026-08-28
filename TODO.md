@@ -36,24 +36,53 @@ One, from the play session on 2026-08-27:
    went into narrowing it this far and every remaining candidate needs the
    screen. Half an hour once the line is in hand.
 
-2. **The objectives tracker's default filter hides every quest whose log
-   header does not match `GetRealZoneText()` exactly.** `watchframe.lua` drops a
-   watched quest unless `LOCAL_MAP_QUESTS` holds it, that table is copied from
-   `CURRENT_MAP_QUESTS`, and this client rebuilds that by matching each quest's
-   zone header against `GetRealZoneText()` (`addon_manager.cpp`, the
-   `WatchFrame_GetCurrentMapQuests` shim). Any disagreement between the two
-   names - a subzone, a localisation, a header the log did not resolve - drops
-   *every* quest, which lays out no lines, reports no pixels used, and leaves
-   the tracker collapsed with its expand button disabled. That is the exact
-   symptom reported on 2026-08-27 and its intermittency fits: it would work in
-   one zone and not another.
+2. **The objectives tracker collapses itself and disables its own expand
+   button, intermittently.** Narrowed on 2026-08-27/28 with
+   `framexml_run --player`, which now reaches the tracker properly. What is
+   ruled *out*: the click (the log showed it landing on the button, which was
+   disabled), the font-string measurement (fixed, and the layout answers
+   correctly with it), and the layout itself - a watched quest with objectives
+   that passes the filter gives `heightUsed=44` and an enabled button.
 
-   Not yet proven to be that player's cause - their tracker did show lines -
-   so this wants confirming against a session before it is fixed. What is
-   certain is that the shim has no fallback: if the match fails there is no
-   "show it anyway", and a tracker that hides everything looks broken rather
-   than filtered. `framexml_run --player` reaches the state (its quest sits
-   under "Miscellaneous" and is filtered out), which is where to start.
+   Overflow is ruled out too, since: the fixture carries eight watched quests
+   now, which is what the report had, and reports `heightUsed=260` with the
+   button enabled and the title reading "Objectives (8)" - the reported screen,
+   working. So the harness reproduces the *shape* of the case and not the fault.
+
+   The one concrete anomaly left in the reported log is a red herring worth
+   recording so it is not chased twice: `WatchFrame` measured 119.59 wide where
+   the harness measures 204. That is not a mis-set width - `WatchFrame_SetWidth`
+   only ever chooses 204 or 306 - it is the *collapsed* width, derived from the
+   title. It is the symptom, not the cause.
+
+   What the harness still lacks is quest POI buttons, which come from server POI
+   data and are the one thing `WatchFrame_DisplayTrackedQuests` places that is
+   not a line of its own making. That is the next thing to try.
+
+   One divergence found while looking and **not** proven to be the cause, worth
+   recording because it is real either way: `GetBottom`/`GetTop`/`GetLeft`/
+   `GetRight` answer `0` for a frame whose rect has not been resolved, where
+   WoW answers **nil**. watchframe.lua:858 branches on exactly that -
+   `if ( lastBottom and lastBottom < WatchFrame:GetBottom() )` is the tracker's
+   overflow break, and a zero there reads as "below the bottom" and breaks out
+   on the first quest, leaving `heightUsed` at its initial 0. That is the
+   reported symptom exactly, including `lines=true`. It was not reproduced: a
+   freshly created frame resolves on demand and answers a real number, so the
+   zero needs a frame that cannot resolve - `resolveWidget` bails while
+   `layingOut_` is set. Fixing the divergence properly means answering nil only
+   where `resolvedGen == 0`, which is WoW's own "not yet calculated" case;
+   answering nil more widely than that would put a nil into the arithmetic
+   these getters are read into all over the interface, which the comment above
+   `lua_Region_GetLeft` already warns about.
+
+   Two real fragilities found on the way, both worth fixing whatever the cause
+   turns out to be. A quest with **no objectives** is treated as complete
+   (`numObjectives == 0 and playerMoney >= requiredMoney`) and filtered out by
+   default. And the zone filter drops **every** watched quest whose log header
+   does not match `GetRealZoneText()` exactly, with no fallback - so a
+   disagreement between those two names empties the tracker, and an empty
+   tracker is indistinguishable from a broken one. `CURRENT_MAP_QUESTS` is
+   rebuilt by a shim in `addon_manager.cpp` that does that matching.
 
 The pet-state item found on 2026-08-26 was fixed the same day with a
 regression test. The eight that stood here on 2026-08-25 and the three that
