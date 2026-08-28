@@ -2108,6 +2108,14 @@ wowee_add_test(test_input_binding_state
             ${CMAKE_SOURCE_DIR}/src/core/input.cpp)
 target_link_libraries(test_input_binding_state PRIVATE SDL2::SDL2)
 
+# ── test_corpse_fields ──────────────────────────────────────
+#
+# Bones keep the owner's guid, so "is this corpse mine" answered yes for a
+# corpse the player could no longer return to - and the ghost was sent to
+# whichever of the two the object stream mentioned last.
+wowee_add_test(test_corpse_fields
+    SOURCES test_corpse_fields.cpp)
+
 # ── test_quest_zone ─────────────────────────────────────────
 #
 # The tracker's zone filter: header-name matching dropped every quest filed

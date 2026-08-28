@@ -12,6 +12,7 @@
 #include "game/movement_handler.hpp"
 #include "game/spell_handler.hpp"
 #include "game/combat_handler.hpp"
+#include "game/corpse_fields.hpp"
 #include "core/logger.hpp"
 #include "core/coordinates.hpp"
 #include "network/world_socket.hpp"
@@ -2189,14 +2190,24 @@ void EntityController::onCreateCorpse(const UpdateBlock& block) {
     // meant a ghost who walked back to a corpse that arrived without one
     // could never take it, however close they stood.
     {
-        // CORPSE_FIELD_OWNER is at index 6 (uint64, low word at 6, high at 7)
-        uint16_t ownerLowIdx = 6;
-        auto ownerLowIt = block.fields.find(ownerLowIdx);
-        uint32_t ownerLow = (ownerLowIt != block.fields.end()) ? ownerLowIt->second : 0;
-        auto ownerHighIt = block.fields.find(ownerLowIdx + 1);
-        uint32_t ownerHigh = (ownerHighIt != block.fields.end()) ? ownerHighIt->second : 0;
-        uint64_t ownerGuid = (static_cast<uint64_t>(ownerHigh) << 32) | ownerLow;
-        if (ownerGuid == owner_.getPlayerGuid() || ownerLow == static_cast<uint32_t>(owner_.getPlayerGuid())) {
+        const auto field = [&](uint16_t index) -> uint32_t {
+            auto it = block.fields.find(index);
+            return it != block.fields.end() ? it->second : 0u;
+        };
+        const uint32_t ownerLow = field(kCorpseFieldOwner);
+        const uint32_t ownerHigh = field(kCorpseFieldOwner + 1);
+        const uint64_t ownerGuid = (static_cast<uint64_t>(ownerHigh) << 32) | ownerLow;
+        // Bones are excluded, not just corpses belonging to someone else.
+        //
+        // "Release spirit jumps around when you have died multiple times in
+        // the same spot": a player has one live corpse, but the bones of
+        // earlier deaths stay in the world carrying the same owner guid, and
+        // they re-enter view as the player walks. Each arrival rewrote the
+        // cached corpse position, so the ghost was sent to whichever corpse
+        // the object stream had mentioned last. Seen directly in a session
+        // log, one corpse guid alternating with another eight minutes older.
+        if (corpseIsReclaimableBy(ownerGuid, ownerLow, owner_.getPlayerGuid(),
+                                  field(kCorpseFieldFlags))) {
             owner_.corpseGuidRef()  = block.guid;
             // The position only where the block actually carried one; a
             // stationary create may not, and overwriting a good answer from

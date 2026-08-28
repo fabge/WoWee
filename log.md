@@ -1621,3 +1621,49 @@ event and logs the change.
 The class rather than the instance: `tools/silent_target_drop_check.py` pins
 `setTargetGuidRaw` to `combat_handler.cpp`, the one file that fires the event
 alongside every call. Four call sites, all where they belong.
+
+## 2026-08-28 — release spirit, and a corpse eight minutes stale
+
+Reported as "the release spirit thing is a little buggy, it jumps around when
+you have died multiple times in the same spot and you have to run to different
+spots one after another". The four position diagnostics shipped the day before
+put it on one screen:
+
+```
+08:26:52  Corpse position <- death (health=0):          (-728.86,-180.06,...)
+08:26:54  Corpse position <- corpse object 0x...2a6:    (-728.82,-180.21,...)
+08:27:06  Corpse position <- corpse object 0x...2a6:    (-728.82,-180.21,...)
+08:27:07  Corpse position <- corpse object 0x...2a2:    (-715.63,-193.73,...)
+08:27:23  Corpse position <- corpse object 0x...2a6:    (-728.82,-180.21,...)
+```
+
+`0x...2a2` is the corpse of a death at 08:20, six minutes and thirteen yards
+earlier. A player has one live corpse, but the **bones** of earlier deaths stay
+in the world and carry the same owner guid - so "is this corpse mine?" answered
+yes for something that was no longer a destination, and each time the bones
+drifted back into view the cached corpse position moved to them. Walk on, the
+live corpse comes back into view, the position moves back. That is the jumping.
+
+`CORPSE_FIELD_FLAGS` carries `CORPSE_FLAG_BONES` and settles it. The field
+indices are named now in `include/game/corpse_fields.hpp` rather than being a
+bare `6` with the arithmetic in a comment, and `corpseIsReclaimableBy` is the
+whole rule: mine, and not bones. A missing flags field reads as zero, which is
+the right way round - an initial update mask omits fields whose value is zero,
+and a live corpse is exactly the one that may carry none, while bones always
+carry a set bit. Six cases in `tests/test_corpse_fields.cpp`.
+
+## 2026-08-28 — and the click that was never a click
+
+The oldest tracker item, "the collapse button does not answer a click", was
+closed by the same log without a line of code. A morning had gone into
+narrowing it on 2026-08-27, ending with an ImGui window named as the prime
+suspect and everything checkable headlessly ruled out.
+
+The log shows presses landing squarely on `WatchFrameCollapseExpandButton`, and
+one of them running its `OnClick`. The others were refused because the button
+was **disabled** - by the zone filter fixed earlier today. The click was always
+arriving. The first sentence of the hypothesis was wrong and every hour after
+it was spent underneath that.
+
+The rule it earns: when a chain of reasoning gets long without a reading in it,
+the fault is usually above where the chain starts.

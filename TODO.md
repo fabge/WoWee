@@ -19,24 +19,9 @@ validation policy, including which checks are cheap and which are not.
 Bounded, each with a stated failure mode. A regression test is expected with
 each fix; every one of these is testable headlessly.
 
-Three, from the play sessions on 2026-08-27 and 2026-08-28:
+Two, from the play sessions on 2026-08-27 and 2026-08-28:
 
-1. **The objectives tracker's collapse button does not answer a click.**
-   `WatchFrameCollapseExpandButton`. Everything checkable without a screen is
-   right, and `framexml_run` was used to check all of it: the button exists, is
-   enabled and mouse-enabled, has its `OnClick`, lays out 16x16 at the
-   tracker's top right, wins `hitTest` at its own centre, and a synthetic
-   press-release through `dispatchMouse` collapses the tracker. So the click is
-   not reaching the widget tree in a real session, and the cause is above all
-   of that - almost certainly an ImGui window of this client's answering
-   `IsWindowHovered(AnyWindow)` at that point, which is what `overClientUi`
-   in `Application` reads. The two diagnostics on that path now name the window
-   and the frame it displaced (`log.md`, 2026-08-27), so **one play session
-   with the log kept answers it**. Do not guess at it before then; a morning
-   went into narrowing it this far and every remaining candidate needs the
-   screen. Half an hour once the line is in hand.
-
-2. **`GetBottom`/`GetTop`/`GetLeft`/`GetRight` answer `0` where WoW answers
+1. **`GetBottom`/`GetTop`/`GetLeft`/`GetRight` answer `0` where WoW answers
    `nil`.** Found on 2026-08-27 while chasing the tracker, not the cause of it,
    and real either way. WoW answers nil for a frame whose rect has not been
    calculated; this client answers zero. watchframe.lua:858 branches on exactly
@@ -50,7 +35,7 @@ Three, from the play sessions on 2026-08-27 and 2026-08-28:
    are read into all over the interface, which the comment above
    `lua_Region_GetLeft` already warns about.
 
-3. **A quest with no objectives is treated as complete.**
+2. **A quest with no objectives is treated as complete.**
    `numObjectives == 0 and playerMoney >= requiredMoney` in
    `WatchFrame_DisplayTrackedQuests`, which is FrameXML's own rule - but it
    means a quest whose objectives this client failed to load is filtered out of
@@ -62,6 +47,20 @@ on 2026-08-28 ("sometimes it is togglable, sometimes not, and it sometimes
 correlates with going into a new area"), was fixed on 2026-08-28: the zone
 filter matched quest-log header *text* against `GetRealZoneText()`, which
 disagrees for every quest filed under a sub-area. See `log.md`.
+
+"The collapse button does not answer a click", which stood here from
+2026-08-27 with a whole morning of narrowing behind it and an ImGui window
+named as the prime suspect, went with it - and was never a click problem at
+all. The session log of 2026-08-28 shows presses landing squarely on
+`WatchFrameCollapseExpandButton` and one of them running its `OnClick`; the
+others were refused because the button was *disabled*, by the zone filter
+above. The hypothesis was wrong in its first sentence and every hour after
+that was spent below it. Worth remembering the next time a chain of reasoning
+gets long without a reading in it.
+
+The release-spirit report was fixed the same day and is in `log.md`: bones from
+an earlier death carry the owner's guid, so each time they re-entered view they
+overwrote the cached corpse position.
 
 The pet-state item found on 2026-08-26 was fixed the same day with a
 regression test. The eight that stood here on 2026-08-25 and the three that
