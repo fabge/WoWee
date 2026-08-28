@@ -1,6 +1,7 @@
 // data_repository.cpp - DBC data loading, ZMP pixel map, and zone/POI/overlay storage.
 // Extracted from WorldMap::loadZonesFromDBC, loadPOIData, buildCosmicView
 // (Phase 5 of refactoring plan).
+#include "rendering/world_map/area_zone_lookup.hpp"
 #include "rendering/world_map/data_repository.hpp"
 #include "rendering/world_map/map_resolver.hpp"
 #include "pipeline/asset_manager.hpp"
@@ -26,6 +27,7 @@ void DataRepository::clear() {
     exploreFlagByAreaId_.clear();
     areaNameByAreaId_.clear();
     areaIdToZoneIdx_.clear();
+    parentAreaByAreaId_.clear();
     zmpZoneBounds_.clear();
     zmpGrid_.fill(0);
     zmpLoaded_ = false;
@@ -105,6 +107,7 @@ void DataRepository::loadZones(const std::string& mapName,
             const uint32_t exploreFlag = areaDbc->getUInt32(i, atL ? (*atL)["ExploreFlag"] : 3);
             const uint32_t parentArea = areaDbc->getUInt32(i, parentField);
             if (areaId != 0) exploreFlagByAreaId[areaId] = exploreFlag;
+            if (areaId != 0 && parentArea != 0) parentAreaByAreaId_[areaId] = parentArea;
             if (parentArea != 0) childBitsByParent[parentArea].push_back(exploreFlag);
             // Cache area display name (field 11 = AreaName_lang enUS)
             if (areaId != 0 && fieldCount > 11) {
@@ -442,11 +445,27 @@ int DataRepository::zoneIndexForAreaId(uint32_t areaId) const {
     auto it = areaIdToZoneIdx_.find(areaId);
     if (it != areaIdToZoneIdx_.end()) return it->second;
 
-    // Fallback: check if areaId is a sub-zone whose parent is in our zone list.
-    // Some ZMP cells reference sub-area IDs not directly in WorldMapArea.dbc.
-    // Walk the AreaTable parent chain via exploreFlagByAreaId_ (which was built
-    // from AreaTable.dbc and includes parentArea relationships).
-    // For now, iterate zones looking for one whose overlays reference this areaId.
+    // Up the AreaTable parent chain, which is what the comment here used to
+    // promise and the code underneath it did not do.
+    //
+    // The ZMP names an area at whatever depth it sits: of Kalimdor's 3851
+    // non-empty cells only 1030 - 26.7% - are a WorldMapArea zone, and the
+    // other 2821 are sub-areas that resolved to nothing. Every one of those
+    // pixels made the continent map fall back to hit-testing zone *bounding
+    // boxes*, which overlap badly for any zone that is not a rectangle - so
+    // the wrong zone was under the cursor over three quarters of the map.
+    // Reported as "the map selection areas somewhat overlap, little difficult
+    // to click the right one". With the chain walked it is 96.6%; the rest
+    // are areas with no WorldMapArea row on this continent, which is correct
+    // to leave unresolved.
+    //
+    if (const int viaParents = zoneIndexForAreaViaParents(
+            areaId, parentAreaByAreaId_, areaIdToZoneIdx_);
+        viaParents >= 0) {
+        return viaParents;
+    }
+
+    // Last: a zone whose overlays name this area directly.
     for (int i = 0; i < static_cast<int>(zones_.size()); i++) {
         for (const auto& ov : zones_[i].overlays) {
             for (uint32_t ovAreaId : ov.areaIDs) {

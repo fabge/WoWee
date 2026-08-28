@@ -2108,6 +2108,14 @@ wowee_add_test(test_input_binding_state
             ${CMAKE_SOURCE_DIR}/src/core/input.cpp)
 target_link_libraries(test_input_binding_state PRIVATE SDL2::SDL2)
 
+# ── test_area_zone_lookup ───────────────────────────────────
+#
+# The continent map hit-tests through a per-pixel AreaTable grid. Three
+# quarters of those pixels name a sub-area, and resolving only direct hits made
+# the map fall back to overlapping zone bounding boxes.
+wowee_add_test(test_area_zone_lookup
+    SOURCES test_area_zone_lookup.cpp)
+
 # ── test_corpse_fields ──────────────────────────────────────
 #
 # Bones keep the owner's guid, so "is this corpse mine" answered yes for a

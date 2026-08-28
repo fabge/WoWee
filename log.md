@@ -1686,3 +1686,41 @@ FrameXML's POI-based original is restored - which answers nothing on this
 client and is precisely the state that emptied the tracker and disabled its own
 expand button. A quiet fallback to the bug is the worst of the three outcomes,
 so it says so now.
+
+## 2026-08-28 — the continent map hit-tested bounding boxes
+
+Reported as "the map selection areas somewhat overlap, little difficult to
+click the right one", with a screenshot of Kalimdor showing overlapping
+rectangles across Desolace and Mulgore.
+
+The continent map has a pixel-accurate path and it was reaching almost none of
+the map. Hover and click both go through `zoneIndexForAreaId`, which turns a
+ZMP cell - a 128x128 grid naming the AreaTable id under each pixel - into a
+zone. It looked the id up in the WorldMapArea table and gave up if it was not
+there. But the ZMP names areas at whatever depth they sit: of Kalimdor's 3851
+non-empty cells, **1030 are a zone and 2821 are sub-areas**. Only 26.7% of the
+map answered, and every other pixel fell through to the fallback - hit-testing
+zone *bounding boxes*, which overlap badly for any zone that is not a
+rectangle.
+
+The comment above that code already said "walk the AreaTable parent chain".
+The parent id was being read out of the DBC at load and used for exploration
+bits, then dropped. Kept now, and walked: 26.7% to **96.6%**, measured against
+the real `AreaTable.dbc` before a line was written. What stays unresolved is
+Hyjal, the Gates of Ahn'Qiraj and a few edge pixels of other continents - areas
+with no WorldMapArea row, which is correct to leave alone.
+
+The lookup is `rendering/world_map/area_zone_lookup.hpp` so it can be tested
+without a DBC: seven cases, including the cycle a custom DBC can name.
+
+The boxes themselves are gone too. Every explored zone was drawing a white
+rectangle at its bounding box, and the hovered zone drew a bright one over the
+highlight art - neither of which the real client does. The highlight texture is
+a shaped alpha mask and carries the zone's outline itself; a rectangle drawn
+around it announces the bounding box, which is not the shape being selected.
+The fallback box stays for the case where the art will not load, because
+without it nothing says the zone is under the cursor.
+
+Same class as the tracker fix earlier today: an AreaTable id used without being
+resolved to its zone. Two in one day is a pattern, and worth a sweep if a third
+turns up.

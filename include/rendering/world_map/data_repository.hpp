@@ -95,6 +95,15 @@ private:
     bool zmpLoaded_ = false;
     // AreaID → zone index (zones_ vector) for quick resolution
     std::unordered_map<uint32_t, int> areaIdToZoneIdx_;
+
+    // AreaTable's parent chain, for turning a ZMP cell into a zone.
+    //
+    // The ZMP is a per-pixel map of AreaTable ids at whatever depth the area
+    // sits, and only about a quarter of Kalimdor's non-empty cells name a
+    // WorldMapArea zone directly - the rest are sub-areas. Without the chain
+    // those cells resolve to nothing and the map falls back to hit-testing
+    // zone bounding boxes, which overlap.
+    std::unordered_map<uint32_t, uint32_t> parentAreaByAreaId_;
     // ZMP-derived bounding boxes per zone index (UV coords on display)
     std::unordered_map<int, ZmpRect> zmpZoneBounds_;
 

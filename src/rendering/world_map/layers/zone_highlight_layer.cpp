@@ -253,19 +253,20 @@ void ZoneHighlightLayer::render(const LayerContext& ctx) {
                     ImVec2(sx0, sy0), ImVec2(sx1, sy1),
                     ImVec2(0, 0), ImVec2(1, 1),
                     IM_COL32(255, 255, 200, imgAlpha));
+                // No border drawn over the art. The highlight texture is a
+                // shaped alpha mask and carries the zone's own outline; a
+                // rectangle around it announces the bounding box instead,
+                // which is not the shape being selected.
             } else {
-                // Fallback: bright colored rectangle if no highlight texture
+                // Only the fallback draws a box, because without the art
+                // there is nothing else to say the zone is under the cursor.
                 uint8_t fillAlpha = static_cast<uint8_t>(100.0f * hoverHighlightAlpha_);
                 ctx.drawList->AddRectFilled(ImVec2(sx0, sy0), ImVec2(sx1, sy1),
                                             IM_COL32(255, 235, 50, fillAlpha));
+                uint8_t borderAlpha = static_cast<uint8_t>(200.0f * hoverHighlightAlpha_);
+                ctx.drawList->AddRect(ImVec2(sx0, sy0), ImVec2(sx1, sy1),
+                                      IM_COL32(255, 225, 50, borderAlpha), 0, 0, 2.0f);
             }
-
-            uint8_t borderAlpha = static_cast<uint8_t>(200.0f * hoverHighlightAlpha_);
-            ctx.drawList->AddRect(ImVec2(sx0, sy0), ImVec2(sx1, sy1),
-                                  IM_COL32(255, 225, 50, borderAlpha), 0, 0, 2.0f);
-        } else if (explored) {
-            ctx.drawList->AddRect(ImVec2(sx0, sy0), ImVec2(sx1, sy1),
-                                  IM_COL32(255, 255, 255, 30), 0.0f, 0, 1.0f);
         }
 
         // Zone name label
