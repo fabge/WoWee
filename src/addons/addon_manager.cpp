@@ -99,6 +99,12 @@ void AddonManager::scanAddons(const std::string& addonsPath) {
     addons_.clear();
     lodAddons_.clear();
     lodLoaded_.clear();
+    // And the failures, which had been kept across a rescan while every other
+    // piece of state was thrown away. A load-on-demand addon that raised once
+    // took the CORRUPT fast path for the rest of the process, so /reload - the
+    // one thing a player does after fixing an addon - could never give it
+    // another go.
+    lodFailed_.clear();
 
     // Two places are searched. The game data's own Interface\AddOns is where a
     // player's existing addons already live, and an "addons" directory beside
@@ -1723,7 +1729,14 @@ void AddonManager::saveAllSavedVariables() {
     // engine, and asking for it would write an empty table over the file the
     // last session that did load it left behind.
     for (const auto& addon : lodAddons_) {
-        if (lodLoaded_.count(addon.addonName) == 0) continue;
+        // Lowered, because that is the only form lodLoaded_ ever holds - every
+        // insert goes through lowered(name), and std::set::count is exact. The
+        // canonical name asked here matched nothing for any of the twenty-three
+        // Blizzard load-on-demand addons, all of which are mixed case, so
+        // saveOne never ran for one of them and the settings this loop exists
+        // to keep came back to their defaults every session anyway. Only an
+        // all-lowercase third-party addon was ever saved.
+        if (lodLoaded_.count(lowered(addon.addonName)) == 0) continue;
         saveOne(addon);
     }
 }

@@ -99,6 +99,31 @@ WidgetTree::WidgetTree() {
     uiParentId_ = create(WidgetKind::Frame, rootId_, "UIParent");
 }
 
+void WidgetTree::reset() {
+    // Everything keyed on a widget id has to go with the widgets, or it names
+    // a frame that no longer exists at that index.
+    widgets_.clear();
+    linkRects_.clear();
+    scrollFrames_.clear();
+    portraitsByUnit_.clear();
+    portraitUnitOf_.clear();
+    ownedTooltips_.clear();
+    drawOrder_.clear();
+    hoveredId_ = 0;
+    pressedId_ = 0;
+    movingWid_ = 0;
+    sizingWid_ = 0;
+    sizingPoint_.clear();
+    nextOrder_ = 1;
+    layingOut_ = false;
+
+    // The same two the constructor makes, so ids line up with a fresh tree.
+    widgets_.emplace_back();
+    rootId_ = create(WidgetKind::Frame, 0, "");
+    uiParentId_ = create(WidgetKind::Frame, rootId_, "UIParent");
+    markLayoutDirty();
+}
+
 uint32_t WidgetTree::create(WidgetKind kind, uint32_t parent, const std::string& name) {
     markLayoutDirty();
     const uint32_t id = static_cast<uint32_t>(widgets_.size());

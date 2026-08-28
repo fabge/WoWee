@@ -186,6 +186,15 @@ private:
     // Shared player-death handler: caches corpse position, sets death state.
     void markPlayerDead(const char* source);
 
+    /// The other end of markPlayerDead: everything that has to stop being true
+    /// once the player is alive again, from whichever field says so first.
+    ///
+    /// Two fields can carry the news and either can arrive first - health
+    /// rising off zero, and PLAYER_FLAGS losing its ghost bit - and each path
+    /// used to clear its own idea of what death consisted of. The health path
+    /// cleared two flags of the eight and told the renderer nothing.
+    void completePlayerResurrection(const char* source);
+
     // Cached field indices resolved once per handler call to avoid repeated lookups.
     struct UnitFieldIndices {
         uint16_t health, maxHealth, powerBase, maxPowerBase;

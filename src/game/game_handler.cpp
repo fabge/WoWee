@@ -425,7 +425,19 @@ if (!(movementHandler_ && movementHandler_->isOnTaxiFlight()) && !taxiMountActiv
     auto playerUnit = std::dynamic_pointer_cast<Unit>(playerEntity);
     if (playerUnit) {
         uint32_t serverMountDisplayId = playerUnit->getMountDisplayId();
-        if (serverMountDisplayId != currentMountDisplayId_) {
+        // The same stale field the detect path already refuses. A dismount the
+        // player just asked for has not reached MOUNTDISPLAYID yet - it keeps
+        // its old value for a few frames - so reconciling to it here put them
+        // straight back on the mount, one frame after the click, and held them
+        // there until the server's own field clear arrived.
+        //
+        // detectPlayerMountChange guards exactly this (entity_controller.cpp),
+        // and upstream's fix for the blink went into that path only, so this
+        // copy went on doing it. mountCallback_(0) does not unsheathe weapons
+        // either, so the remount left them stowed as well.
+        const bool dismounting = serverMountDisplayId != 0 && movementHandler_ &&
+                                 movementHandler_->isDismountPending();
+        if (serverMountDisplayId != currentMountDisplayId_ && !dismounting) {
             LOG_INFO("Mount reconcile: server=", serverMountDisplayId,
                      " local=", currentMountDisplayId_);
             currentMountDisplayId_ = serverMountDisplayId;

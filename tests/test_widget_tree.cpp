@@ -2742,3 +2742,39 @@ TEST_CASE("A scroll frame takes the wheel without being told to", "[widget][whee
     tree.markScrollFrame(scroll);
     CHECK_FALSE(tree.get(scroll)->wheelEnabled);
 }
+
+// ── reset ────────────────────────────────────────────────────────────────
+//
+// /reload re-runs the engine over the tree it already had, and there was no way
+// to empty it. Every reload left the previous run's widgets behind: still shown,
+// still drawn, still hit-tested, and with dead scripts, because the frame table
+// their handlers live in is keyed on the Lua state that just closed. The new
+// copies win hit tests while both are visible, so the doubling stays invisible
+// until a panel is closed - the new copy hides, the stale one stays on screen,
+// and nothing dismisses it short of a restart.
+TEST_CASE("reset returns the tree to a freshly built one", "[widget_tree][reload]") {
+    using namespace wowee::ui;
+    WidgetTree tree;
+    const size_t freshSize = tree.size();
+    const uint32_t freshUiParent = tree.uiParentId();
+
+    const uint32_t frame = tree.create(WidgetKind::Frame, tree.uiParentId(), "APanel");
+    tree.create(WidgetKind::Frame, frame, "AChild");
+    REQUIRE(tree.size() > freshSize);
+    REQUIRE(tree.findByName("APanel") != nullptr);
+
+    tree.reset();
+
+    // The same shape a constructor gives, so ids do not creep with each reload.
+    CHECK(tree.size() == freshSize);
+    CHECK(tree.uiParentId() == freshUiParent);
+    CHECK(tree.findByName("UIParent") != nullptr);
+    // And nothing of the old run survives to be drawn or clicked.
+    CHECK(tree.findByName("APanel") == nullptr);
+    CHECK(tree.findByName("AChild") == nullptr);
+
+    // Usable afterwards, and reusing the ids the old widgets held.
+    const uint32_t again = tree.create(WidgetKind::Frame, tree.uiParentId(), "APanel");
+    CHECK(again == frame);
+    CHECK(tree.findByName("APanel") != nullptr);
+}

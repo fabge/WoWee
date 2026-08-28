@@ -117,3 +117,56 @@ TEST_CASE("the terrain veto only refuses ground overhead") {
         REQUIRE(terrainIsOverheadRoof(true, edge + 0.01f, feet, kStepUp));
     }
 }
+
+// ── Facing a direction given in render components ────────────────────────
+//
+// Charge aimed with atan2 of the render delta taken directly, which is a
+// different convention from the one the rest of the client uses - a mirror
+// rather than a rotation. It agreed on one diagonal and was ninety degrees out
+// at every cardinal and a hundred and eighty out on the other, so the character
+// crossed the ground sideways or backwards; and the same angle was converted
+// back to canonical and pushed to the server, overwriting the correct facing
+// SpellHandler had just sent for that charge.
+TEST_CASE("a render direction faces the way canonical says", "[coords][facing]") {
+    using namespace wowee::core::coords;
+
+    // The definition, over a full circle: going through canonical is the
+    // answer, and this is the shorthand for it.
+    for (int deg = 0; deg < 360; deg += 5) {
+        const float rad = static_cast<float>(deg) * PI / 180.0f;
+        const float rx = std::cos(rad);
+        const float ry = std::sin(rad);
+
+        const glm::vec3 canonical = renderToCanonical(glm::vec3(rx, ry, 0.0f));
+        const float expected = canonicalToCharacterYawDeg(
+            std::atan2(-canonical.y, canonical.x));
+
+        INFO("render direction at " << deg << " degrees");
+        CHECK(renderDirToCharacterYawDeg(rx, ry) == Catch::Approx(expected).margin(1e-3));
+    }
+
+    // And the round trip the charge depends on: the character yaw it sets must
+    // convert back to the canonical heading the spell handler already sent, or
+    // the second MSG_MOVE_SET_FACING contradicts the first.
+    for (int deg = 0; deg < 360; deg += 15) {
+        const float rad = static_cast<float>(deg) * PI / 180.0f;
+        const float rx = std::cos(rad);
+        const float ry = std::sin(rad);
+
+        const glm::vec3 canonical = renderToCanonical(glm::vec3(rx, ry, 0.0f));
+        // What SpellHandler sends for a charge: atan2(-dy, dx) on canonical.
+        const float sent = normalizeAngleRad(std::atan2(-canonical.y, canonical.x));
+        const float roundTripped = normalizeAngleRad(
+            characterYawDegToCanonical(renderDirToCharacterYawDeg(rx, ry)));
+
+        INFO("render direction at " << deg << " degrees");
+        CHECK(roundTripped == Catch::Approx(sent).margin(1e-4));
+    }
+
+    // The specific wrongness that was reported, pinned so it cannot come back:
+    // taking atan2 of the render components directly is ninety degrees out due
+    // north and a hundred and eighty out on one diagonal.
+    const float naiveNorth = 180.0f / PI * std::atan2(0.0f, 1.0f);
+    CHECK(renderDirToCharacterYawDeg(0.0f, 1.0f) == Catch::Approx(90.0f).margin(1e-3));
+    CHECK(naiveNorth == Catch::Approx(0.0f).margin(1e-3));
+}

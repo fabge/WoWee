@@ -912,8 +912,17 @@ void QuestHandler::registerOpcodes(DispatchTable& table) {
                             if (obj.itemId == itemId) { required = obj.required; break; }
                         }
                     }
-                    if (required == 0) required = count;
-                    owner_.questProgressCallbackRef()(quest.title, itemLabel, count, required);
+                    // The running total, not this loot's delta. The packet
+                    // carries how many were just added - the comment above the
+                    // accounting says so - and the toast overwrites its current
+                    // value with whatever it is handed, so picking up one of a
+                    // needed eight read "1/8" every time and a two-at-once
+                    // pickup read "2/8" and then went back down. Both siblings
+                    // - the kill path and the inventory reconcile - pass the
+                    // absolute.
+                    const uint32_t have = quest.itemCounts.at(itemId);
+                    if (required == 0) required = have;
+                    owner_.questProgressCallbackRef()(quest.title, itemLabel, have, required);
                     break;
                 }
             }

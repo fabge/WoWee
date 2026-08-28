@@ -974,6 +974,53 @@ void EntityController::markPlayerDead(const char* source) {
                 ") map=", owner_.corpseMapIdRef());
 }
 
+// The counterpart to markPlayerDead, and it exists for the same reason: two
+// fields announce a resurrection and either can come first, so both have to
+// leave the same state behind.
+//
+// They did not. The health-rise path cleared playerDead_ and releasedSpirit_
+// and stopped there, while the PLAYER_FLAGS path cleared eight flags and told
+// the renderer. Two consequences, both reported from play:
+//
+//   - resurrectPending_ stayed set, and movement_handler drops every start,
+//     strafe and jump opcode while it is - so a healer's resurrection left the
+//     player unable to move until they relogged. Nothing else in the client
+//     ever clears it outside NEW_WORLD, and an in-place resurrection sends no
+//     NEW_WORLD.
+//   - ghostStateCallback_ was never told, and it is what puts the model back to
+//     full opacity - so a resurrected ghost stayed half transparent for the
+//     session.
+//
+// Whichever path arrives second finds nothing left to do and says nothing.
+void EntityController::completePlayerResurrection(const char* source) {
+    const bool wasGhost = owner_.releasedSpiritRef();
+    const bool anythingToUndo = wasGhost || owner_.playerDeadRef() ||
+                                owner_.resurrectPendingRef() ||
+                                owner_.repopPendingRef();
+    if (!anythingToUndo) return;
+
+    owner_.playerDeadRef() = false;
+    owner_.releasedSpiritRef() = false;
+    owner_.repopPendingRef() = false;
+    // The one that locked movement.
+    owner_.resurrectPendingRef() = false;
+    owner_.selfResAvailableRef() = false;
+    owner_.corpseMapIdRef() = 0;  // corpse reclaimed
+    owner_.corpsePositionValidRef() = false;
+    owner_.corpseGuidRef() = 0;
+    owner_.corpseReclaimAvailableMsRef() = 0;
+
+    LOG_INFO("Player resurrected (", source, "), wasGhost=", wasGhost);
+    // PLAYER_ALIVE is the one WoW fires for a resurrection either way;
+    // PLAYER_UNGHOST is additionally what leaving ghost form is called.
+    pendingEvents_.emit("PLAYER_ALIVE", {});
+    if (wasGhost) {
+        pendingEvents_.emit("PLAYER_UNGHOST", {});
+        // The renderer's half: back to full opacity from the ghost's 50%.
+        if (owner_.ghostStateCallbackRef()) owner_.ghostStateCallbackRef()(false);
+    }
+}
+
 // 3c: Apply unit fields during VALUES update - tracks health/power/display changes
 //     and fires events for transitions (death, resurrect, level up, etc.).
 EntityController::UnitFieldUpdateResult EntityController::applyUnitFieldsOnUpdate(
@@ -1009,16 +1056,7 @@ EntityController::UnitFieldUpdateResult EntityController::applyUnitFieldsOnUpdat
                 }
             } else if (oldHealth == 0 && val > 0) {
                 if (block.guid == owner_.getPlayerGuid()) {
-                    bool wasGhost = owner_.releasedSpiritRef();
-                    owner_.playerDeadRef() = false;
-                    if (!wasGhost) {
-                        LOG_INFO("Player resurrected!");
-                        pendingEvents_.emit("PLAYER_ALIVE", {});
-                    } else {
-                        LOG_INFO("Player entered ghost form");
-                        owner_.releasedSpiritRef() = false;
-                        pendingEvents_.emit("PLAYER_UNGHOST", {});
-                    }
+                    completePlayerResurrection("health rose off zero");
                 }
                 if ((entity->getType() == ObjectType::UNIT || entity->getType() == ObjectType::PLAYER) && owner_.npcRespawnCallbackRef()) {
                     owner_.npcRespawnCallbackRef()(block.guid);
@@ -1495,18 +1533,7 @@ bool EntityController::applyPlayerStatFields(const FlatFieldMap& fields,
                 LOG_INFO("Player entered ghost form (PLAYER_FLAGS)");
                 if (owner_.ghostStateCallbackRef()) owner_.ghostStateCallbackRef()(true);
             } else if (wasGhost && !nowGhost) {
-                owner_.releasedSpiritRef() = false;
-                owner_.playerDeadRef() = false;
-                owner_.repopPendingRef() = false;
-                owner_.resurrectPendingRef() = false;
-                owner_.selfResAvailableRef() = false;
-                owner_.corpseMapIdRef() = 0;  // corpse reclaimed
-                owner_.corpsePositionValidRef() = false;
-                owner_.corpseGuidRef() = 0;
-                owner_.corpseReclaimAvailableMsRef() = 0;
-                LOG_INFO("Player resurrected (PLAYER_FLAGS ghost cleared)");
-                pendingEvents_.emit("PLAYER_ALIVE", {});
-                if (owner_.ghostStateCallbackRef()) owner_.ghostStateCallbackRef()(false);
+                completePlayerResurrection("PLAYER_FLAGS ghost cleared");
             }
             // Which unit's flags, because that is the only thing the
             // handlers do with it: TargetFrame compares arg1 against its

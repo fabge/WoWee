@@ -57,7 +57,7 @@ bool AnimationCallbackHandler::updateCharge(float deltaTime) {
     float dirLenSq = glm::dot(dir, dir);
     if (dirLenSq > 1e-4f) {
         dir *= glm::inversesqrt(dirLenSq);
-        float yawDeg = glm::degrees(std::atan2(dir.x, dir.y));
+        const float yawDeg = core::coords::renderDirToCharacterYawDeg(dir.x, dir.y);
         renderer_.setCharacterYaw(yawDeg);
         if (auto* ac = renderer_.getAnimationController()) ac->emitChargeEffect(renderPos, dir);
     }
@@ -145,9 +145,13 @@ void AnimationCallbackHandler::setupCallbacks() {
         glm::vec3 dirNorm = dir * invDist;
         glm::vec3 endRender = targetRender - dirNorm * 2.0f;
 
-        // Face toward target BEFORE starting charge
-        float yawRad = std::atan2(dirNorm.x, dirNorm.y);
-        float yawDeg = glm::degrees(yawRad);
+        // Face toward target BEFORE starting charge.
+        //
+        // Through canonical, which is what makes the orientation sent below
+        // agree with the one SpellHandler already sent for this charge rather
+        // than overwriting it with one ninety degrees away.
+        const float yawDeg =
+            core::coords::renderDirToCharacterYawDeg(dirNorm.x, dirNorm.y);
         renderer_.setCharacterYaw(yawDeg);
         // Sync canonical orientation to server so it knows we turned
         float canonicalYaw = core::coords::characterYawDegToCanonical(yawDeg);

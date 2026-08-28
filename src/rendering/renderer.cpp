@@ -1669,10 +1669,8 @@ void Renderer::update(float deltaTime) {
                 // spin looked roughly right but the frame loop then converted it
                 // back to a canonical yaw that pointed somewhere else, and the
                 // server rejected the cast for not facing the target.
-                const glm::vec3 toTargetCanonical = ::wowee::core::coords::renderToCanonical(toTarget);
-                const float canonYawToTarget =
-                    std::atan2(-toTargetCanonical.y, toTargetCanonical.x);
-                float targetYaw = ::wowee::core::coords::canonicalToCharacterYawDeg(canonYawToTarget);
+                float targetYaw = ::wowee::core::coords::renderDirToCharacterYawDeg(
+                    toTarget.x, toTarget.y);
                 float diff = targetYaw - characterYaw;
                 while (diff > 180.0f) diff -= 360.0f;
                 while (diff < -180.0f) diff += 360.0f;

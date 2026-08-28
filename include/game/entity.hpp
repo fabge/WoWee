@@ -55,6 +55,14 @@ inline constexpr uint32_t UNIT_DYNFLAG_LOOTABLE         = 0x00000001;
 inline constexpr uint32_t UNIT_DYNFLAG_TAPPED           = 0x00000004;
 inline constexpr uint32_t UNIT_DYNFLAG_TAPPED_BY_PLAYER = 0x00000008;
 inline constexpr uint32_t UNIT_DYNFLAG_DEAD             = 0x00000020;
+/// The group's tag: a mob every member of the threat list may loot.
+///
+/// A separate bit from TAPPED_BY_PLAYER, and the interface treats the two as
+/// separate - targetframe.lua greys a target only when it is neither. This
+/// client answered TAPPED_BY_PLAYER for both, so a mob the group owned read as
+/// tapped by a stranger and drew grey in the target frame and on the
+/// nameplate, while UnitIsTappedByAllThreatList said true for a solo tag.
+inline constexpr uint32_t UNIT_DYNFLAG_TAPPED_BY_ALL_THREAT_LIST = 0x00000080;
 
 /// CREATE updates may omit zero-valued health. In that case the dynamic corpse
 /// flags are the authoritative indication that the unit must spawn dead.

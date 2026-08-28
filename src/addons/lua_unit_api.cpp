@@ -353,11 +353,13 @@ static int lua_UnitIsTappedByPlayer(lua_State* L) {
     auto* unit = resolveUnit(L, uid);
     if (!unit) { return luaReturnFalse(L); }
     uint32_t df = unit->getDynamicFlags();
-    // Tapped by player: has TAPPED flag but also LOOTABLE or TAPPED_BY_ALL
-    bool tapped = (df & 0x0004) != 0;
-    bool lootable = (df & 0x0001) != 0;
-    bool sharedTag = (df & 0x0008) != 0;
-    lua_pushboolean(L, tapped && (lootable || sharedTag));
+    // Tapped by this player: the TAPPED flag plus either something to loot or
+    // this player's own tag bit. 0x08 is TAPPED_BY_PLAYER - the group's tag is
+    // 0x80, and calling 0x08 "shared" here was where that confusion started.
+    bool tapped = (df & game::UNIT_DYNFLAG_TAPPED) != 0;
+    bool lootable = (df & game::UNIT_DYNFLAG_LOOTABLE) != 0;
+    bool ownTag = (df & game::UNIT_DYNFLAG_TAPPED_BY_PLAYER) != 0;
+    lua_pushboolean(L, tapped && (lootable || ownTag));
     return 1;
 }
 
@@ -366,7 +368,8 @@ static int lua_UnitIsTappedByAllThreatList(lua_State* L) {
     const char* uid = luaL_optstring(L, 1, "target");
     auto* unit = resolveUnit(L, uid);
     if (!unit) { return luaReturnFalse(L); }
-    lua_pushboolean(L, (unit->getDynamicFlags() & 0x0008) != 0);
+    lua_pushboolean(L,
+        (unit->getDynamicFlags() & game::UNIT_DYNFLAG_TAPPED_BY_ALL_THREAT_LIST) != 0);
     return 1;
 }
 

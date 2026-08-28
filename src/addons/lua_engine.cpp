@@ -505,6 +505,12 @@ void LuaEngine::shutdown() {
         LOG_INFO("LuaEngine: shut down");
     }
     bindingPresses_.clear();
+    // The widgets go with the state that owned them. Their scripts live in the
+    // Lua state just closed, so anything left here is drawn and clicked and
+    // answers nothing - see WidgetTree::reset.
+    widgets_.reset();
+    focusedWid_ = 0;
+    for (auto& p : pressedWid_) p = 0;
 }
 
 void LuaEngine::setGameHandler(game::GameHandler* handler) {
@@ -823,7 +829,17 @@ void LuaEngine::registerAddonCompatLua() {
         "        if timers[i].remaining <= 0 then\n"
         "            local cb = timers[i].callback\n"
         "            table.remove(timers, i)\n"
-        "            cb()\n"
+        // Protected, because this runs inside an OnUpdate and the OnUpdate
+        // pump disables a handler that raises five times running - which for
+        // this one frame means C_Timer stops working for the rest of the
+        // session, for every addon, with nothing to re-arm it. In WoW a timer
+        // callback that raises is reported and the next timer still fires.
+        "            local ok, err = pcall(cb)\n"
+        "            if not ok then\n"
+        "                local handler = geterrorhandler and geterrorhandler()\n"
+        "                if handler then handler(err) end\n"
+        "                __WoweeLogWarning('C_Timer callback error: ' .. tostring(err))\n"
+        "            end\n"
         "        else\n"
         "            i = i + 1\n"
         "        end\n"
@@ -4197,12 +4213,18 @@ void LuaEngine::dispatchMouse(float x, float y, float screenH, MouseButtons butt
                 const auto* hw = hit ? widgets_.get(hit) : nullptr;
                 setEditFocus(hw && hw->isEditBox ? hit : 0);
             }
-            if (pressedWid_[i] != 0)
+            // A disabled frame does not answer the mouse. The click path
+            // already refuses one (see `pressed->enabled` below); these two did
+            // not, so a greyed-out button still ran its OnMouseDown and
+            // OnMouseUp - which is where FrameXML's buttons push themselves in
+            // and out and where addons hang their real work.
+            if (pressedWid_[i] != 0 && widgetEnabled(pressedWid_[i]))
                 callFrameScript(pressedWid_[i], "OnMouseDown", b.name);
         } else if (!b.down && buttonDown_[i]) {
             buttonDown_[i] = false;
             if (pressedWid_[i] != 0) {
-                callFrameScript(pressedWid_[i], "OnMouseUp", b.name);
+                if (widgetEnabled(pressedWid_[i]))
+                    callFrameScript(pressedWid_[i], "OnMouseUp", b.name);
                 // A click is press and release on the same frame, which is what
                 // lets a player slide off a button to change their mind.
                 const auto* pressed = widgets_.get(pressedWid_[i]);
@@ -4381,7 +4403,7 @@ void LuaEngine::dispatchMouse(float x, float y, float screenH, MouseButtons butt
                 }
 
                 if (!tookLink && !wasDragged && pressedWid_[i] == releasedOn &&
-                    (!pressed || pressed->enabled) && takesIt) {
+                    (!pressed || widgetEnabled(pressedWid_[i])) && takesIt) {
                     // PreClick and PostClick bracket the click. Secure buttons
                     // use them to set up and tear down around an action, and
                     // an addon that only has PostClick would otherwise never
@@ -4469,6 +4491,10 @@ uint32_t LuaEngine::dropOwnerOf(uint32_t wid) {
         id = cand->parent;
     }
     return 0;
+}
+
+bool LuaEngine::widgetEnabled(uint32_t wid) const {
+    return ui::isEnabledWithAncestors(widgets_, wid);
 }
 
 uint32_t LuaEngine::clickOwnerOf(uint32_t wid, const char* button) {

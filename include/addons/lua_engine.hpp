@@ -356,6 +356,12 @@ private:
     uint32_t dropOwnerOf(uint32_t wid);
     uint32_t clickOwnerOf(uint32_t wid, const char* button);
 
+    /// Whether a frame may answer the mouse: itself enabled, and every
+    /// ancestor too. WoW's own rule - disabling a container disables what is
+    /// inside it - and this client only ever asked about the leaf, so an addon
+    /// that greys a panel by disabling the panel left every control in it live.
+    [[nodiscard]] bool widgetEnabled(uint32_t wid) const;
+
     /// Whether the last dispatched mouse position landed on any FrameXML
     /// widget. Dropping a carried item on the world rather than on a frame is
     /// how an item is destroyed, so the caller has to be able to tell the two

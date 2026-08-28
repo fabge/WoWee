@@ -1031,7 +1031,14 @@ void GameScreen::renderNameplates(game::GameHandler& gameHandler) {
         } else if (isHostile) {
             // Check if mob is tapped by another player (grey nameplate)
             uint32_t dynFlags = unit->getDynamicFlags();
-            bool tappedByOther = (dynFlags & 0x0004) != 0 && (dynFlags & 0x0008) == 0; // TAPPED but not TAPPED_BY_ALL_THREAT_LIST
+            // Grey only when the tag is someone else's: tapped, and neither
+            // this player's own bit nor the group's. 0x08 is TAPPED_BY_PLAYER
+            // and 0x80 is the group tag; testing 0x08 as though it were the
+            // group's greyed every mob the group had tagged.
+            bool tappedByOther =
+                (dynFlags & game::UNIT_DYNFLAG_TAPPED) != 0 &&
+                (dynFlags & game::UNIT_DYNFLAG_TAPPED_BY_PLAYER) == 0 &&
+                (dynFlags & game::UNIT_DYNFLAG_TAPPED_BY_ALL_THREAT_LIST) == 0;
             if (tappedByOther) {
                 barColor = IM_COL32(160, 160, 160, A(200));
                 bgColor  = IM_COL32(80,  80,  80,  A(160));

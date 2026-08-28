@@ -13,6 +13,8 @@
 // place on screen.
 #include "catch_amalgamated.hpp"
 #include "ui/link_hit.hpp"
+
+#include <vector>
 #include "ui/text_markup.hpp"
 
 using wowee::ui::LinkRect;
@@ -237,5 +239,77 @@ TEST_CASE("the click finds the frame that declares the handler", "[linkhit]") {
 
     SECTION("an id the tree does not have stops rather than reading it") {
         REQUIRE(findScriptOwner(tree, 99, [](uint32_t) { return false; }) == 0);
+    }
+}
+
+// ── isEnabledWithAncestors ───────────────────────────────────────────────
+
+namespace {
+
+/// The same shape as FakeTree above, plus the flag this helper reads.
+struct EnabledTree {
+    struct Node {
+        uint32_t parent = 0;
+        bool enabled = true;
+    };
+    std::vector<Node> nodes{ {} };   // index 0 is "none", as in WidgetTree
+    [[nodiscard]] size_t size() const { return nodes.size(); }
+    [[nodiscard]] const Node* get(uint32_t id) const {
+        return id < nodes.size() ? &nodes[id] : nullptr;
+    }
+    uint32_t add(uint32_t parent, bool enabled = true) {
+        nodes.push_back({parent, enabled});
+        return static_cast<uint32_t>(nodes.size() - 1);
+    }
+};
+
+}  // namespace
+
+// WoW disables what is inside a disabled container. This client asked only
+// about the frame under the cursor, so a disabled button still ran its
+// OnMouseDown and OnMouseUp - where FrameXML's buttons push themselves in and
+// out - and a panel greyed by disabling the panel left every control in it live.
+TEST_CASE("a frame answers the mouse only if it and its ancestors are enabled",
+          "[linkhit][enabled]") {
+    using wowee::ui::isEnabledWithAncestors;
+
+    EnabledTree tree;
+    const uint32_t panel = tree.add(0);
+    const uint32_t row   = tree.add(panel);
+    const uint32_t button = tree.add(row);
+
+    CHECK(isEnabledWithAncestors(tree, button));
+
+    SECTION("the frame itself disabled") {
+        tree.nodes[button].enabled = false;
+        CHECK_FALSE(isEnabledWithAncestors(tree, button));
+    }
+
+    SECTION("an ancestor disabled, however far up") {
+        tree.nodes[panel].enabled = false;
+        CHECK_FALSE(isEnabledWithAncestors(tree, button));
+        CHECK_FALSE(isEnabledWithAncestors(tree, row));
+        CHECK_FALSE(isEnabledWithAncestors(tree, panel));
+    }
+
+    SECTION("a sibling chain is unaffected") {
+        const uint32_t other = tree.add(0);
+        tree.nodes[panel].enabled = false;
+        CHECK(isEnabledWithAncestors(tree, other));
+    }
+
+    // Nothing under the cursor is not a disabled frame; the callers check the
+    // id before asking, and an unknown id must not read as disabled.
+    SECTION("no frame at all") {
+        CHECK(isEnabledWithAncestors(tree, 0));
+    }
+
+    // A parent cycle must answer rather than spin: the walk is bounded by the
+    // tree's own size, the same way isSelfOrDescendantOf is.
+    SECTION("a parent cycle terminates") {
+        tree.nodes[panel].parent = button;
+        CHECK(isEnabledWithAncestors(tree, button));
+        tree.nodes[row].enabled = false;
+        CHECK_FALSE(isEnabledWithAncestors(tree, button));
     }
 }

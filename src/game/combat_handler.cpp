@@ -1473,18 +1473,25 @@ void CombatHandler::cycleTarget(bool reverse, const char* noneMessage,
                                 const std::function<bool(uint64_t, Entity&)>& wanted) {
     constexpr float kRangeSq = 40.0f * 40.0f;
 
-    float px = 0.0f, py = 0.0f, pz = 0.0f;
-    if (auto self = owner_.getEntityManager().getEntity(owner_.getPlayerGuid())) {
-        px = self->getX(); py = self->getY(); pz = self->getZ();
-    }
+    // Where the player actually is, which is movementInfo. Their own Entity is
+    // written by the transfer and taxi paths and by nothing on the walking
+    // path, so it holds wherever they last arrived by some other means - and
+    // the 40 yard window was measured from there. Walk away from that point and
+    // /targetenemy answers "no enemies in range" beside a mob, or reaches one
+    // forty yards behind. Same fault as the spell range one, same fix.
+    const float px = owner_.movementInfoRef().x;
+    const float py = owner_.movementInfoRef().y;
+    const float pz = owner_.movementInfoRef().z;
 
     struct Cand { uint64_t guid; float distSq; };
     std::vector<Cand> cands;
     for (const auto& [guid, entity] : owner_.getEntityManager().getEntities()) {
         if (!entity || guid == owner_.getPlayerGuid()) continue;
-        const float dx = entity->getX() - px;
-        const float dy = entity->getY() - py;
-        const float dz = entity->getZ() - pz;
+        // Where the candidate is heading rather than where its last snapshot
+        // put it, which is what every other range check in the client uses.
+        const float dx = entity->getLatestX() - px;
+        const float dy = entity->getLatestY() - py;
+        const float dz = entity->getLatestZ() - pz;
         const float distSq = dx * dx + dy * dy + dz * dz;
         if (distSq > kRangeSq) continue;
         if (!wanted(guid, *entity)) continue;

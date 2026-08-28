@@ -648,6 +648,20 @@ public:
     /// by it, so a link that stopped being drawn stops being clickable in the
     /// same frame rather than one later.
     void clearLinkRects() { linkRects_.clear(); }
+
+    /// Throw the whole tree away and start again with a bare screen and
+    /// UIParent, exactly as a freshly constructed one has.
+    ///
+    /// /reload re-runs the engine over the tree it already had, and there was
+    /// no way to empty it - so every reload left the previous run's widgets
+    /// behind. They keep their shown state and are still drawn and hit-tested,
+    /// while their scripts are dead: the frame lookup that finds their handlers
+    /// is keyed on the Lua state that just closed. New copies win hit tests
+    /// while both are visible, so the doubling is invisible until something is
+    /// closed - then the new copy hides, the old one stays on screen, and
+    /// nothing can dismiss it short of restarting. Widget count and ids grew
+    /// with every reload as well.
+    void reset();
     void addLinkRect(const LinkRect& r) { linkRects_.push_back(r); }
     /// The last link drawn under this point, which is the topmost - the draw
     /// order is back to front and later rects sit over earlier ones.

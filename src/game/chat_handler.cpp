@@ -1190,10 +1190,22 @@ void ChatHandler::fireChatEvent(const MessageChatData& msg) {
     // one thing the callback that used to announce these as well did better,
     // and it is here now so nothing was lost when that went.
     const int channelIndex = getChannelIndex(msg.channelName);
+    // arg2 is the name the interface prints, and for an outgoing whisper that
+    // is the person written to, not the one writing - the same correction
+    // deliverChatMessage already makes for the server's copy.
+    // CHAT_WHISPER_INFORM_GET is "To %s: " and reads arg2, and chatframe.lua
+    // buckets a conversation by strupper(arg2), so the sender's own name there
+    // addressed every whisper the player sent to themselves and filed it under
+    // a different target than the reply. This is the only row that appears:
+    // the server's WHISPER_INFORM echo is dropped as our own message.
+    const std::string& shownName =
+        (msg.type == ChatType::WHISPER_INFORM && !msg.receiverName.empty())
+            ? msg.receiverName
+            : senderName;
     owner_.addonEventCallbackRef()(eventName, {
-        msg.message, senderName,
+        msg.message, shownName,
         owner_.getLanguageName(static_cast<uint32_t>(msg.language)),
-        msg.channelName, senderName, "", "0", std::to_string(channelIndex),
+        msg.channelName, msg.receiverName, "", "0", std::to_string(channelIndex),
         msg.channelName, "0", "0", guidBuf
     });
 }

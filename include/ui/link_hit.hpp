@@ -97,5 +97,29 @@ bool isSelfOrDescendantOf(const Tree& tree, uint32_t node, uint32_t ancestor) {
     return false;
 }
 
+/// Whether a frame may answer the mouse: itself enabled, and every ancestor.
+///
+/// WoW's own rule - disabling a container disables what is inside it - and this
+/// client only ever asked about the frame under the cursor. Two things followed
+/// from that. A disabled button still ran its OnMouseDown and OnMouseUp, which
+/// is where FrameXML's buttons push themselves in and out and where addons hang
+/// their work; and an addon greying a panel by disabling the panel left every
+/// control inside it live.
+///
+/// The hit test is deliberately left alone: WoW still shows the tooltip of a
+/// disabled button, so a disabled frame stays under the cursor and stays
+/// hovered. It just does not act.
+template <typename Tree>
+bool isEnabledWithAncestors(const Tree& tree, uint32_t node) {
+    uint32_t guard = 0;
+    for (uint32_t w = node; w != 0 && guard <= tree.size(); ++guard) {
+        const auto* n = tree.get(w);
+        if (!n) break;
+        if (!n->enabled) return false;
+        w = n->parent;
+    }
+    return true;
+}
+
 }  // namespace ui
 }  // namespace wowee

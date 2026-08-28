@@ -2150,3 +2150,139 @@ the dropdown, from Ashenvale to Winterspring. It listed none.
 for the same reason and is now live. It prefers a continent whose DisplayMapID
 matches, which for the four continents is -1, so it still falls through to the
 second branch as before - no change today, and a correct branch when it matters.
+
+## An external review's findings, checked and worked through
+
+An audit by another model produced twelve leads. Each was re-derived from the
+code here before anything was changed; two did not survive, and one was worse
+than reported. What follows is what the code said, not what the report said.
+
+**The mount reconcile put the player back on the mount.** `game_handler.cpp`'s
+"keep mount state server-authoritative" block copied the unit's stored
+MOUNTDISPLAYID back into `currentMountDisplayId_` and fired `mountCallback_`
+with no dismount-grace check. The field keeps its old value for a few frames
+after a dismount request, and `detectPlayerMountChange` already refuses it for
+exactly that reason - upstream's fix for the blink went into that path and this
+copy went on doing it. Same guard here now.
+
+**A resurrection left the player unable to move, and a ghost half transparent.**
+Two fields announce a resurrection - health rising off zero, and PLAYER_FLAGS
+losing its ghost bit - and either can arrive first. The flags path cleared eight
+pieces of state and told the renderer; the health path cleared two and told it
+nothing. So an in-place resurrection, which is the one that sends no NEW_WORLD,
+left `resurrectPending_` set - and `movement_handler` drops every start, strafe
+and jump opcode while it is, until a relog - and never restored the model from
+the ghost's 50% opacity. The health path also logged "Player entered ghost form"
+while un-ghosting, which was the tell.
+
+Both now go through `completePlayerResurrection`, the counterpart to the
+existing `markPlayerDead`, and whichever field arrives second finds nothing left
+to do. The two could not have drifted if the completion had been one function
+the first time, which is the same lesson as the mount guard above.
+
+**An interrupted cast named no spell.** `handleSpellFailure` looked the id up
+only in `unitCastStates_`, which holds other people's casts; the player's own
+lives in `currentCastSpellId_`. So every interrupt of the player's own spell
+fired `UNIT_SPELLCAST_INTERRUPTED` and `_STOP` with a castID of 0, which matches
+no cast bar - castingbarframe.lua compares arg4 against `self.castID` before
+acting - and told addons nothing. The packet carries the id and it was being
+read and thrown away one block above; it is kept now, with the player's current
+cast as a fallback.
+
+**/targetenemy measured from where the player last arrived.** The 40 yard window
+was anchored at the player's own Entity, which the walking path never writes -
+the same fault as the spell range one fixed on 2026-08-27, in the next function
+along. Anchored at `movementInfo` now, and the candidates measured by
+`getLatestX` like every other range check.
+
+**A vendor sale sold one of a stack.** All four sell sites asked for a count of
+one with the slot's own `stackCount` in hand. 3.3.5 sells the whole stack on a
+right-click and CMSG_SELL_ITEM carries the count. The auto-sell sweep was wrong
+twice over: one unit sold per slot, never revisited, and one unit's price added
+to the total it reported.
+
+**Outgoing whispers were addressed to the sender.** `fireChatEvent` put the
+sender's name in arg2 for every type. CHAT_WHISPER_INFORM_GET is "To %s: " and
+reads arg2, and chatframe.lua buckets a conversation by `strupper(arg2)` - so
+every whisper the player sent was addressed to themselves and filed under a
+different conversation than the reply. `deliverChatMessage` had already been
+corrected for the server's copy; this is the local echo, which for an outgoing
+whisper is the only row that appears at all, since the server's WHISPER_INFORM
+is dropped as our own message.
+
+**A collect quest's toast showed the last pickup.** The ADD_ITEM path passed the
+packet's delta where both siblings pass the absolute, and the toast overwrites
+its current value with whatever it is handed - so a needed eight read "1/8" on
+every pickup, and a two-at-once pickup read "2/8" and then went back down.
+
+**A mob the group had tagged drew grey.** 0x08 is TAPPED_BY_PLAYER; the group's
+tag is 0x80, which was defined nowhere in this tree. `UnitIsTappedByAllThreatList`
+returned 0x08 and the nameplate treated 0x08 as the group bit, so a mob the
+group owned read as tapped by a stranger - greyed in the target frame and on the
+nameplate - while a solo tag answered `UnitIsTappedByAllThreatList()` true. The
+interface consumes the two as distinct: targetframe.lua greys only when neither
+is set. The bit is named now and both readers use it.
+
+**Load-on-demand SavedVariables were never written.** `lodLoaded_` is keyed by
+`lowered(name)` at every insert, and the save loop asked it for the canonical
+mixed-case name. `std::set::count` is exact, so the guard was 0 for all
+twenty-three Blizzard load-on-demand addons and `saveOne` never ran for one of
+them. Only an all-lowercase third-party addon was ever saved. This disproves
+the claim in this file's own 2026-08-26 entry that the persistence fix works -
+worth remembering that a fix and its own log entry were both written without a
+test that would have caught the guard being the wrong case.
+
+**A raising timer callback killed C_Timer for the session.** The bootstrap calls
+`cb()` unprotected from `__WoweeTimerFrame`'s OnUpdate, and the OnUpdate pump
+disables a handler that raises five times running - permanently, with nothing to
+re-arm it. Five raising one-shots in one frame and C_Timer stops working for
+every addon for the rest of the session. Protected now, routed through
+`geterrorhandler` the way WoW reports one. Checked in the harness: six raising
+one-shots followed by a good one, and the good one fires.
+
+**A disabled frame still answered the mouse.** The click path checked `enabled`;
+`OnMouseDown` and `OnMouseUp` did not, and neither asked about ancestors. So a
+greyed-out button still ran the handlers where FrameXML's buttons push
+themselves in and out, and an addon greying a panel by disabling the panel left
+every control inside it live. The rule is `ui::isEnabledWithAncestors` now, and
+all three call sites use it. The hit test is deliberately untouched: WoW still
+shows a disabled button's tooltip, so a disabled frame stays hovered - it just
+does not act.
+
+**/reload kept the last run's widgets.** `WidgetTree` had no way to be emptied,
+and `reload()` re-runs the engine over the same tree, so every reload left the
+previous run's frames behind - drawn, hit-tested, and with dead scripts, because
+the table their handlers live in is keyed on the Lua state that just closed. New
+copies win hit tests while both are visible, so the doubling is invisible until
+something is closed: then the new copy hides, the stale one stays on screen, and
+nothing dismisses it short of a restart. `WidgetTree::reset` now returns it to a
+bare screen and UIParent, and `LuaEngine::shutdown` calls it. `scanAddons` also
+kept `lodFailed_` across a rescan while clearing everything else, so a
+load-on-demand addon that raised once could never be retried by the one gesture
+a player makes after fixing an addon.
+
+### Two that did not survive, and one the report understated
+
+**autoFocus does not re-grab focus every frame.** The claim was that
+`updateVisibility` calls `setEditFocus` for every visible autoFocus box on every
+frame, so clicking another box is undone next frame. It does not: the whole
+block sits after a `w->visible == w->reportedVisible` gate whose every path
+`continue`s, so it runs only on a visibility transition - which is WoW's rule,
+applied on show. No change made.
+
+**Charge's server-facing value was also wrong.** The report had it that only the
+visual yaw was wrong and the canonical orientation happened to come out correct,
+"verified numerically: max error 2.5e-14". It is not: the identity it rests on
+holds for two expressions written in the *same* components, and the two compared
+were in different ones - one render, one canonical. Measured over a circle, the
+canonical value is out by the same ninety degrees at the cardinals and a hundred
+and eighty on the NW diagonal as the visual one.
+
+That matters, because SpellHandler sends the correct MSG_MOVE_SET_FACING for a
+charge immediately before invoking this callback, and the callback then sent a
+wrong one over the top of it. `renderDirToCharacterYawDeg` is the one conversion
+now - the renderer's combat branch had the correct route open-coded and uses it
+too - and the test walks a full circle checking both that it agrees with the
+canonical route and that converting back gives what SpellHandler sent.
+
+The other rejections in the report were checked and stand as rejections.

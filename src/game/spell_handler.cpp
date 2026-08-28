@@ -4312,9 +4312,13 @@ void SpellHandler::handleSpellFailure(network::Packet& packet) {
         : packet.readPackedGuid();
     // Classic omits the castCount byte; TBC and WotLK include it
     const size_t remainingFields = isClassic ? 5u : 6u;  // spellId(4)+reason(1) [+castCount(1)]
+    // Kept past the block that reads it, because the addon event below needs
+    // it: this packet names the spell that was interrupted and nothing else
+    // reaching that point does.
+    uint32_t failSpellId = 0;
     if (packet.hasRemaining(remainingFields)) {
         if (!isClassic) /*uint8_t castCount =*/ packet.readUInt8();
-        uint32_t failSpellId = packet.readUInt32();
+        failSpellId = packet.readUInt32();
         uint8_t rawFailReason = packet.readUInt8();
         // Classic result enum starts at 0=AFFECTING_COMBAT; shift +1 for WotLK table
         uint8_t failReason = isClassic ? static_cast<uint8_t>(rawFailReason + 1) : rawFailReason;
@@ -4343,8 +4347,22 @@ void SpellHandler::handleSpellFailure(network::Packet& packet) {
     if (owner_.addonEventCallbackRef()) {
         auto unitId = (failGuid == 0) ? std::string("player") : owner_.guidToUnitId(failGuid);
         if (!unitId.empty()) {
-            uint32_t spellId = 0;
-            if (const auto* st = getUnitCastState(failGuid)) spellId = st->spellId;
+            // unitCastStates_ holds other people's casts; the player's own is
+            // in currentCastSpellId_, so asking only the first answered 0 for
+            // every interrupt of the player's own spell. A castID of 0 matches
+            // no cast bar - castingbarframe.lua compares arg4 against
+            // self.castID before acting - and told addons nothing.
+            //
+            // The packet's own spell id first, since that is the authority on
+            // which cast was interrupted.
+            uint32_t spellId = failSpellId;
+            if (spellId == 0) {
+                if (const auto* st = getUnitCastState(failGuid)) spellId = st->spellId;
+            }
+            if (spellId == 0 &&
+                (failGuid == owner_.getPlayerGuid() || failGuid == 0)) {
+                spellId = currentCastSpellId_;
+            }
             owner_.fireAddonEvent("UNIT_SPELLCAST_INTERRUPTED", spellcastArgs(unitId, spellId));
             owner_.fireAddonEvent("UNIT_SPELLCAST_STOP", spellcastArgs(unitId, spellId));
         }

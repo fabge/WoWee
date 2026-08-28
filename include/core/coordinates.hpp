@@ -94,6 +94,24 @@ inline float canonicalToCharacterYawDeg(float canonicalYaw) {
     return canonicalYaw * (180.0f / PI) + 90.0f;
 }
 
+// The character yaw that faces along a direction given in render components.
+//
+// The route matters and is not shortenable: swap into canonical, take the
+// canonical heading atan2(-dy, dx), then convert. Taking atan2 of the render
+// components directly gives a heading in a different convention - a mirror,
+// not a rotation - which agrees at one heading and is ninety degrees out at
+// every cardinal and a hundred and eighty out on one diagonal.
+//
+// Charge did exactly that, both when it aimed and every frame while it ran, so
+// the character crossed the ground sideways or backwards; and because the same
+// wrong angle was converted back and pushed to the server, it also overwrote
+// the correct MSG_MOVE_SET_FACING the spell handler had just sent.
+inline float renderDirToCharacterYawDeg(float renderDx, float renderDy) {
+    // canonicalToRender swaps x and y, so the canonical delta of a render
+    // delta (dx, dy) is (dy, dx).
+    return canonicalToCharacterYawDeg(std::atan2(-renderDx, renderDy));
+}
+
 // Convert between canonical WoW and engine rendering coordinates (just swap X/Y).
 inline glm::vec3 canonicalToRender(const glm::vec3& wow) {
     return glm::vec3(wow.y, wow.x, wow.z);
