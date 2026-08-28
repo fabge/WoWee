@@ -2008,3 +2008,39 @@ uniqueness pass that would have failed on the duplicate. Three assertions there
 had pinned punctuation to ANSI positions and could only ever have held on a US
 keyboard; they now assert the spelling of the name rather than which key wears
 it.
+
+## A popup with no key handler no longer eats the keyboard
+
+Reported: as soon as the release-spirit dialog appears, the character cannot be
+moved or turned until it is answered.
+
+`dispatchFrameKey` handed each key to the topmost visible frame that had called
+`EnableKeyboard(true)`, and reported it swallowed. Enabling the keyboard is not
+on its own a claim on it. `StaticPopupTemplate` sets `enableKeyboard="true"` and
+declares no key handler at all; `StaticPopup_OnShow` attaches one only for a
+dialog asking for `enterClicksFirstButton`, and `StaticPopupDialogs["DEATH"]`
+does not ask. So Blizzard's own release dialog is deliberately transparent to
+keys - you walk around while it is up - and every popup in this client was
+opaque to them instead.
+
+A frame now has to have somewhere to put the key before it can take it. Either
+`OnKeyDown` or `OnKeyUp` qualifies it, not just the one being dispatched:
+taking a press and then letting the release through would leave the binding
+that press started held down forever.
+
+The selection moved to `LuaEngine::keyboardFocusFrame`, which `framexml_run
+--keyfocus` now calls instead of keeping its own copy of the rule. A harness
+that agrees with itself and not with the pump is the one thing that arm exists
+to rule out, and it had drifted the moment this changed.
+
+Checked with a synthetic frame, since a real popup was easier to reason about
+than to raise: a DIALOG-strata frame with the keyboard enabled and no handler
+falls through, and the same frame the moment a handler is attached swallows.
+
+Found while looking: `framexml_run` does not create `StaticPopup1` through `4`
+at all - `StaticPopupTemplate` becomes a table, the concrete frames do not
+appear, and staticpopup.lua's own functions (`StaticPopup_Visible`,
+`StaticPopup_DisplayedFrames`) are on the missing-API list. The client does
+create them - the session log has presses landing on `StaticPopup1Button1` - so
+this is a hole in the harness, not in the client, and it is why the check above
+had to be run against a frame built by hand. Filed in TODO.md.

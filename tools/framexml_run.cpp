@@ -1054,9 +1054,13 @@ int main(int argc, char** argv) {
         // --keyfocus names the frame a key press would be handed to.
         //
         // dispatchFrameKey gives the key to the topmost visible frame that
-        // enabled the keyboard, and that frame swallows it unless it asked for
-        // propagation. Everything in FrameXML that declares a key handler is a
-        // dialog hidden until it is wanted, so at rest this should name nothing
+        // enabled the keyboard and declares a key handler, and that frame
+        // swallows it unless it asked for propagation. Enabling the keyboard is
+        // not on its own a claim on it: every static popup does that and most
+        // declare no handler, so counting those as listening is how the
+        // release-spirit dialog came to eat every movement key. Everything in
+        // FrameXML that declares a key handler is a dialog hidden until it is
+        // wanted, so at rest this should name nothing
         // - and if it names something that is always on screen, that frame is
         // eating every key in the game and the fault is here rather than in
         // whatever the key was supposed to do.
@@ -1065,22 +1069,21 @@ int main(int argc, char** argv) {
             auto* engine = mgr.getLuaEngine();
             if (!engine) { std::printf("   no engine\n"); continue; }
             const auto& tree = engine->widgets();
-            const wowee::ui::Widget* best = nullptr;
             int listening = 0;
             for (uint32_t id = 1; id < tree.size(); ++id) {
                 const auto* w = tree.get(id);
                 if (!w || w->id == 0 || !w->keyboardEnabled || !w->visible) continue;
                 ++listening;
-                if (!best) { best = w; continue; }
-                if (w->effStrata > best->effStrata ||
-                    (w->effStrata == best->effStrata && w->effLevel >= best->effLevel)) {
-                    best = w;
-                }
             }
+            // Asked of the engine rather than recomputed here. A second copy of
+            // the rule is a harness that agrees with itself and not with the
+            // pump, which is the one thing this arm exists to check.
+            const wowee::ui::Widget* best = engine->keyboardFocusFrame();
             if (!best) {
                 std::printf("   no frame is listening; the key falls through\n");
             } else {
-                std::printf("   %d listening; key goes to '%s' and is %s\n",
+                std::printf("   %d with the keyboard enabled; key goes to "
+                            "'%s' and is %s\n",
                             listening,
                             best->name.empty() ? "(unnamed)" : best->name.c_str(),
                             best->propagateKeys ? "passed on" : "swallowed");

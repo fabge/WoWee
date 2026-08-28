@@ -19,9 +19,22 @@ validation policy, including which checks are cheap and which are not.
 Bounded, each with a stated failure mode. A regression test is expected with
 each fix; every one of these is testable headlessly.
 
-Two, from the play sessions on 2026-08-27 and 2026-08-28:
+Three, from the play sessions on 2026-08-27 and 2026-08-28:
 
-1. **`GetBottom`/`GetTop`/`GetLeft`/`GetRight` answer `0` where WoW answers
+1. **`framexml_run` never creates `StaticPopup1` through `4`.** Found on
+   2026-08-28 while checking the release-spirit key fix. `StaticPopupTemplate`
+   becomes a table, the four concrete frames never appear, and staticpopup.lua's
+   own functions - `StaticPopup_Visible`, `StaticPopup_DisplayedFrames` - land
+   on the missing-API list, so the file's body evidently does not run in the
+   harness even though the XML parses and emits. The client does create them:
+   the session log of 2026-08-28 has presses landing on `StaticPopup1Button1`.
+   So the harness cannot be used to check anything about a popup - the release
+   dialog, the delete-item confirmation, the resurrect prompt - and the check
+   for that fix had to be run against a frame built by hand. Worth finding
+   before the next popup report, because the harness will answer "no popup"
+   for all of them.
+
+2. **`GetBottom`/`GetTop`/`GetLeft`/`GetRight` answer `0` where WoW answers
    `nil`.** Found on 2026-08-27 while chasing the tracker, not the cause of it,
    and real either way. WoW answers nil for a frame whose rect has not been
    calculated; this client answers zero. watchframe.lua:858 branches on exactly
@@ -35,7 +48,7 @@ Two, from the play sessions on 2026-08-27 and 2026-08-28:
    are read into all over the interface, which the comment above
    `lua_Region_GetLeft` already warns about.
 
-2. **A quest with no objectives is treated as complete.**
+3. **A quest with no objectives is treated as complete.**
    `numObjectives == 0 and playerMoney >= requiredMoney` in
    `WatchFrame_DisplayTrackedQuests`, which is FrameXML's own rule - but it
    means a quest whose objectives this client failed to load is filtered out of

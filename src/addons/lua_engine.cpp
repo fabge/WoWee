@@ -3344,25 +3344,45 @@ bool LuaEngine::dispatchResolvedBinding(int physicalKey, std::string command,
     return true;
 }
 
+const ui::Widget* LuaEngine::keyboardFocusFrame() {
+    // The topmost frame that is visible, listening, and has somewhere to put
+    // the key. All three matter, and the third is the one this was missing:
+    // EnableKeyboard is not on its own a claim on the keyboard. Every static
+    // popup inherits StaticPopupTemplate, which sets enableKeyboard="true" and
+    // declares no key handler at all - StaticPopup_OnShow attaches one only for
+    // a dialog asking for enterClicksFirstButton, which the release-spirit
+    // dialog does not. So every popup swallowed every key the moment it
+    // appeared, and the character could not be walked or turned until it was
+    // answered. A frame with no handler is transparent to keys, which is what
+    // leaves the popup up and the player moving, as it is in WoW.
+    //
+    // Either handler qualifies a frame, not just the one being dispatched.
+    // Taking a press and then letting the release through would leave the
+    // binding that press started held down forever.
+    const ui::Widget* best = nullptr;
+    for (size_t id = 1; id < widgets_.size(); ++id) {
+        const ui::Widget* w = widgets_.get(static_cast<uint32_t>(id));
+        if (!w || !w->keyboardEnabled || !w->visible) continue;
+        if (best && !(w->effStrata > best->effStrata ||
+                      (w->effStrata == best->effStrata &&
+                       w->effLevel >= best->effLevel))) {
+            continue;
+        }
+        if (!frameHasScript(w->id, "OnKeyDown") &&
+            !frameHasScript(w->id, "OnKeyUp")) {
+            continue;
+        }
+        best = w;
+    }
+    return best;
+}
+
 bool LuaEngine::dispatchFrameKey(int sdlKeycode, bool down) {
     if (!L_) return false;
     const std::string key = ui::wowKeyNameFromKeycode(sdlKeycode);
     if (key.empty()) return false;
 
-    // The topmost frame that is both visible and listening. Everything that
-    // declares a key handler in the interface is a dialog that is hidden until
-    // it is wanted, so in ordinary play there is nothing here and the key goes
-    // straight through to the game.
-    const ui::Widget* best = nullptr;
-    for (size_t id = 1; id < widgets_.size(); ++id) {
-        const ui::Widget* w = widgets_.get(static_cast<uint32_t>(id));
-        if (!w || !w->keyboardEnabled || !w->visible) continue;
-        if (!best) { best = w; continue; }
-        if (w->effStrata > best->effStrata ||
-            (w->effStrata == best->effStrata && w->effLevel >= best->effLevel)) {
-            best = w;
-        }
-    }
+    const ui::Widget* best = keyboardFocusFrame();
     if (!best) return false;
 
     callFrameScript(best->id, down ? "OnKeyDown" : "OnKeyUp", key.c_str());

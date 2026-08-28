@@ -172,6 +172,11 @@ public:
     /// a binding - which is the whole reason a dialog can be typed into.
     bool dispatchFrameKey(int sdlKeycode, bool down);
 
+    /// The frame a key press would be handed to, or null when it falls through
+    /// to the game. Public because the FrameXML harness asks the same question
+    /// and must not answer it with a second copy of the rule.
+    [[nodiscard]] const ui::Widget* keyboardFocusFrame();
+
     /// Run whatever FrameXML has bound to this key, if anything. True if a
     /// binding ran.
     ///
