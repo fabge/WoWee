@@ -2607,3 +2607,38 @@ erased per-despawn, which would weaken the guard for a player who despawns and
 respawns while a load is in flight.
 
 204/204, sweeps at ceiling, FrameXML loads clean.
+
+## 2026-08-30 — the spell-go reorder was wrong, and upstream said so first
+
+`1b0c725a0` turned the Classic hit and miss lists round to read packed GUIDs
+first. That was wrong, and the evidence is turtle's own server:
+`Spell::WriteSpellGoTargets` writes both lists as `*data << ihit.targetGUID`,
+and `ObjectGuid`'s stream operator is `buf << uint64(GetRawValue())` - full
+eight bytes. Packed is written explicitly through `GetPackGUID`, and
+`SendSpellGo` uses it for exactly two fields, the cast item or caster and the
+caster unit, which are the two this parser already reads as packed before it
+reaches the lists.
+
+The premise was the layout note at the top of `parseSpellGo`, which says
+"GUIDs are PackedGuid" and "Hit/miss target GUIDs are also PackedGuid in
+Vanilla" four lines above code that reads full GUIDs first. I read the file's
+documentation as authority over the file's behaviour. The packed GUIDs that note
+names are the two at the head.
+
+Worse than a no-op, which is why this is reverted rather than left: a packed
+read of a full-GUID stream does not run out of bytes, it consumes them by the
+mask byte and succeeds, shifting every field after the lists. The order it
+replaced only mis-fired on a genuinely truncated packet.
+
+Taken as upstream's own commit (`f37cabffe`, cherry-picked with `-x`) rather
+than reverted here, so the comment that now explains the wire format is the same
+text in both trees and the next merge has nothing to resolve.
+
+`sell_count.hpp` carried a second wrong claim from the same round - that the
+server clamps an over-large count. It refuses the sale outright, so a stale
+stack count sells nothing rather than selling one. Corrected here; the merged
+copy upstream still says clamps.
+
+The lesson is narrow and worth writing down: a comment in this repository is not
+evidence about the wire. Server source or a capture is. Two of the three hunks
+in #135 were right and both were checked against behaviour rather than prose.

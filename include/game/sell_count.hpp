@@ -10,8 +10,13 @@ namespace wowee::game {
 /// twenty-stack and leaves nineteen behind - twice over, because the auto-sell
 /// sweep also charged one unit's price into the total it reports and never
 /// revisited the slot. Right-clicking an item at a vendor in 3.3.5 sells the
-/// whole stack, CMSG_SELL_ITEM carries the count, and the server clamps it to
-/// what is actually there.
+/// whole stack, and CMSG_SELL_ITEM carries the count.
+///
+/// The count has to be the true one. A server does not clamp an over-large
+/// count, it refuses the sale - `if (count > pItem->GetCount()) { SendSellError;
+/// return; }` - so a stack count we are stale about sells nothing rather than
+/// selling one. That is the safer direction of the two, but it is not what a
+/// reader would assume.
 ///
 /// A slot that has not said how many it holds still holds one.
 [[nodiscard]] inline uint32_t sellCountForStack(uint32_t stackCount) {
