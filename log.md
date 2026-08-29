@@ -2430,3 +2430,39 @@ direct helper test, and the tile-bounds fix above is in the same area; whether
 `transport_callback_handler`'s tile derivation is also transposed is worth
 settling with the same `canonicalToTile` comparison, but it was not established
 here and is not changed on suspicion.
+
+## Merged upstream v3.1.13
+
+Fifteen commits. Two conflicts, both structural rather than substantive.
+
+`spellbook_screen.cpp` was the interesting one: upstream had independently fixed
+the same DBC warning we fixed on 2026-08-27, and named its helper `tryField`
+where ours was `fieldOptional`. Identical bodies. Upstream's caller is better
+than ours - it reports when *neither* SchoolMask nor SchoolEnum is present,
+which is a real gap and the half our version left out - so the resolution takes
+upstream's whole side, our two call sites move to `tryField`, and
+`fieldOptional` is deleted. Keeping both would have been two names for one
+lookup and a conflict in this file on every future merge.
+
+`lua_engine.cpp` conflicted the same way it did last time and for the same
+reason: our widget API lives in `lua_widget_api.cpp` and upstream's still lives
+in `lua_engine.cpp`, so upstream's edits inside that region read as "we deleted
+this". 3,769 lines of conflict carrying 99 lines of actual change. Taking the
+diff against the previous merge base rather than reading the conflict is what
+made that tractable - `git diff 927846abb...upstream/master -- <file>` is six
+changes, and five of them belong in `lua_widget_api.cpp`:
+
+- `SetInventoryItem` accepts bank slot ids (they land at forty and up, so a
+  bound of nineteen left the bank with no tooltips at all)
+- `Region_Hide` counts a toggle only where an `OnHide` is actually hooked
+- `EditBox:GetMaxLetters` / `GetMaxBytes`, which did not exist
+- the disenchant confirmation, which landed in `lua_engine.cpp` cleanly
+- `updateVisibility` reading `visibleChain` rather than `visible`, which git
+  merged on its own
+
+Our six commits' worth of fixes were checked individually against the four files
+upstream also touched - the load-on-demand SavedVariables key, the stack sell,
+the realm identity, the C_Timer pcall, `widgetEnabled` and the widget tree reset
+are all still there.
+
+203/203, sweeps at ceiling, FrameXML loads with no errors and no addon failures.

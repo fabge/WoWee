@@ -164,16 +164,21 @@ void SpellbookScreen::loadSpellDBC(pipeline::AssetManager* assetManager) {
         try { casterAuraStateField = (*spellL)["CasterAuraState"]; } catch (...) {}
         try { casterAuraStateNotField = (*spellL)["CasterAuraStateNot"]; } catch (...) {}
         // Try SchoolMask (TBC/WotLK bitmask) then SchoolEnum (Classic/Turtle 0-6 value)
-        schoolField_  = UINT32_MAX;
+        //
+        // Asked for rather than read, so a 1.12 layout is not reported as
+        // missing SchoolMask: it never had the column, and the warning that
+        // came of it told people with a perfectly good extraction to go and
+        // re-extract. Neither name is a real gap and still says so.
+        schoolField_  = spellL->tryField("SchoolMask");
         isSchoolEnum_ = false;
-        // Quietly, both of them - see DBCLayout::fieldOptional. Through the
-        // subscript these went to field(), which reports a miss, so the probe
-        // for the name this expansion does not use logged a warning telling
-        // the player to re-extract their game data every session.
-        schoolField_ = spellL->fieldOptional("SchoolMask");
-        if (schoolField_ == 0xFFFFFFFFu) {
-            schoolField_ = spellL->fieldOptional("SchoolEnum");
-            isSchoolEnum_ = (schoolField_ != 0xFFFFFFFFu);
+        if (schoolField_ == UINT32_MAX) {
+            schoolField_ = spellL->tryField("SchoolEnum");
+            isSchoolEnum_ = schoolField_ != UINT32_MAX;
+        }
+        // Neither name present is a real gap and still says so - which is the
+        // half our own version of this fix left out.
+        if (schoolField_ == UINT32_MAX) {
+            pipeline::noteMissingLayoutField("Spell", "SchoolMask or SchoolEnum");
         }
         if (schoolField_ == 0xFFFFFFFFu) schoolField_ = UINT32_MAX;
         tryLoad((*spellL)["ID"], (*spellL)["Attributes"], (*spellL)["IconID"],

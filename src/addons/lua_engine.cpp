@@ -817,6 +817,35 @@ void LuaEngine::registerAddonCompatLua() {
         "  __WoweeLogWarning('missing XML template: ' .. tostring(name))\n"
         "end\n");
 
+    // "Disenchanting X will destroy it", which the real client does not ask and
+    // this one does: the item is gone and there is no undoing it. Raised from
+    // completeItemUseOnItem, which parks the cast until the answer comes back.
+    //
+    // The dialog is written at the moment it is shown rather than here, because
+    // staticpopup.lua assigns StaticPopupDialogs itself and loads long after
+    // this. The interface's own strings first - 3.3.5 has one that names
+    // disenchanting, 1.12 has the destroy line every client has - so it reads
+    // in the player's language wherever it can.
+    bootstrap(
+        "local destroyFrame = CreateFrame('Frame', '__WoweeDisenchantConfirm')\n"
+        "destroyFrame:RegisterEvent('WOWEE_DISENCHANT_CONFIRM')\n"
+        "destroyFrame:SetScript('OnEvent', function(self, event, itemName)\n"
+        "    local name = itemName or arg1 or 'that item'\n"
+        "    if not StaticPopupDialogs then return end\n"
+        "    local text = LOOT_NO_DROP_DISENCHANT and format(LOOT_NO_DROP_DISENCHANT, name)\n"
+        "    if not text then\n"
+        "        text = DELETE_ITEM and format(DELETE_ITEM, name)\n"
+        "    end\n"
+        "    StaticPopupDialogs['WOWEE_DISENCHANT_CONFIRM'] = {\n"
+        "        text = text or ('Disenchant ' .. name .. '?'),\n"
+        "        button1 = YES or OKAY or 'Yes', button2 = NO or CANCEL or 'No',\n"
+        "        OnAccept = function() __WoweeConfirmItemSpell() end,\n"
+        "        timeout = 0, exclusive = 1, showAlert = 1, hideOnEscape = 1,\n"
+        "    }\n"
+        "    StaticPopup_Show('WOWEE_DISENCHANT_CONFIRM')\n"
+        "end)\n"
+        "destroyFrame:Hide()\n");
+
     // C_Timer implementation via Lua (uses OnUpdate internally)
     bootstrap(
         "C_Timer = {}\n"
@@ -3680,11 +3709,19 @@ void LuaEngine::updateVisibility() {
             // its XML gave it: outside the scroll frame that clips it, drawn
             // and clipped away. A blank parchment with working buttons.
             //
-            // Only for a frame that is on screen at the end of it. A pair of
-            // calls on something that cannot be drawn is not a rebuild anyone
-            // can see, and waking those handlers is the risk this pass was
-            // written to avoid.
-            if (toggles < 2 || !w->visible) continue;
+            // Only for a frame that is running at the end of it - the chain,
+            // and not `visible` as the rest of this pass reads. `visible`
+            // additionally wants somewhere to be drawn, and a driver frame has
+            // nowhere: no anchors, nothing on screen, an OnUpdate and a pair of
+            // handlers to arm it. The OnUpdate pump runs those off the chain
+            // already, so reading their OnShow off `visible` left the two
+            // passes disagreeing about whether the same frame was running, and
+            // the handler that sets up what the OnUpdate reads never fired.
+            //
+            // The risk this guard was written for is unaffected: a frame Lua
+            // never touched cannot reach two toggles, so nothing wakes here
+            // that the interface did not explicitly hide and show again.
+            if (toggles < 2 || !w->visibleChain) continue;
             callFrameScript(id, "OnHide");
             callFrameScript(id, "OnShow");
             // Deliberately both, and in the order they happened. OnHide is

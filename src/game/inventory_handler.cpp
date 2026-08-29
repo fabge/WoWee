@@ -1971,13 +1971,47 @@ void InventoryHandler::completeItemUseOnItem(uint64_t targetItemGuid, bool confi
         return;
     }
 
+    // A spell that takes the item apart rather than changing it - disenchant,
+    // prospecting, milling. Neither enchant warning applies to one: nothing is
+    // enchanted, and an enchant already on the item goes with it. Both were
+    // asked anyway, so disenchanting a bind-on-equip item put "Enchanting this
+    // item will bind it to you" in front of a cast that turns it into dust.
+    bool destroysTarget = false;
+    bool isDisenchant = false;
+    if (pending.fromSpell) {
+        const auto& cache = owner_.spellNameCacheRef();
+        if (auto it = cache.find(pending.spellId); it != cache.end()) {
+            destroysTarget = spellclass::destroysTargetItem(it->second.effectIds, 3);
+            isDisenchant = spellclass::hasDisenchantEffect(it->second.effectIds, 3);
+        }
+    }
+
+    // What it does ask instead, for a disenchant: the item is gone and there is
+    // no undoing it. The real client asks nothing here, and prospecting and
+    // milling keep that - they are spent five at a time from a stack, and a
+    // dialog for each would be in the way of the profession rather than a
+    // guard on it.
+    if (destroysTarget && isDisenchant && !confirmed) {
+        const uint32_t targetEntry = owner_.getItemEntryByGuid(targetItemGuid);
+        const auto* targetInfo = targetEntry ? owner_.getItemInfo(targetEntry) : nullptr;
+        pendingItemTarget_.reset();
+        pendingEnchant_ = PendingEnchant{.active = true, .targetItemGuid = targetItemGuid, .request = pending};
+        if (owner_.addonEventCallbackRef()) {
+            owner_.addonEventCallbackRef()(
+                "WOWEE_DISENCHANT_CONFIRM",
+                {targetInfo && !targetInfo->name.empty() ? targetInfo->name
+                                                         : std::string("that item")});
+        }
+        return;
+    }
+
     // Something permanent is already on it, and applying this destroys it.
     //
     // Only the permanent slot. A weapon carrying a sharpening stone is not
     // warned about, because the temporary slot is minutes of a stone rather
     // than an enchanter, and naming a permanent enchant that is not being
     // replaced would be a warning about the wrong thing.
-    if (!confirmed) {
+    if (!confirmed && !destroysTarget) {
         // Enchanting an unbound item binds it. Same family as the equip, use
         // and loot warnings, and the one of the five that was missed: the
         // interface has raised BIND_ENCHANT for it all along and nothing ever
@@ -2359,6 +2393,24 @@ void InventoryHandler::swapBagSlots(int srcBagIndex, int dstBagIndex) {
     owner_.inventoryRef().setEquipSlot(srcEquip, dstItem);
     owner_.inventoryRef().setEquipSlot(dstEquip, srcItem);
     owner_.inventoryRef().swapBagContents(srcBagIndex, dstBagIndex);
+
+    // A bag that moved takes its window with it, which is what the real client
+    // does and what ContainerFrame_OnEvent is written for: BAG_CLOSED carrying
+    // the bag's number hides that frame. Nothing was said here at all, so a bag
+    // rearranged on the bar while its window was open left the window standing
+    // over contents that had moved to the other bag - and clicking a slot in it
+    // acted on the container the frame still named. Closing both and reopening
+    // was the only way to move anything again.
+    //
+    // The interface numbers a worn bag from one; these indices count from zero.
+    auto& fire = owner_.addonEventCallbackRef();
+    if (fire) {
+        fire("BAG_CLOSED", {std::to_string(srcBagIndex + 1)});
+        fire("BAG_CLOSED", {std::to_string(dstBagIndex + 1)});
+    }
+    // And the bar itself, plus every frame that draws from a bag: the two have
+    // exchanged contents whether or not either was open.
+    fireBagUpdates();
 
     if (owner_.getSocket() && owner_.getSocket()->isConnected()) {
         uint8_t srcSlot = static_cast<uint8_t>(Inventory::FIRST_BAG_EQUIP_SLOT + srcBagIndex);
@@ -3261,6 +3313,15 @@ void InventoryHandler::handleBuyBankSlotResult(network::Packet& packet) {
 // ============================================================
 
 void InventoryHandler::openGuildBank(uint64_t guid) {
+    // A vault belongs to a guild, and a player in none has nothing to open. The
+    // server answers CMSG_GUILD_BANKER_ACTIVATE from a guildless player with an
+    // error and sends no bank list, so the window this raised at the moment the
+    // object was clicked had nothing behind it and never would: tabs to click,
+    // no contents, and no way to tell that from a vault that had not loaded yet.
+    if (!owner_.isInGuild()) {
+        owner_.raiseUiError("You are not in a guild.");
+        return;
+    }
     guildBankerGuid_ = guid;
     guildBankOpen_ = true;
     guildBankActiveTab_ = 0;

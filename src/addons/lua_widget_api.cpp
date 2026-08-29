@@ -2590,13 +2590,16 @@ int lua_Tooltip_SetInventoryItem(lua_State* L) {
     auto* w = widgetOf(L, 1);
     auto* gh = wowee::addons::getGameHandler(L);
     const int slot = static_cast<int>(luaL_optnumber(L, 3, 0));
-    if (!w || !gh || slot < 1 || slot > 19) { lua_pushboolean(L, 0); return 1; }
+    if (!w || !gh || slot < 1) { lua_pushboolean(L, 0); return 1; }
 
     // The unit argument was ignored, so every slot of the inspect paperdoll
     // showed whatever the player themselves had in that slot - the wrong item
     // rather than none, which is the harder kind to notice.
     std::string uid(luaL_optstring(L, 2, "player"));
     wowee::addons::toLowerInPlace(uid);
+    // Another player is only ever inspected as equipment, and the cache behind
+    // it is one entry per equipment slot.
+    if (uid != "player" && slot > 19) { lua_pushboolean(L, 0); return 1; }
     if (uid != "player") {
         const uint64_t guid = wowee::addons::resolveUnitGuid(gh, uid);
         auto& cache = gh->inspectedPlayerItemEntriesRef();
@@ -2606,7 +2609,16 @@ int lua_Tooltip_SetInventoryItem(lua_State* L) {
         return 1;
     }
 
-    const auto& s = gh->getInventory().getEquipSlot(static_cast<game::EquipSlot>(slot - 1));
+    // Every slot this numbering reaches, not equipment alone. bankframe.lua
+    // hovers with GameTooltip:SetInventoryItem("player", self:GetInventorySlot()),
+    // and a bank slot's id lands at forty and up - so a bound of nineteen
+    // refused all twenty-eight and the bank had no tooltips at all. Its bag row
+    // looked like it worked and did not: a bag button falls back to
+    // GameTooltip:SetText(self.tooltipText) when this answers false, which is
+    // the "Bank Bag" line, not the bag's own tooltip.
+    const game::ItemSlot* sp = wowee::addons::inventorySlotItem(gh->getInventory(), slot);
+    if (!sp) { lua_pushboolean(L, 0); return 1; }
+    const auto& s = *sp;
     if (s.empty()) { lua_pushboolean(L, 0); return 1; }
     // Through the fuller builder, with the slot's own copy of the item as the
     // floor: the slot knows the name and quality even for an entry no
@@ -2620,7 +2632,11 @@ int lua_Tooltip_SetInventoryItem(lua_State* L) {
         // has named the suffix itself.
         appendRandomSuffix(w, gh, s.item);
     }
-    appendEnchantLines(w, gh, gh->getEquipSlotGuid(slot - 1));
+    // Equipment only: the guid list behind it is one per equipped slot, and a
+    // bank slot's id would read off the end of it.
+    if (slot <= static_cast<int>(game::EquipSlot::NUM_SLOTS)) {
+        appendEnchantLines(w, gh, gh->getEquipSlotGuid(slot - 1));
+    }
     lua_pushboolean(L, 1);
     return 1;
 }
@@ -2969,6 +2985,20 @@ static bool ancestorsShown(lua_State* L, const wowee::ui::Widget* w) {
     return true;
 }
 
+/// Whether a script of this name is hooked to the frame at `frameIndex`.
+///
+/// The frame table is to hand here, so this reads it directly rather than
+/// going round by widget id the way LuaEngine::frameHasScript has to.
+static bool frameScriptSet(lua_State* L, int frameIndex, const char* name) {
+    const int abs = frameIndex > 0 ? frameIndex : lua_gettop(L) + frameIndex + 1;
+    lua_getfield(L, abs, "__scripts");
+    if (!lua_istable(L, -1)) { lua_pop(L, 1); return false; }
+    lua_getfield(L, -1, name);
+    const bool has = lua_isfunction(L, -1);
+    lua_pop(L, 2);
+    return has;
+}
+
 /// Run a frame's OnShow now, from inside Show().
 ///
 /// The visibility pass that normally fires it runs once a frame, and that is
@@ -3060,7 +3090,17 @@ int lua_Region_Hide(lua_State* L) {
     // The vendor and guild bank no longer take the reopen path - see
     // openBagsForTrading - so what is left exposed is the bag keybind.
     if (auto* w = widgetOf(L, 1)) {
-        if (w->shown && w->shownToggles < 200) ++w->shownToggles;
+        // Counted only where a handler is owed. A frame hidden before anything
+        // was hooked to it owes nothing, and the real client runs nothing
+        // there either. Turtle's transmog timer is CreateFrame, Hide, and only
+        // then SetScript for OnShow, OnHide and OnUpdate: counting that Hide
+        // made the Show which follows the second toggle, Show defers OnShow to
+        // updateVisibility on a second toggle, and updateVisibility fires none
+        // for a frame with no anchors. So the timer ran its OnUpdate against
+        // the startTime its OnShow was going to set. Reported in #132.
+        if (w->shown && frameScriptSet(L, 1, "OnHide") && w->shownToggles < 200) {
+            ++w->shownToggles;
+        }
         w->shown = false;
     }
     lua_pushboolean(L, 0); lua_setfield(L, 1, "__visible");
@@ -4453,6 +4493,17 @@ int lua_EditBox_SetMaxLetters(lua_State* L) {
     return 0;
 }
 
+/// GetMaxLetters() - the limit set on the box, or 0 for none.
+///
+/// The setter has been here since the box was written and the getter was not,
+/// so a handler asking what its own limit is called a nil and took the rest of
+/// itself with it. Turtle's options search box does exactly that from
+/// OnTextChanged. Reported in #132.
+int lua_EditBox_GetMaxLetters(lua_State* L) {
+    auto* w = widgetOf(L, 1);
+    lua_pushnumber(L, w ? static_cast<lua_Number>(w->editMaxLetters) : 0.0);
+    return 1;
+}
 int lua_EditBox_SetNumeric(lua_State* L) {
     if (auto* w = widgetOf(L, 1)) w->editNumeric = lua_toboolean(L, 2) != 0;
     return 0;
@@ -5346,6 +5397,8 @@ const struct luaL_Reg frameMethods[] = {
     // than the distinction: an edit box that answers nothing for its limit
     // is one FrameXML will not stop typing into.
     {"SetMaxBytes",          lua_EditBox_SetMaxLetters},
+    {"GetMaxLetters",        lua_EditBox_GetMaxLetters},
+    {"GetMaxBytes",          lua_EditBox_GetMaxLetters},
     {"SetTextInsets",        lua_EditBox_SetTextInsets},
     {"SetPadding",           lua_MessageFrame_SetPadding},
     {"GetPadding",           lua_MessageFrame_GetPadding},

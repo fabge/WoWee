@@ -37,23 +37,20 @@ struct DBCFieldMap {
         return 0xFFFFFFFF;
     }
 
-    /// The same lookup, without reporting a miss.
-    ///
-    /// For a caller that is *asking* rather than depending - the two sites that
-    /// try "SchoolMask" and then "SchoolEnum", because the expansions name that
-    /// column differently. Through field() the second probe always missed on
-    /// WotLK and TBC, so every session logged that the layout does not declare
-    /// SchoolEnum and told the player to re-extract their data, for a column
-    /// that had already been found under its other name. A warning that fires
-    /// when nothing is wrong costs more than it is worth: it is the line
-    /// someone chases first.
-    [[nodiscard]] uint32_t fieldOptional(const std::string& name) const {
-        auto it = fields.find(name);
-        return it != fields.end() ? it->second : 0xFFFFFFFF;
-    }
-
     /** Convenience operator for shorter syntax: layout["Name"] */
     uint32_t operator[](const std::string& name) const { return field(name); }
+
+    /// The same lookup, for a caller that is asking rather than reading.
+    ///
+    /// A name one expansion has and another does not is not a gap in the
+    /// layout, and reporting it as one sends people to re-extract data that is
+    /// already correct: Spell.dbc carries SchoolMask from 2.x and SchoolEnum
+    /// before it, so the spell book asks for both and uses whichever answers.
+    /// Only a caller with nothing to fall back on should report a miss.
+    [[nodiscard]] uint32_t tryField(const std::string& name) const {
+        auto it = fields.find(name);
+        return it != fields.end() ? it->second : 0xFFFFFFFFu;
+    }
 };
 
 /**
