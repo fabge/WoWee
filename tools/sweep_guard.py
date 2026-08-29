@@ -1348,9 +1348,17 @@ def check_rebuild_idiom():
     on something already shown must stay silent.
     """
     exe = _framexml_run_binary()
+    # The interface, not merely the directory that would hold it. A checkout
+    # that has never extracted the game still has Data/ - expansions, misc and
+    # opcodes are committed - so `data.is_dir()` was true on a tree with no
+    # FrameXML in it, and every probe below ran against an interface that had
+    # not loaded: five of them failed reporting ContainerFrame1 as nil and a
+    # greeting frame that does not exist. A guard that cannot see its subject
+    # says so, which is what missing_input already does for the sweeps in the
+    # tables above.
     data = ROOT / "Data"
     what = "the Hide();Show() rebuild idiom fires OnHide and OnShow"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
     setup = (
         "P = CreateFrame('Frame', 'SweepRebuildProbe', UIParent)\n"
@@ -1414,7 +1422,7 @@ def check_removed_controls_are_gone():
     exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "the controls this client removes are gone, and still name frames"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
 
     header = (ROOT / "include/addons/addon_lua_snippets.hpp").read_text(errors="ignore")
@@ -1497,7 +1505,7 @@ def check_paragraph_wrapping():
     exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "a font string with a declared width wraps inside it"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
     # QuestInfoDescriptionText is the reported one and declares x=285 y=0.
     argv = [
@@ -1553,7 +1561,7 @@ def check_binding_dispatch():
     exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "key presses reach bindings, except ones the client answers"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
     argv = [str(exe), str(data),
             "--bind:W",                                   # MOVEFORWARD, polled
@@ -1677,7 +1685,7 @@ def check_bags_tile():
     exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "bags reopened together are tiled rather than stacked"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
     # The command the client actually sends, read out of the call site rather
     # than written again here - so putting OpenAllBags back would be run by
@@ -1750,7 +1758,7 @@ def check_npc_dialogs_fill():
     exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "all four NPC dialogs fill themselves in"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
     # Each panel with the binding that feeds it, because the event is fired
     # twice and what the second one must show is new text.
@@ -1828,7 +1836,7 @@ def check_nothing_unsized():
     exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "nothing on a panel is drawn with no room to draw in"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
     for panel in ("CharacterFrame", "FriendsFrame", "MerchantFrame"):
         argv = [str(exe), str(data),
@@ -1879,7 +1887,7 @@ def check_panels_without_the_standin():
     exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "panels open, click, draw and raise nothing with no stand-in"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
     env = dict(os.environ, WOWEE_LUA_API_FALLBACK="0")
     for panel in ("AuctionFrame", "CharacterFrame", "MerchantFrame",
@@ -1921,7 +1929,7 @@ def check_dialogs_without_the_standin():
     exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "the event-driven dialogs open, click and raise nothing"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
     env = dict(os.environ, WOWEE_LUA_API_FALLBACK="0")
     for event in ("QUEST_GREETING", "QUEST_DETAIL", "QUEST_PROGRESS",
@@ -1963,7 +1971,7 @@ def check_tooltip_colour_arguments():
     exe = _framexml_run_binary()
     data = ROOT / "Data"
     what = "a tooltip colour that is not a number is taken as a default"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, what
     argv = [str(exe), str(data),
             # The exact shapes the interface uses.
@@ -2004,7 +2012,7 @@ def check_without_the_standin():
     """
     exe = _framexml_run_binary()
     data = ROOT / "Data"
-    if not exe or not data.is_dir():
+    if not exe or not (data / "interface").is_dir():
         return None, "the interface loads with no missing-API stand-in"
     env = dict(os.environ, WOWEE_LUA_API_FALLBACK="0")
     try:

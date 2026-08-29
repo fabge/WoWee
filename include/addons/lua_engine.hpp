@@ -177,6 +177,12 @@ public:
     /// and must not answer it with a second copy of the rule.
     [[nodiscard]] const ui::Widget* keyboardFocusFrame();
 
+    /// A typed character, for a frame that asked for the keyboard and is not an
+    /// edit box. OnChar is where a dialog reads digits: StackSplitFrame's own
+    /// OnKeyDown deliberately ignores them and its OnChar is what builds the
+    /// number up, so without this a stack could only be split with the arrows.
+    void dispatchFrameChar(const char* utf8);
+
     /// Run whatever FrameXML has bound to this key, if anything. True if a
     /// binding ran.
     ///

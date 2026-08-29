@@ -768,16 +768,23 @@ static bool cursorWireSlot(uint8_t& bag, uint8_t& slot) {
     // below, because everything negative was the paperdoll - see
     // kCursorNoSource for what that cost.
     if (!game::slots::cursorSourceIsInventory(s_cursorBag)) return false;
-    if (s_cursorBag < 0) {                    // an equipped item
+
+    // Minus one is two different places. The paperdoll picks an item up with
+    // it, and the interface numbers the bank's own slots BANK_CONTAINER, which
+    // is also minus one - so an item lifted out of the bank read as a worn one,
+    // and the move that followed named an equipment slot: bank slot five went
+    // out as equipment slot four. The flag the cursor already carries is the
+    // only thing that tells the two apart, and it was not being read.
+    if (cursorItemSlot().equipped) {
         bag = 0xFF;
         slot = static_cast<uint8_t>(s_cursorSlot - 1);
-    } else if (s_cursorBag == 0) {            // the backpack
-        bag = 0xFF;
-        slot = static_cast<uint8_t>(game::slots::backpackWireSlot(s_cursorSlot - 1));
-    } else {                                   // one of the four worn bags
-        bag = static_cast<uint8_t>(game::slots::wornBagContainer(s_cursorBag - 1));
-        slot = static_cast<uint8_t>(s_cursorSlot - 1);
+        return true;
     }
+    // Everything else through the shared pair, which knows the backpack, the
+    // keyring, the bank, its bags and the worn bags. Written out here it knew
+    // three of them.
+    bag = containerWireBag(s_cursorBag);
+    slot = containerWireSlot(s_cursorBag, s_cursorSlot);
     return true;
 }
 
@@ -880,15 +887,13 @@ bool boughtHeldMerchantItem(lua_State* L) {
 static void pickupFromContainerSlot(lua_State* L, game::GameHandler* gh,
                                     int bag, int slot) {
     const auto& inv = gh->getInventory();
-    const game::ItemSlot* itemSlot = nullptr;
-    if (bag == 0 && slot >= 1 && slot <= inv.getBackpackSize()) {
-        itemSlot = &inv.getBackpackSlot(slot - 1);
-    } else if (bag >= 1 && bag <= 4) {
-        int bagSize = inv.getBagSize(bag - 1);
-        if (slot >= 1 && slot <= bagSize) {
-            itemSlot = &inv.getBagSlot(bag - 1, slot - 1);
-        }
-    }
+    // Every container this numbering reaches, not the backpack and the four
+    // worn bags alone: the bank's own slots are container -1 and its bags are
+    // 5 through 11, and bankframe.lua picks an item up with
+    // PickupContainerItem(BANK_CONTAINER, self:GetID()). Missing them, the bank
+    // answered "nothing there to pick up" for every square that had something
+    // in it.
+    const game::ItemSlot* itemSlot = containerItemSlot(inv, bag, slot);
     if (itemSlot && !itemSlot->empty()) {
         setCursorType(L, CursorType::ITEM);
         s_cursorId = itemSlot->item.itemId;
@@ -1006,14 +1011,8 @@ static int lua_PickupContainerItem(lua_State* L) {
     // The destination is this bag slot rather than the server's choice, which
     // is what dropping on a particular square means.
     if (s_cursorType == CursorType::GUILDBANK) {
-        uint8_t dstBag, dstSlot;
-        if (bag == 0) {
-            dstBag = 0xFF;
-            dstSlot = static_cast<uint8_t>(game::slots::backpackWireSlot(slot - 1));
-        } else {
-            dstBag = static_cast<uint8_t>(game::slots::wornBagContainer(bag - 1));
-            dstSlot = static_cast<uint8_t>(slot - 1);
-        }
+        const uint8_t dstBag = containerWireBag(bag);
+        const uint8_t dstSlot = containerWireSlot(bag, slot);
         gh->guildBankWithdrawItem(static_cast<uint8_t>(s_cursorBag - 1),
                                   static_cast<uint8_t>(s_cursorSlot - 1),
                                   dstBag, dstSlot, s_cursorSplit);
@@ -1032,14 +1031,13 @@ static int lua_PickupContainerItem(lua_State* L) {
     // dragged item was picked up and never put down anywhere.
     uint8_t srcBag = 0, srcSlot = 0;
     if (cursorWireSlot(srcBag, srcSlot)) {
-        uint8_t dstBag, dstSlot;
-        if (bag == 0) {
-            dstBag = 0xFF;
-            dstSlot = static_cast<uint8_t>(game::slots::backpackWireSlot(slot - 1));
-        } else {
-            dstBag = static_cast<uint8_t>(game::slots::wornBagContainer(bag - 1));
-            dstSlot = static_cast<uint8_t>(slot - 1);
-        }
+        // Through the shared pair rather than written out here. This knew the
+        // backpack and treated everything else as a worn bag, so a drop into
+        // the bank - container -1 - asked wornBagContainer for container 17 and
+        // sent the move to a container that is not one. Nothing in the bank
+        // window could be dragged anywhere, including a bag sitting in it.
+        const uint8_t dstBag = containerWireBag(bag);
+        const uint8_t dstSlot = containerWireSlot(bag, slot);
         // At warning level because it is the outcome of a drag and happens
         // once per drop, and because the log carries nothing below warning -
         // which is why "did the move go out" could not be answered at all.
@@ -1048,7 +1046,12 @@ static int lua_PickupContainerItem(lua_State* L) {
                     " slot ", slot, " (wire ", (int)dstBag, "/", (int)dstSlot, ")");
         // Back where it came from: put it down rather than asking the server to
         // swap a slot with itself.
-        if (s_cursorBag == bag && s_cursorSlot == slot) {
+        //
+        // The equipped flag counts here too, for the same reason it counts
+        // above: a worn item on the cursor carries bag minus one, and so does
+        // the bank, so dropping the helm on bank slot one read as putting it
+        // back where it came from and quietly did nothing.
+        if (s_cursorBag == bag && s_cursorSlot == slot && !cursorItemSlot().equipped) {
             const int sameBag = bag, sameSlot = slot;
             clearCursorItem(L);
             gh->fireAddonEvent("ITEM_LOCK_CHANGED",
@@ -1133,9 +1136,9 @@ static int lua_PickupBagFromSlot(lua_State* L) {
     if (!gh) return 0;
     const int slot = static_cast<int>(luaL_optnumber(L, 1, 0));
 
-    const int bankIndex = slot - game::slots::kFirstBankBagInventorySlot;
+    const int bankIndex = slot - game::slots::firstBankBagInventorySlot();
     const int wornIndex = slot - kFirstWornBagInventorySlot;
-    const bool isBank = bankIndex >= 0 && bankIndex < game::Inventory::BANK_BAG_SLOTS;
+    const bool isBank = bankIndex >= 0 && bankIndex < game::slots::bankBagCount();
     const bool isWorn = wornIndex >= 0 && wornIndex < game::Inventory::NUM_BAG_SLOTS;
     // Only the bank half was handled, so dragging one of the four worn bags did
     // nothing at all - it returned here before doing anything. Latent until the

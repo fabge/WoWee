@@ -1314,6 +1314,10 @@ void Application::run() {
     while (running && !window->shouldClose() && g_terminationRequested == 0) {
         const auto frameStart = std::chrono::steady_clock::now();
         beatWatchdog();
+        // What a burst of warnings left in the buffer. A warning no longer
+        // writes itself to disk one line at a time - see Logger::flushIfStale -
+        // so this is what keeps the tail of one from sitting there.
+        Logger::getInstance().flushIfStale();
 
         // Handle watchdog mouse-release request on the main thread where
         // SDL video calls are safe (required by SDL2 threading model).
@@ -1540,14 +1544,27 @@ void Application::run() {
                     }
                 }
             }
-            // Typed text, when an addon's edit box is listening for it.
+            // Typed text, when an edit box is listening for it - or, when none
+            // is, whichever frame has asked for the keyboard.
+            //
+            // A dialog reads its digits from OnChar and not from OnKeyDown:
+            // StackSplitFrame's key handler passes numbers straight through on
+            // purpose, so the amount could only be reached with the arrows and
+            // typing "12" did nothing at all.
             else if (event.type == SDL_TEXTINPUT) {
                 bool typedIntoBox = false;
                 if (addonManager_ && addonsLoaded_) {
-                    if (auto* engine = addonManager_->getLuaEngine();
-                        engine && engine->editBoxHasFocus()) {
-                        engine->dispatchText(event.text.text);
-                        typedIntoBox = true;
+                    if (auto* engine = addonManager_->getLuaEngine()) {
+                        if (engine->editBoxHasFocus()) {
+                            engine->dispatchText(event.text.text);
+                            typedIntoBox = true;
+                        } else if (engine->keyboardFocusFrame()) {
+                            // A dialog is reading characters, so the slash
+                            // below is one of its digits' neighbours rather
+                            // than a request to open chat.
+                            engine->dispatchFrameChar(event.text.text);
+                            typedIntoBox = true;
+                        }
                     }
                 }
                 // Slash opens chat, and it is the *character* that opens it,

@@ -2016,6 +2016,14 @@ static int lua_GetItemTooltipData(lua_State* L) {
     }
 
     lua_newtable(L);
+    // How many slots a bag has, which is the whole of what its tooltip says
+    // about it. The real client prints CONTAINER_SLOTS - "%d Slot %s" - from
+    // its own tooltip builder, and this one had no way to reach the number, so
+    // every bag in the game described itself as "Container" and nothing else.
+    if (info->containerSlots > 0) {
+        lua_pushnumber(L, info->containerSlots);
+        lua_setfield(L, -2, "containerSlots");
+    }
     // Unique / Heroic flags
     if (info->maxCount == 1) { lua_pushboolean(L, 1); lua_setfield(L, -2, "isUnique"); }
     if (info->itemFlags & 0x8) { lua_pushboolean(L, 1); lua_setfield(L, -2, "isHeroic"); }
@@ -2765,9 +2773,9 @@ static int lua_PutItemInBag(lua_State* L) {
     // bag on the cursor clicked onto one did nothing but open whatever was
     // already in it. The drag path handled them all along; the click did not.
     const int wornIndex = inventoryId - 20;                                    // 0-3
-    const int bankIndex = inventoryId - game::slots::kFirstBankBagInventorySlot;  // 0-6
+    const int bankIndex = inventoryId - game::slots::firstBankBagInventorySlot();  // 0-6
     const bool isWorn = wornIndex >= 0 && wornIndex < game::Inventory::NUM_BAG_SLOTS;
-    const bool isBank = bankIndex >= 0 && bankIndex < game::Inventory::BANK_BAG_SLOTS;
+    const bool isBank = bankIndex >= 0 && bankIndex < game::slots::bankBagCount();
     if (!gh || (!isWorn && !isBank) || !heldWireSlot(srcBag, srcSlot)) {
         lua_pushboolean(L, 0);
         return 1;
