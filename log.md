@@ -2466,3 +2466,144 @@ the realm identity, the C_Timer pcall, `widgetEnabled` and the widget tree reset
 are all still there.
 
 203/203, sweeps at ceiling, FrameXML loads with no errors and no addon failures.
+
+## 2026-08-29 — a third external review, and the one that was undefined behaviour
+
+Six primary findings, verified against the code before any of them was acted on.
+Four stood as described, one was overstated, one was wrong - plus one of the
+report's own "weaker leads" that was wrong, and one thing the report did not
+find that turned up while fixing the first item.
+
+### The terrain workers were racing the map name
+
+`softReset()` deliberately leaves the worker threads running, and the map
+transition in `world_loader.cpp` calls it ninety lines before it calls
+`setMapName()`. `mapName` was a plain `std::string`: assigned on the main thread,
+read on several worker threads inside `prepareTile()` for the ADT path, the
+custom-zone paths, the model and building search prefixes and the Azeroth
+special case. That is a data race in the language sense, not a stale read - the
+worker can be walking a buffer the assignment is reallocating.
+
+The name is now behind its own mutex, separate from `queueMutex` because
+`streamTiles()` calls `getADTPath()` with `queueMutex` already held and one
+mutex for both would deadlock. `prepareTile()` takes the name as an argument
+rather than reading the member: a worker holds one snapshot for the whole tile,
+so it cannot see the name change halfway through building a path.
+
+The second half of the same finding is the tile that was already in flight. Its
+coordinate is gone from `loadQueue` and cannot be cleared, so it finished and
+pushed into a `readyQueue` that had just been emptied - old-map terrain,
+doodads and buildings finalized into the new map, and the coordinate left marked
+loaded so the correct tile never streamed in. There is now a generation counter,
+bumped by `softReset()` before it takes the queue lock and again by
+`setMapName()`, stamped by the worker at dequeue and re-checked under the queue
+lock before the push. Either the push lands before the clear and is cleared, or
+it lands after and finds its stamp stale.
+
+No test: `TerrainManager` needs an `AssetManager` and three renderers to reach
+`prepareTile`, and there is no fixture for it in the suite. The report asked for
+a ThreadSanitizer map-transition test, which is the right instrument and needs a
+TSan build this repository does not configure.
+
+**And one the report did not find.** `collisionTiles_` is written in three places
+inside `prepareTile` - so, from several worker threads at once, into an
+unguarded `unordered_map`. Two concurrent inserts across a rehash is heap
+corruption. Guarded. Worth knowing while reading it: nothing reads that map. The
+WOC sidecar is loaded, parsed and stored by every worker that finds one, and no
+code anywhere asks for it. Filed in TODO.md rather than deleted.
+
+### Present after a failed submit
+
+`endFrame` logged a failed `vkQueueSubmit`, set `deviceLost_` where it applied,
+and then called `vkQueuePresentKHR` waiting on `renderSem` - the semaphore the
+failed submission was supposed to signal. The code immediately above it is
+already careful about exactly this trap one semaphore further along: it withholds
+`frame.timelineValue` on failure so the next `beginFrame` does not wait on a
+value that will never arrive. The present path just never got the same
+treatment, so a device loss or an allocation failure became a hang or a second
+error on top of the first.
+
+Now it returns without presenting, marks the swapchain dirty - the rebuild waits
+the device idle and remakes every semaphore unsignalled, which is the only way
+back that does not carry broken sync state forward - and still advances the frame
+slot.
+
+### An incremental WMO upload outliving its map
+
+`clearAllQueues()` lists twenty-one containers and did not list
+`pendingWmoUploads_`. `processPendingWmoUploads()` only gives up when the
+renderer pointer is null, and a map transition leaves the `WMORenderer` alive
+with its contents cleared - so a part-uploaded building carried on against a
+renderer that no longer knew its model and called `finishWmoSpawn()` on the new
+map. A transport doing that registers itself against the wrong world.
+
+### A monster line that could skip past its own packet
+
+`MessageChatParser` read the receiver name's length from the server and advanced
+by it. A length of 256 or more was not skipped at all, leaving the read position
+inside the name; a length under 256 but past the end walked `setReadPos` off the
+buffer, after which the message length read a clamped zero, passed its own
+bounds test on the strength of that zero, and delivered an empty monster line no
+server had sent. Bounded against the bytes actually remaining, and refused when
+it does not fit. Three cases in `test_use_item_packet.cpp`; the overrun one fails
+against the old parser.
+
+### Character select had no way out of a dropped connection
+
+Overstated in the report, which said the screen stays interactive-looking with
+no error - it does not: Enter World greys itself out and the empty-list notice
+says "Disconnected". What was missing is narrower. With characters on screen
+there was no explanation and no way forward, character creation checked nothing
+at all, and neither had the automatic return to login that `IN_GAME` has had
+since the disconnect handler was written. Both states now take the same road,
+which is a no-op teardown followed by the login screen and the reason on it.
+
+That made a latent problem reachable, so it is fixed here too: `pendingWorldEntry_`
+survived teardown, and `processPendingEntry()` was called from `update()` for
+every state except `DISCONNECTED` - including the login screen. It is cleared on
+the way out of a session now, and only processed from the two states that can
+actually be entering a world.
+
+### Reputation controls that changed a flag and nothing else
+
+The report filed this as plausible-but-unverified. It is real, and the reason it
+is real is the opposite of the quest-watch finding below. `SetFactionInactive`,
+`SetFactionActive` and `FactionToggleAtWar` are called from
+`reputationframe.xml`'s checkbox `OnClick` handlers, and those handlers do not
+refresh the pane - `ReputationFrame` rebuilds on `UPDATE_FACTION` and on nothing
+else. Nothing fired `UPDATE_FACTION` except a standing actually changing. So
+declaring war on a faction set the flag, sent the packet, and left the checkbox
+to spring back on the next redraw. `SMSG_SET_FACTION_ATWAR` and
+`SMSG_SET_FACTION_VISIBLE` were equally silent, and so was the arrival of the
+whole faction list. All five fire it now.
+
+### Two that did not survive
+
+**Quest-watch mutations do not need an event.** The claim was that
+`AddQuestWatch` and `RemoveQuestWatch` change the tracked set without firing
+one, and that the WotLK `WatchFrame` is event-driven, so a newly tracked quest
+stays stale. Checked against the installed FrameXML rather than reasoned about:
+every caller updates the frame itself. `questlogframe.lua:102/109` calls
+`WatchFrame_Update()` on both branches, `worldmapframe.lua:2170` calls it after
+either, `watchframe.lua:1015` calls it plus `QuestLog_Update()`. The one path
+that does not - auto-watch on `QUEST_ACCEPTED` - is covered because `WatchFrame`
+registers `QUEST_LOG_UPDATE`, which the quest handler already fires on accept.
+Blizzard's own `AddQuestWatch` fires no event either. The report traced producer
+and consumer and missed that the consumer does the update itself.
+
+**Anisotropy is clamped.** Filed under the report's weaker leads.
+`getOrCreateSampler` clamps to `anisotropyLimit_`, and every
+`VkTexture::createSampler` overload routes through `finalizeSampler` into it.
+The unclamped `vkCreateSampler` below is only reachable with no global context,
+which does not happen at runtime.
+
+### One taken from the weaker list
+
+`equipmentGeneration_` was never cleared. The counters exist to tell a late
+equipment load from a current one; `clearAllQueues()` drops every load that
+could still land, so the counters that go with them were pure growth - one entry
+per player seen, for the life of the process. Cleared alongside the loads. Not
+erased per-despawn, which would weaken the guard for a player who despawns and
+respawns while a load is in flight.
+
+204/204, sweeps at ceiling, FrameXML loads clean.

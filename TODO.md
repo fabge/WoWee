@@ -324,3 +324,16 @@ Suggested order, each its own PR:
   packet-agreement sweeps that have never run on this machine.
 - `docs/threading.md` and `docs/plan-modernization.md` may still cite line
   numbers that have moved; `plan-new-mmo.md`'s were re-measured on 2026-08-27.
+- `TerrainManager::collisionTiles_` is written and never read. Every worker that
+  finds a WOC sidecar next to an ADT loads it, parses the triangles and stores
+  them under the tile key; no code anywhere asks for the map. Either the
+  collision consumer was never written or it moved, and until one exists this is
+  per-tile I/O and memory for nothing. The insert is now mutex-guarded (it was
+  several worker threads into an unguarded `unordered_map`, which is heap
+  corruption on a rehash, not a stale read), so it is safe as well as useless.
+  Decide which: wire it to the collision query or drop the load.
+- `TerrainManager` has no test fixture. It needs an `AssetManager` and three
+  renderers before `prepareTile` can be reached, so the map-generation fencing
+  added on 2026-08-29 is covered by reading rather than by a test. A
+  ThreadSanitizer build plus a map-transition harness is the instrument that
+  would actually settle it.
