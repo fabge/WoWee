@@ -170,7 +170,7 @@ bool TerrainManager::initialize(pipeline::AssetManager* assets, TerrainRenderer*
     }
 
     LOG_INFO("Terrain manager initialized (async loading enabled)");
-    LOG_INFO("  Map: ", mapName);
+    LOG_INFO("  Map: ", currentMapName());
     LOG_INFO("  Load radius: ", loadRadius, " tiles");
     LOG_INFO("  Unload radius: ", unloadRadius, " tiles");
     LOG_INFO("  Workers: ", workerCount);
@@ -307,7 +307,16 @@ bool TerrainManager::enqueueTile(int x, int y) {
     return true;
 }
 
-std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
+namespace {
+/// The ADT path for a tile on a named map, with the name given rather than
+/// read from the manager - the worker holds a snapshot, not the live member.
+std::string adtPathFor(const std::string& map, const TileCoord& coord) {
+    return "World\\Maps\\" + map + "\\" + map + "_" + std::to_string(coord.x) + "_" +
+           std::to_string(coord.y) + ".adt";
+}
+}  // namespace
+
+std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y, const std::string& map) {
     TileCoord coord = {.x = x, .y = y};
     if (auto cached = getCachedTile(coord)) {
         LOG_DEBUG("Using cached tile [", x, ",", y, "]");
@@ -320,7 +329,7 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
     if (!workerRunning.load()) return nullptr;
 
     // Try Wowee Open Terrain format first (custom zones)
-    std::string wotBase = "custom_zones/" + mapName + "/" + mapName + "_" +
+    std::string wotBase = "custom_zones/" + map + "/" + map + "_" +
                           std::to_string(coord.x) + "_" + std::to_string(coord.y);
     auto terrainPtr = std::make_unique<pipeline::ADTTerrain>();
     bool loadedFromWot = false;
@@ -340,7 +349,10 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
                     cd.boundsMin = woc.bounds.min;
                     cd.boundsMax = woc.bounds.max;
                     cd.loaded = true;
-                    collisionTiles_[tileKey(coord.x, coord.y)] = std::move(cd);
+                    {
+                        std::lock_guard<std::mutex> lock(collisionTilesMutex_);
+                        collisionTiles_[tileKey(coord.x, coord.y)] = std::move(cd);
+                    }
                     LOG_INFO("Loaded WOC collision: ", woc.triangles.size(), " triangles");
                 }
             }
@@ -349,7 +361,7 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
 
     // Also check output directory (editor exports here)
     if (!loadedFromWot) {
-        std::string outputBase = "output/" + mapName + "/" + mapName + "_" +
+        std::string outputBase = "output/" + map + "/" + map + "_" +
                                  std::to_string(coord.x) + "_" + std::to_string(coord.y);
         if (pipeline::WoweeTerrainLoader::exists(outputBase)) {
             if (pipeline::WoweeTerrainLoader::load(outputBase, *terrainPtr)) {
@@ -365,7 +377,10 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
                         cd.boundsMin = woc.bounds.min;
                         cd.boundsMax = woc.bounds.max;
                         cd.loaded = true;
-                        collisionTiles_[tileKey(coord.x, coord.y)] = std::move(cd);
+                        {
+                            std::lock_guard<std::mutex> lock(collisionTilesMutex_);
+                            collisionTiles_[tileKey(coord.x, coord.y)] = std::move(cd);
+                        }
                         LOG_INFO("Loaded WOC collision: ", woc.triangles.size(), " triangles");
                     }
                 }
@@ -377,7 +392,7 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
     // writes one alongside the ADT). This lets the runtime use the open
     // format without copying anything into custom_zones/.
     if (!loadedFromWot) {
-        std::string adtPath = getADTPath(coord);
+        std::string adtPath = adtPathFor(map, coord);
         std::string adtFsPath = assetManager->resolveFile(adtPath);
         if (!adtFsPath.empty() && adtFsPath.size() >= 4) {
             std::string sidecarBase = adtFsPath.substr(0, adtFsPath.size() - 4);
@@ -395,7 +410,10 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
                         cd.boundsMin = woc.bounds.min;
                         cd.boundsMax = woc.bounds.max;
                         cd.loaded = true;
-                        collisionTiles_[tileKey(coord.x, coord.y)] = std::move(cd);
+                        {
+                            std::lock_guard<std::mutex> lock(collisionTilesMutex_);
+                            collisionTiles_[tileKey(coord.x, coord.y)] = std::move(cd);
+                        }
                         LOG_INFO("Loaded sidecar WOC collision: ",
                                  woc.triangles.size(), " triangles");
                     }
@@ -406,7 +424,7 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
 
     // Fall back to ADT format
     if (!loadedFromWot) {
-        std::string adtPath = getADTPath(coord);
+        std::string adtPath = adtPathFor(map, coord);
         auto adtData = assetManager->readFile(adtPath);
 
         if (adtData.empty()) {
@@ -426,7 +444,7 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
     // WotLK split ADTs can store placements in *_obj0.adt.
     // Only needed for ADT-loaded tiles, not for WOT custom zones.
     if (!loadedFromWot) {
-    std::string objPath = "World\\Maps\\" + mapName + "\\" + mapName + "_" +
+    std::string objPath = "World\\Maps\\" + map + "\\" + map + "_" +
                           std::to_string(coord.x) + "_" + std::to_string(coord.y) + "_obj0.adt";
     auto objData = assetManager->readFile(objPath);
     if (!objData.empty()) {
@@ -492,7 +510,7 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
     // of it, producing a small textureless strip between the inn/prison camp
     // and lumber yard. Repair only this confirmed exterior seam; other ADT
     // holes remain intact for caves and below-ground WMO entrances.
-    if (toLowerCopy(mapName) == "azeroth" && x == 29 && y == 51) {
+    if (toLowerCopy(map) == "azeroth" && x == 29 && y == 51) {
         auto& lumbermillChunk = terrainPtr->chunks[15 * 16 + 14];
         if (lumbermillChunk.indexX == 14 && lumbermillChunk.indexY == 15 &&
             lumbermillChunk.holes == 0x0044) {
@@ -538,8 +556,8 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
         // generic custom asset of the same name.
         {
             std::vector<std::string> extraPrefixes = {
-                "output/" + mapName + "/models/",
-                "custom_zones/" + mapName + "/models/",
+                "output/" + map + "/models/",
+                "custom_zones/" + map + "/models/",
             };
             // Asset extractor's --emit-wom writes WOM sidecars next to the
             // M2 in the asset tree (e.g. <data>/world/maps/foo/foo.wom).
@@ -669,8 +687,8 @@ std::shared_ptr<PendingTile> TerrainManager::prepareTile(int x, int y) {
             {
                 // Per-zone overrides win over global custom_zones/ overrides.
                 std::vector<std::string> extraPrefixes = {
-                    "output/" + mapName + "/buildings/",
-                    "custom_zones/" + mapName + "/buildings/",
+                    "output/" + map + "/buildings/",
+                    "custom_zones/" + map + "/buildings/",
                 };
                 // asset_extract --emit-wob writes WOB next to the WMO in
                 // the asset tree; add the data path so the runtime picks
@@ -1387,10 +1405,26 @@ void TerrainManager::workerLoop() {
         }
 
         if (hasWork) {
-            auto pending = prepareTile(coord.x, coord.y);
+            // Both taken before the work, and both re-checked after it. A map
+            // transition between the two means this tile belongs to a world the
+            // client has already left.
+            const std::string map = currentMapName();
+            const uint64_t generation = mapGeneration_.load(std::memory_order_acquire);
+
+            auto pending = prepareTile(coord.x, coord.y, map);
 
             std::lock_guard<std::mutex> lock(queueMutex);
-            if (pending) {
+            if (mapGeneration_.load(std::memory_order_acquire) != generation) {
+                // softReset() has been through since this started: its queue
+                // clear could not reach a tile that was still being prepared,
+                // so the drop has to happen here. Publishing it instead would
+                // finalize the old map's terrain, doodads and buildings into
+                // the new one, and leave the coordinate marked loaded so the
+                // correct tile never streams in.
+                LOG_INFO("Dropping tile [", coord.x, ",", coord.y, "] prepared for map '", map,
+                         "': the client has since changed maps");
+                pendingTiles.erase(coord);
+            } else if (pending) {
                 readyQueue.push(pending);
             } else {
                 // Mark as failed so we don't re-enqueue
@@ -1676,6 +1710,11 @@ void TerrainManager::stopWorkers() {
 }
 
 void TerrainManager::softReset() {
+    // Before the queues, so a worker that is between its prepare and its push
+    // reads the new value and drops what it made. Clearing first would leave a
+    // window in which the push lands in an already-emptied queue.
+    mapGeneration_.fetch_add(1, std::memory_order_release);
+
     // Clear queues (workers may still be running - they'll find empty queues)
     {
         std::lock_guard<std::mutex> lock(queueMutex);
@@ -1736,10 +1775,25 @@ void TerrainManager::getTileBounds(const TileCoord& coord, float& minX, float& m
     maxY = offsetY;
 }
 
+void TerrainManager::setMapName(const std::string& name) {
+    {
+        std::lock_guard<std::mutex> lock(mapMutex_);
+        if (mapName == name) return;
+        mapName = name;
+    }
+    // After the name, so a worker that reads the new name also reads the new
+    // generation - the pair is only ever compared in that order.
+    mapGeneration_.fetch_add(1, std::memory_order_release);
+}
+
+std::string TerrainManager::currentMapName() const {
+    std::lock_guard<std::mutex> lock(mapMutex_);
+    return mapName;
+}
+
 std::string TerrainManager::getADTPath(const TileCoord& coord) const {
     // Format: World\Maps\{MapName}\{MapName}_{X}_{Y}.adt
-    return "World\\Maps\\" + mapName + "\\" + mapName + "_" +
-           std::to_string(coord.x) + "_" + std::to_string(coord.y) + ".adt";
+    return adtPathFor(currentMapName(), coord);
 }
 
 void TerrainManager::ensureGroundEffectTablesLoaded() {

@@ -205,8 +205,17 @@ public:
     /**
      * Set map name
      * @param mapName Map name (e.g., "Azeroth", "Kalimdor")
+     *
+     * Called on the main thread during a map transition while workers are still
+     * alive - softReset() deliberately leaves them running - so the string is
+     * guarded and the change is counted. A worker that started a tile under the
+     * old name finishes reading it consistently and then finds its generation
+     * stale, which is what keeps old-map geometry out of the new map.
      */
-    void setMapName(const std::string& mapName) { this->mapName = mapName; }
+    void setMapName(const std::string& name);
+
+    /// The name workers should be reading right now, copied under the lock.
+    [[nodiscard]] std::string currentMapName() const;
     [[nodiscard]] bool isCustomZone() const { return isCustomZone_; }
     void setCustomZone(bool custom) { isCustomZone_ = custom; }
 
@@ -388,7 +397,10 @@ private:
     /**
      * Background thread: prepare tile data (CPU work only, no OpenGL)
      */
-    std::shared_ptr<PendingTile> prepareTile(int x, int y);
+    /// @param map The map name this tile belongs to, snapshotted by the caller.
+    ///            Passed rather than read from the member because this runs on a
+    ///            worker thread and the member can change underneath it.
+    std::shared_ptr<PendingTile> prepareTile(int x, int y, const std::string& map);
 
     /**
      * Advance incremental finalization of a tile (one bounded unit of work).
@@ -412,7 +424,17 @@ private:
     WMORenderer* wmoRenderer = nullptr;
     audio::AmbientSoundManager* ambientSoundManager = nullptr;
 
+    // THREAD-SAFE: guards mapName only. Separate from queueMutex because
+    // streamTiles() calls getADTPath() with queueMutex already held; folding
+    // the two together would deadlock on the non-recursive mutex.
+    mutable std::mutex mapMutex_;
     std::string mapName = "Azeroth";
+
+    // Bumped by softReset() before it clears the queues. A worker stamps the
+    // value it dequeued under and re-checks it before publishing, so a tile
+    // prepared for the map we just left is dropped instead of being finalized
+    // into the map we just entered.
+    std::atomic<uint64_t> mapGeneration_{0};
 
     // Loaded tiles (keyed by coordinate)
     std::unordered_map<TileCoord, std::unique_ptr<TerrainTile>, TileCoord::Hash> loadedTiles;
@@ -441,6 +463,10 @@ private:
         glm::vec3 boundsMin{1e30f}, boundsMax{-1e30f};
         bool loaded = false;
     };
+    // THREAD-SAFE: guards collisionTiles_. Every insert happens in prepareTile,
+    // which runs on several worker threads at once - two of them landing on the
+    // same rehash is heap corruption, not a stale read.
+    std::mutex collisionTilesMutex_;
     std::unordered_map<uint64_t, CollisionData> collisionTiles_;
     [[nodiscard]] uint64_t tileKey(int x, int y) const { return (static_cast<uint64_t>(x) << 32) | static_cast<uint32_t>(y); }
 
