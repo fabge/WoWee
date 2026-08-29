@@ -174,6 +174,12 @@ bool GameHandler::connect(const std::string& host,
     return true;
 }
 
+void GameHandler::clearAllTransportState() {
+    clearPlayerTransport();
+    transportAttachments_.clear();
+    if (transportManager_) transportManager_->clearTransports();
+}
+
 void GameHandler::disconnect() {
     taxiRecoverPending_ = onTaxiFlight_;
     if (socket) {
@@ -185,7 +191,9 @@ void GameHandler::disconnect() {
     pendingGuildNameQueries_.clear();
     friendGuids_.clear();
     contacts_.clear();
-    transportAttachments_.clear();
+    // The manager's transports go with them, which this half of the pair used
+    // to leave standing.
+    clearAllTransportState();
     // Warden state is WardenHandler's; this used to clear a second copy of it
     // that nothing ever filled.
     if (wardenHandler_) wardenHandler_->reset();

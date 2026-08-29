@@ -550,8 +550,20 @@ private:
     };
     struct AsyncEquipmentLoad {
         std::future<PreparedEquipmentUpdate> future;
+        /// Which request this is, for the guid it belongs to.
+        ///
+        /// Up to two of these run at once and each applies purely by guid when
+        /// it finishes, so a slower earlier load could land after a faster
+        /// later one and put the player back in the gear they had just taken
+        /// off - until something else happened to refresh them. The counter
+        /// below says which request is the current one; anything older is
+        /// finished with and thrown away.
+        uint64_t generation = 0;
     };
     std::vector<AsyncEquipmentLoad> asyncEquipmentLoads_;
+    /// The newest equipment request per player guid. Erased when the player
+    /// goes, along with everything else keyed on the guid.
+    std::unordered_map<uint64_t, uint64_t> equipmentGeneration_;
     void processAsyncEquipmentResults();
     std::vector<std::string> resolveEquipmentTexturePaths(uint64_t guid,
         const std::array<uint32_t, 19>& displayInfoIds,

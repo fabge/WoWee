@@ -462,11 +462,19 @@ void EntityController::updateNonPlayerTransportAttachment(const UpdateBlock& blo
 }
 
 //     Rebuild playerAuras from UNIT_FIELD_AURAS (Classic/TBC-era clients).
-//     blockFields is used to check if any aura field was updated in this packet.
-//     entity->getFields() is used for reading the full accumulated state.
+//     blockFields is what this packet carried and decides whether to rebuild at
+//     all; entity->getFields() is the accumulated state the rebuild reads.
 //     Normalises pre-WotLK harmful bit (0x02) to WotLK debuff bit (0x80) so
 //     downstream code checking for 0x80 works consistently across expansions.
-void EntityController::syncPreWotlkAurasFromFields(const std::shared_ptr<Entity>& entity) {
+//
+//     The two were confused: the presence check scanned the accumulated fields,
+//     which is exactly the set that keeps every aura field it has ever seen. So
+//     once a pre-WotLK character had one aura, *every* later values update on
+//     the player - health, power, a stat, anything - rebuilt the whole aura
+//     list and fired UNIT_AURA and PLAYER_AURAS_CHANGED. A vanilla interface
+//     re-reads the player's entire buff list on each, several times a second.
+void EntityController::syncPreWotlkAurasFromFields(const std::shared_ptr<Entity>& entity,
+                                                   const FlatFieldMap* blockFields) {
     if (!isPreWotlk() || !owner_.getSpellHandler()) return;
 
     const uint16_t ufAuras     = fieldIndex(UF::UNIT_FIELD_AURAS);
@@ -474,8 +482,11 @@ void EntityController::syncPreWotlkAurasFromFields(const std::shared_ptr<Entity>
     if (ufAuras == 0xFFFF) return;
 
     const auto& allFields = entity->getFields();
+    // What arrived now, not what has ever arrived. A create carries no separate
+    // block map here and is new in its entirety, so it always rebuilds.
+    const auto& presence = blockFields ? *blockFields : allFields;
     bool hasAuraField = false;
-    for (const auto& [fk, fv] : allFields) {
+    for (const auto& [fk, fv] : presence) {
         if (fk >= ufAuras && fk < ufAuras + 48) { hasAuraField = true; break; }
     }
     if (!hasAuraField) return;
@@ -2102,7 +2113,7 @@ void EntityController::onCreatePlayer(const UpdateBlock& block, std::shared_ptr<
     }
     // Pre-WotLK aura sync on initial object create
     if (block.guid == owner_.getPlayerGuid()) {
-        syncPreWotlkAurasFromFields(entity);
+        syncPreWotlkAurasFromFields(entity, nullptr);
     }
 
     // Hostility
@@ -2350,7 +2361,7 @@ void EntityController::onValuesUpdatePlayer(const UpdateBlock& block, std::share
 
     // Pre-WotLK aura sync from UNIT_FIELD_AURAS when those fields are updated
     if (block.guid == owner_.getPlayerGuid()) {
-        syncPreWotlkAurasFromFields(entity);
+        syncPreWotlkAurasFromFields(entity, &block.fields);
     }
 
     // Display ID changed - re-spawn/model-change

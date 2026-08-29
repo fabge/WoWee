@@ -3161,6 +3161,17 @@ void SpellHandler::handleUpdateAuraDuration(uint8_t slot, uint32_t durationMs) {
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
     refreshRestorationFromPlayerAuras();
+
+    // And say so. The duration is what a buff's countdown is drawn from, and
+    // this changed it silently - so a refreshed aura kept ticking down towards
+    // the old expiry on screen until something else happened to fire UNIT_AURA.
+    // The full update path announces the same pair; this one is always the
+    // player, since SMSG_UPDATE_AURA_DURATION addresses a slot of theirs.
+    if (owner_.addonEventCallbackRef()) {
+        owner_.addonEventCallbackRef()("UNIT_AURA", {"player"});
+        // A 1.12 interface listens for this instead and it carries no unit.
+        owner_.addonEventCallbackRef()("PLAYER_AURAS_CHANGED", {});
+    }
 }
 
 // ============================================================

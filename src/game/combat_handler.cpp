@@ -64,13 +64,28 @@ void CombatHandler::registerOpcodes(DispatchTable& table) {
         if (!packet.hasRemaining(1)) return;
         uint64_t victimGuid = packet.readPackedGuid();
         auto it = threatLists_.find(unitGuid);
-        if (it != threatLists_.end()) {
-            auto& list = it->second;
-            list.erase(std::remove_if(list.begin(), list.end(),
-                [victimGuid](const ThreatEntry& e){ return e.victimGuid == victimGuid; }),
-                list.end());
-            if (list.empty()) threatLists_.erase(it);
-        }
+        if (it == threatLists_.end()) return;
+        auto& list = it->second;
+        const size_t before = list.size();
+        list.erase(std::remove_if(list.begin(), list.end(),
+            [victimGuid](const ThreatEntry& e){ return e.victimGuid == victimGuid; }),
+            list.end());
+        if (before == list.size()) return;   // nothing left the list
+        if (list.empty()) threatLists_.erase(it);
+
+        // Told, the same way an update tells it. This mutated the list and said
+        // nothing, so the interface went on drawing the threat it had - the
+        // aggro border on a frame stayed after the unit came off the list, and
+        // the list itself never redrew. The pair, and per unit, for the reasons
+        // the update path spells out: the indicator compares the argument
+        // against its own frame's unit.
+        if (!owner_.addonEventCallbackRef()) return;
+        auto fire = owner_.addonEventCallbackRef();
+        fire("UNIT_THREAT_LIST_UPDATE", {owner_.guidToUnitId(unitGuid)});
+        if (const std::string who = owner_.guidToUnitId(victimGuid); !who.empty())
+            fire("UNIT_THREAT_SITUATION_UPDATE", {who});
+        if (const std::string mob = owner_.guidToUnitId(unitGuid); !mob.empty())
+            fire("UNIT_THREAT_SITUATION_UPDATE", {mob});
     };
     table[Opcode::SMSG_CANCEL_COMBAT] = [this](network::Packet& /*packet*/) {
         autoAttacking_ = false;

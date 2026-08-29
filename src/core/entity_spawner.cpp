@@ -313,6 +313,16 @@ void EntitySpawner::queueGameObjectSpawn(uint64_t guid, uint32_t entry, uint32_t
 void EntitySpawner::queuePlayerEquipment(uint64_t guid,
                                           const std::array<uint32_t, 19>& displayInfoIds,
                                           const std::array<uint8_t, 19>& inventoryTypes) {
+    // Newest wins. Two loads run at once and each applied purely by guid when
+    // it finished, so a slower earlier one could land after a faster later one
+    // and put the player back into the gear they had just changed out of.
+    ++equipmentGeneration_[guid];
+    // And the queue only ever needs the latest request for a player: an entry
+    // still waiting here has not been read by anyone.
+    deferredEquipmentQueue_.erase(
+        std::remove_if(deferredEquipmentQueue_.begin(), deferredEquipmentQueue_.end(),
+                       [guid](const auto& e) { return e.first == guid; }),
+        deferredEquipmentQueue_.end());
     deferredEquipmentQueue_.push_back({guid, {displayInfoIds, inventoryTypes}});
 }
 

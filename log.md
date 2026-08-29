@@ -2286,3 +2286,147 @@ too - and the test walks a full circle checking both that it agrees with the
 canonical route and that converting back gives what SpellHandler sent.
 
 The other rejections in the report were checked and stand as rejections.
+
+## 2026-08-28 — static audit findings are leads until they survive a hostile read
+
+Added a compact static-audit discipline to `AGENTS.md` after the parallel whole-tree review. It records the parts that paid: review cross-boundary invariants rather than directories alone, require a reachable player-visible path and a decisive test, send plausible findings through a second reviewer whose job is to disprove them, and label runtime- or protocol-dependent claims instead of promoting them by confidence alone. Raw scanner output does not belong in `TODO.md`; a finding goes there only when verified or explicitly marked **reported, not verified** with the missing evidence named.
+
+## A second external review, checked and worked through
+
+Fifteen leads from a different model. Thirteen were real. One was not a defect,
+and one is a feature that does not exist rather than a fault in one that does.
+
+**Character switching kept the last character's death.** `resetStateForCharacterSwitch`
+has a history of exactly this - the comments in it name eight fields found on
+2026-08-27 and the corpse map before them - and it was still missing the rest of
+dying: `resurrectPending_`, `resurrectRequestPending_`, `selfResAvailable_`,
+the resurrect caster, the pending spirit healer, `lastRepopRequestMs_`,
+`corpseInRangeAnnounced_`, and the death-release location. The first is the one
+that bites: MovementHandler drops every start, strafe and jump opcode while it
+is set, so switching away mid-resurrection left the *next* character unable to
+move. `corpseInRangeAnnounced_` is an edge, so a previous character ending in
+range of their corpse swallowed the next one's first `CORPSE_IN_RANGE` and
+FrameXML never raised the reclaim prompt.
+
+**And the last character's open windows.** `InventoryHandler` is built once and
+outlives the character, so a mailbox, bank, guild bank, auction house, vendor or
+trainer left open stayed open across the switch, still addressing an NPC guid
+from a world the new character is not in. Each close method already emits the
+event FrameXML hides its frame on; nothing called them. `closeAllInteractionWindows`
+does now.
+
+**Transport attachments outlived their transports.** The map change cleared the
+player's transport and the manager's list and left the attachments that name
+them, and the update loop skips an attachment whose transport is missing rather
+than dropping it - so a child stayed bound to the previous map's boat forever,
+and transport guids are per-map and get reused. Disconnect cleared the
+attachments and not the manager, from a different place. `clearAllTransportState`
+is the one call now, used by both.
+
+**A threat removal told the interface nothing.** `SMSG_THREAT_REMOVE` mutated
+the list and announced neither `UNIT_THREAT_LIST_UPDATE` nor
+`UNIT_THREAT_SITUATION_UPDATE`, while the update path fires both - so the aggro
+border stayed on a frame after the unit came off the list.
+
+**An aura's duration changed silently.** `handleUpdateAuraDuration` wrote the new
+duration and timestamp and fired nothing, so a refreshed buff kept counting down
+towards its old expiry on screen until something else happened to fire
+`UNIT_AURA`.
+
+**And pre-WotLK auras rebuilt on every player update.** The presence check
+scanned the entity's *accumulated* fields - the set that keeps every aura field
+it has ever seen - rather than the block that just arrived, which is what the
+function's own comment said it did. So once a Classic character had one aura,
+every later values update on the player rebuilt the whole list and fired both
+aura events, several times a second, and a vanilla interface re-reads its entire
+buff list on each.
+
+**Classic spell-go tried the wrong GUID format first.** The layout documented at
+the top of the parser is packed GUIDs, and the parser tried full eight-byte ones
+first, falling back only when the packet ran out of bytes. A spell go carries a
+SpellCastTargets tail, so there are usually bytes to spare: the full-GUID branch
+"succeeded" by eating the packed guids, the miss count and part of the tail as
+GUID data, and everything after was read from the wrong offset. Bounds checks
+cannot see that - nothing overruns, it is all just shifted. Packed first now, at
+both the hit and the miss list.
+
+**Classic chat accepted lengths it did not have.** The length was checked against
+a ceiling of 8192 and not against what was left in the packet, and `readUInt8`
+answers zero at the end of the buffer without advancing - so a truncated message
+was accepted, padded with NULs out of nothing, and reported as a real line. A
+length of 8192 or more skipped the message entirely and then read its first byte
+as the chat tag.
+
+**Tile bounds were the transpose of the tile lookup.** `worldToTile` derives
+tileX from render Y and tileY from render X; `getTileBounds` took its X range
+from tileX and its Y range from tileY. Every tile off the diagonal claimed a
+rectangle a tile's width away in both directions. `findChunkAt` falls back to a
+full scan and only lost speed; `chunkHasHoles` has no fallback and answered for
+the wrong chunk, which is what the camera asks before letting the view through
+the floor. The inverse now lives beside the forward mapping in coordinates.hpp,
+and the test walks tiles off the diagonal in both directions and pins that a
+tile and its transpose do not share a rectangle.
+
+**Older gear could land after newer gear.** Equipment pre-decodes run up to two
+at a time and each applied purely by guid on completion, so a slower earlier
+load could overwrite a faster later one and put the player back into what they
+had just taken off. A per-guid generation counter now decides, and the deferred
+queue keeps only the newest request per player.
+
+**A portrait that failed to load never tried again.** The cache keys were written
+whether or not `loadCharacter` succeeded - and a failure removes the existing
+instance first - so a portrait whose model was not ready was recorded as done,
+`changed` was false ever after, and it stayed empty for the session. Both the
+self portrait and `updatePlayer` had it.
+
+**The cursor followed you to the login screen.** `gCursorItem` is a
+process-lifetime string that only a completed pickup or drop clears, and
+`performLogoutToLogin` does not shut the Lua state down - so logging out
+mid-drag carried the icon into the next character's session, naming an item they
+do not have. Cleared in `leaveWorldSession`, which both roads out of the world
+go through.
+
+**Focus loss let go of the keyboard and not the mouse.** Alt-tabbing mid-drag
+left relative mouse mode on and the camera's held buttons set, so coming back and
+moving the mouse spun the view with no button held. `releaseMouseCapture` existed
+and nothing called it. The touch controls' virtual keys are a separate table from
+the binding commands and were not cleared either, which on Android leaves the
+character walking after a resume.
+
+**Refresh could move the realm highlight to a different realm.** The selection
+was an index into a list the server replaces wholesale, so a realm going down or
+simply being sent in a different order moved the highlight to whichever realm now
+sits at that position - and Enter connects to the highlight. It follows the
+realm's name and address now, and clears rather than pointing somewhere else when
+the realm has gone.
+
+**A truncated quest-POI response destroyed what it could not replace.** The
+handler erased a quest's markers the moment its header was read and appended as
+it went, so any short read returned having thrown away markers it never replaced,
+and skipped the `QUEST_POI_UPDATE` that would have said so. Parsed whole and
+committed at the end now.
+
+**Item icons uploaded once per item rather than once per icon.** The cache was
+keyed by display id, and thousands of items share a few hundred icon files - so
+the GPU cost grew with items seen rather than icons seen. Keyed by icon path now,
+which bounds it to the number of distinct icon files. It still does not evict:
+freeing a descriptor set a recorded command buffer still references is a
+use-after-free, and real eviction needs frame-fenced destruction this file has no
+access to. Bounding the upload set is the part that can be done safely here.
+
+### Two that did not survive
+
+**World-map quest-blob tooltips are not a defect.** The claim was that
+`UpdateMouseOverTooltip` is a registered no-op, so blob hover tooltips can never
+appear. It is - and so is `DrawQuestBlob`, in the same table. No blobs are drawn,
+so there is nothing to hover, and a tooltip that hides is the consistent answer.
+Making the hit test return something would put tooltips over blank map. This is a
+feature the client does not have - FrameXML's blob layer, which this client
+replaces with its own POI markers - not a fault in one it does. Filed in TODO.md
+as a gap rather than fixed.
+
+**The taxi-precache axis claim was left alone.** The report withheld it pending a
+direct helper test, and the tile-bounds fix above is in the same area; whether
+`transport_callback_handler`'s tile derivation is also transposed is worth
+settling with the same `canonicalToTile` comparison, but it was not established
+here and is not changed on suspicion.

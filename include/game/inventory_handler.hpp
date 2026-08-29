@@ -501,6 +501,16 @@ public:
     const TrainerListData& getTrainerSpells() const { return currentTrainerList_; }
     void trainSpell(uint32_t spellId);
     void closeTrainer();
+
+    /// Shut every interaction window, for a character switch.
+    ///
+    /// This handler is built once and outlives the character, so the mailbox,
+    /// bank, guild bank, auction house, vendor and trainer a character logged
+    /// out in front of were all still open for the next one - along with the
+    /// NPC guids that address them, which point at nothing on the new
+    /// character's map. Each close already emits the event FrameXML hides its
+    /// frame on; nothing was calling them.
+    void closeAllInteractionWindows();
     const std::vector<TrainerTab>& getTrainerTabs() const { return trainerTabs_; }
     void resetTradeState();
 

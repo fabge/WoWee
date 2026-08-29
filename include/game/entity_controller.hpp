@@ -177,7 +177,11 @@ private:
                                             ObjectType entityType);
     // Rebuild playerAuras_ from UNIT_FIELD_AURAS (Classic/TBC-era clients).
     //     Consolidates identical logic from CREATE and VALUES handlers.
-    void syncPreWotlkAurasFromFields(const std::shared_ptr<Entity>& entity);
+    /// `blockFields` decides *whether* to rebuild - it is what this packet
+    /// actually carried - while the entity's accumulated fields are what the
+    /// rebuild reads. Null means an object create, where everything is new.
+    void syncPreWotlkAurasFromFields(const std::shared_ptr<Entity>& entity,
+                                     const FlatFieldMap* blockFields);
     // Detect mount/dismount from UNIT_FIELD_MOUNTDISPLAYID changes (self-player only).
     //     Consolidates identical logic from CREATE and VALUES handlers.
     void detectPlayerMountChange(uint32_t newMountDisplayId,

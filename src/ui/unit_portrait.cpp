@@ -60,9 +60,11 @@ void UnitPortrait::update(game::GameHandler& gameHandler,
         // Declared before the model loads, so the racial backdrop is never
         // built in the first place.
         preview_->setTransparentBackground(true);
-        if (preview_->loadCharacter(self->race, self->gender, skin, face,
+        const bool loaded =
+            preview_->loadCharacter(self->race, self->gender, skin, face,
                                     hairStyle, hairColor, self->facialFeatures,
-                                    self->useFemaleModel)) {
+                                    self->useFemaleModel);
+        if (loaded) {
             preview_->applyEquipment(self->equipment);
             // After the model, because its bounds are what the framing is
             // measured against.
@@ -74,15 +76,24 @@ void UnitPortrait::update(game::GameHandler& gameHandler,
                 preview_->resetView();
             }
         }
-        // Logged because a portrait that rebuilds every frame looks like one
-        // that flickers, and the two are indistinguishable from outside.
-        LOG_INFO("UnitPortrait: rebuilt for guid ", self->guid,
-                 " appearance ", self->appearanceBytes);
-        loadedCreaturePath_.clear();
-        loadedGuid_ = self->guid;
-        loadedAppearance_ = self->appearanceBytes;
-        loadedFacialFeatures_ = self->facialFeatures;
-        loadedEquipHash_ = equipHash;
+        // Only a load that worked is worth remembering. The keys were written
+        // whether or not loadCharacter succeeded, and a failure removes the
+        // existing instance first - so a portrait whose model was not ready
+        // yet was recorded as done, `changed` was false ever after, and it
+        // stayed empty for the rest of the session however available the asset
+        // later became.
+        if (loaded) {
+            // Logged because a portrait that rebuilds every frame looks like
+            // one that flickers, and the two are indistinguishable from
+            // outside.
+            LOG_INFO("UnitPortrait: rebuilt for guid ", self->guid,
+                     " appearance ", self->appearanceBytes);
+            loadedCreaturePath_.clear();
+            loadedGuid_ = self->guid;
+            loadedAppearance_ = self->appearanceBytes;
+            loadedFacialFeatures_ = self->facialFeatures;
+            loadedEquipHash_ = equipHash;
+        }
     }
 
     preview_->update(deltaTime);
@@ -125,10 +136,12 @@ bool UnitPortrait::updatePlayer(uint8_t race, uint8_t gender,
         const uint8_t hairColor = (appearanceBytes >> 24) & 0xFF;
 
         preview_->setTransparentBackground(true);
-        if (preview_->loadCharacter(static_cast<game::Race>(race),
+        const bool loaded =
+            preview_->loadCharacter(static_cast<game::Race>(race),
                                     static_cast<game::Gender>(gender),
                                     skin, face, hairStyle, hairColor,
-                                    facialFeatures, gender == 1)) {
+                                    facialFeatures, gender == 1);
+        if (loaded) {
             // After the model, because applyEquipment reads its geosets, and
             // only where there is something to apply - an empty list is
             // "nothing known yet", and dressing a model in it strips it.
@@ -140,16 +153,20 @@ bool UnitPortrait::updatePlayer(uint8_t race, uint8_t gender,
             if (framing_ == Framing::Face) preview_->setPortraitFraming();
             else                           preview_->resetView();
         }
-        LOG_INFO("UnitPortrait: rebuilt for player race ", static_cast<int>(race),
-                 " appearance ", appearanceBytes);
-        loadedCreaturePath_.clear();
-        loadedGuid_ = 0;
-        loadedRace_ = race;
-        loadedGender_ = gender;
-        loadedAppearance_ = appearanceBytes;
-        loadedFacialFeatures_ = facialFeatures;
-        loadedEquipHash_ = equipHash;
-        loadedBake_ = pendingBake_;
+        // As above: a failed load is not a state worth caching, or the next
+        // update sees nothing changed and never tries again.
+        if (loaded) {
+            LOG_INFO("UnitPortrait: rebuilt for player race ", static_cast<int>(race),
+                     " appearance ", appearanceBytes);
+            loadedCreaturePath_.clear();
+            loadedGuid_ = 0;
+            loadedRace_ = race;
+            loadedGender_ = gender;
+            loadedAppearance_ = appearanceBytes;
+            loadedFacialFeatures_ = facialFeatures;
+            loadedEquipHash_ = equipHash;
+            loadedBake_ = pendingBake_;
+        }
     }
 
     preview_->update(deltaTime);

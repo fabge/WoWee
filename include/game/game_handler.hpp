@@ -1675,6 +1675,18 @@ public:
         playerTransportOffset_ = glm::vec3(0.0f);
         movementInfo.transportGuid = 0;
     }
+    /// Tear down every transport this map had: the player's own, the manager's
+    /// list, and the attachments that name them.
+    ///
+    /// The map change cleared the first two and left the third, and the update
+    /// loop skips an attachment whose transport is missing rather than dropping
+    /// it - so a child stayed attached to a boat from the previous map forever.
+    /// Transport guids are per-map and get reused, so the entry could also come
+    /// back to life against whatever now holds that guid. Disconnect cleared
+    /// the attachments and not the manager, from a different place. One call
+    /// now, so the three cannot come apart again.
+    void clearAllTransportState();
+
     // Preserve an authoritative on-deck offset while a continent transfer tears
     // down the origin map's transport and constructs its destination instance.
     void beginPlayerTransportWorldTransfer(uint32_t destinationMapId,

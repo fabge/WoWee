@@ -3428,6 +3428,18 @@ void InventoryHandler::openAuctionHouse(uint64_t guid) {
     if (owner_.addonEventCallbackRef()) owner_.addonEventCallbackRef()("AUCTION_HOUSE_SHOW", {});
 }
 
+void InventoryHandler::closeAllInteractionWindows() {
+    // Each of these is a no-op when its window was not open, apart from the
+    // event - and an interface told a window it never opened has closed hides
+    // a frame that is already hidden.
+    closeVendor();
+    closeTrainer();
+    closeMailbox();
+    closeBank();
+    closeGuildBank();
+    closeAuctionHouse();
+}
+
 void InventoryHandler::closeAuctionHouse() {
     auctionOpen_ = false;
     auctioneerGuid_ = 0;

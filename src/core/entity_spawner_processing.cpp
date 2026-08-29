@@ -747,7 +747,13 @@ void EntitySpawner::processAsyncEquipmentResults() {
             continue;
         }
         auto result = it->future.get();
+        const uint64_t generation = it->generation;
         it = asyncEquipmentLoads_.erase(it);
+
+        // Superseded while it was decoding: a newer request for this player has
+        // been made, so this answer describes gear they are no longer wearing.
+        const auto gen = equipmentGeneration_.find(result.guid);
+        if (gen != equipmentGeneration_.end() && generation < gen->second) continue;
 
         auto* charRenderer = renderer_ ? renderer_->getCharacterRenderer() : nullptr;
         if (!charRenderer) continue;
@@ -807,6 +813,7 @@ void EntitySpawner::processDeferredEquipmentQueue() {
             }
             return result;
         });
+    load.generation = equipmentGeneration_[guid];
     asyncEquipmentLoads_.push_back(std::move(load));
 }
 

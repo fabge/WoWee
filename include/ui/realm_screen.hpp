@@ -41,6 +41,8 @@ public:
         selectedRealmIndex = -1;
         realmSelected = false;
         autoSelectAttempted = false;
+        highlightedRealmName.clear();
+        highlightedRealmAddress.clear();
         selectedRealmName.clear();
         selectedRealmAddress.clear();
         statusMessage.clear();
@@ -53,6 +55,8 @@ public:
     void resetForBack() {
         selectedRealmIndex = -1;
         realmSelected = false;
+        highlightedRealmName.clear();
+        highlightedRealmAddress.clear();
         selectedRealmName.clear();
         selectedRealmAddress.clear();
         statusMessage.clear();
@@ -73,6 +77,15 @@ private:
     // UI state
     int selectedRealmIndex = -1;
     bool realmSelected = false;
+    /// Which realm the index above is meant to be pointing at.
+    ///
+    /// The highlight was an index into a list the server replaces wholesale on
+    /// every Refresh. A realm going down, coming back, or simply being sent in
+    /// a different order moved the highlight to whichever realm now sits at
+    /// that position - and Enter connects to the highlight, so pressing
+    /// Refresh and then Enter could enter a realm the player never chose.
+    std::string highlightedRealmName;
+    std::string highlightedRealmAddress;
     bool autoSelectAttempted = false;
     std::string selectedRealmName;
     std::string selectedRealmAddress;

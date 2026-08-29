@@ -54,6 +54,33 @@ void RealmScreen::render(auth::AuthHandler& authHandler) {
 
     const auto& realms = authHandler.getRealms();
 
+    // The highlight follows the realm, not the row. Refresh replaces this list
+    // wholesale, so an index kept across one points at whatever now occupies
+    // that position - and Enter connects to the highlight.
+    if (selectedRealmIndex >= 0 && !highlightedRealmName.empty()) {
+        const auto stillThere = [&](int idx) {
+            return idx >= 0 && idx < static_cast<int>(realms.size()) &&
+                   realms[static_cast<size_t>(idx)].name == highlightedRealmName &&
+                   realms[static_cast<size_t>(idx)].address == highlightedRealmAddress;
+        };
+        if (!stillThere(selectedRealmIndex)) {
+            selectedRealmIndex = -1;
+            for (size_t i = 0; i < realms.size(); ++i) {
+                if (realms[i].name == highlightedRealmName &&
+                    realms[i].address == highlightedRealmAddress) {
+                    selectedRealmIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+            // Gone from the list entirely: nothing highlighted, rather than
+            // somebody else's realm highlighted.
+            if (selectedRealmIndex < 0) {
+                highlightedRealmName.clear();
+                highlightedRealmAddress.clear();
+            }
+        }
+    }
+
     // Auto-select: prefer realm with characters, then single realm, then first available
     if (!realms.empty() && !autoSelectAttempted && !realmSelected) {
         autoSelectAttempted = true;
@@ -68,6 +95,8 @@ void RealmScreen::render(auth::AuthHandler& authHandler) {
 
         if (realms.size() == 1 && !realms[0].lock) {
             selectedRealmIndex = 0;
+            highlightedRealmName = realms[0].name;
+            highlightedRealmAddress = realms[0].address;
             realmSelected = true;
             selectedRealmName = realms[0].name;
             selectedRealmAddress = realms[0].address;
@@ -78,6 +107,8 @@ void RealmScreen::render(auth::AuthHandler& authHandler) {
         } else if (bestRealm >= 0) {
             // Pre-highlight realm with characters (don't auto-connect, let user confirm)
             selectedRealmIndex = bestRealm;
+            highlightedRealmName = realms[static_cast<size_t>(bestRealm)].name;
+            highlightedRealmAddress = realms[static_cast<size_t>(bestRealm)].address;
         }
     }
 
@@ -180,10 +211,16 @@ void RealmScreen::render(auth::AuthHandler& authHandler) {
                 }
             });
 
-        if (picked.clicked >= 0) selectedRealmIndex = picked.clicked;
+        if (picked.clicked >= 0) {
+            selectedRealmIndex = picked.clicked;
+            highlightedRealmName = realms[static_cast<size_t>(picked.clicked)].name;
+            highlightedRealmAddress = realms[static_cast<size_t>(picked.clicked)].address;
+        }
         if (picked.activated >= 0 &&
             !realms[static_cast<size_t>(picked.activated)].lock) {
             selectedRealmIndex = picked.activated;
+            highlightedRealmName = realms[static_cast<size_t>(picked.activated)].name;
+            highlightedRealmAddress = realms[static_cast<size_t>(picked.activated)].address;
             enterRealm(realms[static_cast<size_t>(picked.activated)]);
         }
     }

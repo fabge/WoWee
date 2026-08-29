@@ -1522,6 +1522,21 @@ void Application::run() {
                                 engine->clearBindingPresses();
                             }
                         }
+                        // And the camera's own held buttons, for exactly the
+                        // same reason - alt-tabbing mid-drag left the view
+                        // rotating and relative mouse mode on, so coming back
+                        // and moving the mouse spun the camera with no button
+                        // held. The method existed and nothing called it.
+                        if (renderer) {
+                            if (auto* camera = renderer->getCameraController()) {
+                                camera->releaseMouseCapture();
+                            }
+                        }
+                        // And the touch controls' virtual keys, which are a
+                        // separate table from the binding commands above:
+                        // backgrounding with the movement stick deflected left
+                        // the character walking on resume.
+                        Input::getInstance().clearVirtualKeys();
                     }
                 }
             }
@@ -2329,6 +2344,12 @@ void Application::leaveWorldSession() {
     // character's file, and before the next login, so a per-character path can
     // never be built from the previous character's name.
     if (addonManager_) addonManager_->setCharacterName("");
+
+    // And whatever was on the cursor. It is a process-lifetime string that only
+    // a completed pickup or drop clears, so logging out mid-drag carried the
+    // item's icon to the login screen and into the next character's session,
+    // where it names an item that character does not have.
+    ui::frameXmlSetCursorItem(std::string());
 }
 
 void Application::performLogoutToLogin() {

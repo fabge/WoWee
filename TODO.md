@@ -87,6 +87,36 @@ and removed.
 
 None of these is urgent. Each taxes every future change in its area.
 
+### The world map's quest blobs are not drawn, so they cannot be hovered
+`src/addons/lua_widget_api.cpp` — the no-op method table
+
+Raised by an external review on 2026-08-28 as "blob hover tooltips cannot
+appear", which is true and is not a defect. `WorldMapBlobFrame:UpdateMouseOverTooltip`
+is a registered no-op returning nothing, so `worldmapframe.lua` hides
+`WorldMapTooltip` — but `DrawQuestBlob` is a no-op in the same table, so there
+are no blobs on screen to hover and hiding the tooltip is the consistent answer.
+Inventing a hit test would put tooltips over blank map.
+
+What is missing is the feature: FrameXML's blob layer draws a quest's objective
+*areas* as filled regions, and this client replaces it with its own POI markers,
+which are points. Closing the gap means drawing the blobs (the point lists are
+already parsed — see `SMSG_QUEST_POI_QUERY_RESPONSE` in `quest_handler.cpp`) and
+then hit-testing them in the blob frame's translated space, which
+`WorldMapBlobFrame_CalculateHitTranslations` sets up. Only worth doing if the
+POI markers turn out not to be enough in play.
+
+### The taxi precache's tile derivation may be transposed too
+`src/core/transport_callback_handler.cpp` — the tile lookup around the waypoint
+loop
+
+The same external review flagged this alongside `getTileBounds`, which *was*
+transposed and was fixed on 2026-08-28 (see `log.md`). The reviewer withheld the
+taxi one pending a direct test, and it was not established, so it was not changed
+on suspicion. Settle it the same way the tile-bounds fix was settled: compare the
+handler's derivation against `core::coords::canonicalToTile` for waypoints in
+different tiles, including negative fractional coordinates. Neighbour padding
+would mask a nearby case, so pick coordinates far enough apart that it cannot.
+
 ### The subsystem libraries are still declared as a cycle
 `CMakeLists.txt` — the `WOWEE_SUBSYSTEM_LIBS` block
 

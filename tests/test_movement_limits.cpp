@@ -170,3 +170,47 @@ TEST_CASE("a render direction faces the way canonical says", "[coords][facing]")
     CHECK(renderDirToCharacterYawDeg(0.0f, 1.0f) == Catch::Approx(90.0f).margin(1e-3));
     CHECK(naiveNorth == Catch::Approx(0.0f).margin(1e-3));
 }
+
+// ── Tile bounds are the inverse of the tile lookup ───────────────────────
+//
+// getTileBounds took its X range from tileX and its Y range from tileY, while
+// worldToTile derives tileX from render *Y* and tileY from render *X*. Every
+// tile off the diagonal therefore claimed a rectangle a tile's width away in
+// both directions. findChunkAt falls back to a full scan and only lost speed;
+// chunkHasHoles has no fallback and answered for the wrong chunk, which is what
+// the camera asks before letting the view through the floor.
+TEST_CASE("a tile's bounds contain the points that map to it", "[coords][terrain]") {
+    using namespace wowee::core::coords;
+
+    // The round trip, over tiles well off the diagonal in both directions.
+    for (const auto [tx, ty] : {std::pair{31, 40}, std::pair{40, 31},
+                                std::pair{0, 63}, std::pair{63, 0},
+                                std::pair{32, 32}, std::pair{12, 55}}) {
+        float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+        tileToRenderBounds(tx, ty, minX, minY, maxX, maxY);
+
+        INFO("tile " << tx << "," << ty);
+        CHECK(maxX - minX == Catch::Approx(TILE_SIZE));
+        CHECK(maxY - minY == Catch::Approx(TILE_SIZE));
+
+        // A point inside those bounds has to come back as this tile. Nudged off
+        // the edges, which belong to the neighbours.
+        const float insideX = (minX + maxX) * 0.5f;
+        const float insideY = (minY + maxY) * 0.5f;
+        const auto [gotX, gotY] = worldToTile(insideX, insideY);
+        CHECK(gotX == tx);
+        CHECK(gotY == ty);
+    }
+
+    // And the transposition itself, pinned: a tile and its transpose must not
+    // share a rectangle, or the old and new mappings are indistinguishable.
+    float aMinX, aMinY, aMaxX, aMaxY;
+    float bMinX, bMinY, bMaxX, bMaxY;
+    tileToRenderBounds(31, 40, aMinX, aMinY, aMaxX, aMaxY);
+    tileToRenderBounds(40, 31, bMinX, bMinY, bMaxX, bMaxY);
+    CHECK(aMaxX != Catch::Approx(bMaxX));
+    CHECK(aMaxY != Catch::Approx(bMaxY));
+    // The transpose swaps them, which is exactly the error that was there.
+    CHECK(aMaxX == Catch::Approx(bMaxY));
+    CHECK(aMaxY == Catch::Approx(bMaxX));
+}

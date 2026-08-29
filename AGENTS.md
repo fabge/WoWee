@@ -204,6 +204,16 @@ logic. Writing packet handling or spell rules into the harness is the signal to
 stop: at that point it drifts, and it starts producing bugs of its own. There
 is deliberately no server simulator and no scripted play-through here.
 
+## Static audit discipline
+
+A broad static review is useful for finding candidate defects, but its output is a list of leads rather than facts. A finding is ready to act on only when it names a reachable runtime path, a concrete player-visible failure, and the smallest observation or regression test that would decide it.
+
+- Partition reviews by behavior and invariant as well as by directory. The productive cross-boundary passes are character/logout/world-transition reset completeness; equivalent state mutations emitting equivalent events; asynchronous results carrying freshness or generation checks; cache keys changing only after successful work; packet validation completing before live state is replaced; coordinate and unit conversions going through shared helpers; names being compared in the same canonical form; and input, cursor and drag state being cleared at focus and screen boundaries.
+- Give plausible findings to a second reviewer whose job is to disprove them. Check the complete caller and consumer chain, language and library semantics, local FrameXML, tests, and prior findings before promoting one. Several convincing reports in this repository have collapsed under that pass.
+- Mark server-, expansion-, timing- and hardware-dependent claims explicitly. A deterministic bad branch behind an unobserved packet shape is not the same thing as a reproduced gameplay bug.
+- Prefer a decisive headless test or `framexml_run` command over more argument. Use a play session when the missing fact is genuinely runtime state, packet ordering, rendering or driver behavior, and read its log before changing code.
+- Do not copy raw scanner output into `TODO.md`. Record a verified defect, or label it **reported, not verified** and include the exact evidence still needed.
+
 ## Two rules this fork paid for
 
 - **Do not put a side effect behind an optional injected pointer.** A pointer

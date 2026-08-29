@@ -691,10 +691,10 @@ void WorldLoader::loadOnlineWorldTerrain(uint32_t mapId, float x, float y, float
         // so the logical transport/path state must be map-local too; otherwise a
         // newly spawned SubwayCar is rebound to the old elevator path.
         if (gameHandler_) {
-            gameHandler_->clearPlayerTransport();
-            if (auto* tm = gameHandler_->getTransportManager()) {
-                tm->clearTransports();
-            }
+            // Including the attachments, which this used to leave behind: the
+            // update loop skips an attachment whose transport has gone rather
+            // than dropping it, so a child stayed bound to the old map's boat.
+            gameHandler_->clearAllTransportState();
         }
 
         if (renderer_) {

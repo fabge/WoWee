@@ -159,6 +159,22 @@ inline std::pair<int, int> worldToTile(float renderX, float renderY) {
     return {tileX, tileY};
 }
 
+// The render-space rectangle an ADT tile covers: the inverse of worldToTile.
+//
+// Written out here beside the forward mapping because getTileBounds had it
+// transposed - it took the X range from tileX and the Y range from tileY, while
+// worldToTile derives tileX from render Y and tileY from render X. Every tile
+// off the diagonal therefore reported a rectangle belonging to a different
+// tile, which is how chunkHasHoles came to answer for the wrong chunk.
+inline void tileToRenderBounds(int tileX, int tileY,
+                               float& minX, float& minY,
+                               float& maxX, float& maxY) {
+    maxX = (32.0f - static_cast<float>(tileY)) * TILE_SIZE;
+    maxY = (32.0f - static_cast<float>(tileX)) * TILE_SIZE;
+    minX = maxX - TILE_SIZE;
+    minY = maxY - TILE_SIZE;
+}
+
 // Canonical WoW coordinates -> ADT tile indices.
 inline std::pair<int, int> canonicalToTile(float wowX, float wowY) {
     int tileX = static_cast<int>(std::floor(32.0f - wowX / TILE_SIZE));

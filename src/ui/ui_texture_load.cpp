@@ -70,9 +70,25 @@ VkDescriptorSet itemIconTexture(uint32_t displayInfoId,
 
     // Shared across the interface: the bags, the action bar, tooltips and the
     // dialogs all draw the same items.
-    static std::unordered_map<uint32_t, VkDescriptorSet> cache;
-    auto it = cache.find(displayInfoId);
-    if (it != cache.end()) return it->second;
+    //
+    // Two caches, because they bound different things. The first is a display
+    // id to the icon it names; the second is an icon *path* to the texture
+    // uploaded for it. Keying the upload by display id meant every id that
+    // named an already-uploaded icon uploaded it again - and thousands of
+    // items share a few hundred icon files, so a long session's GPU cost grew
+    // with items seen rather than with icons seen. Now it grows with the
+    // number of distinct icon files, which is a fixed and much smaller set.
+    //
+    // Neither evicts. Freeing a descriptor set that a recorded command buffer
+    // still references is a use-after-free, so real eviction needs frame-fenced
+    // destruction this file has no access to; bounding the upload set is the
+    // part that can be done safely here.
+    static std::unordered_map<uint32_t, std::string> pathOfDisplayId;
+    static std::unordered_map<std::string, VkDescriptorSet> cache;
+    if (auto pit = pathOfDisplayId.find(displayInfoId); pit != pathOfDisplayId.end()) {
+        auto cit = cache.find(pit->second);
+        if (cit != cache.end()) return cit->second;
+    }
 
     // Deferred rather than cached as a miss: the budget refusing an upload
     // this frame says nothing about the icon.
@@ -83,7 +99,8 @@ VkDescriptorSet itemIconTexture(uint32_t displayInfoId,
         core::Logger::getInstance().warning(
             "itemIconTexture: ItemDisplayInfo.dbc not loadable for displayInfoId=",
             displayInfoId);
-        cache[displayInfoId] = VK_NULL_HANDLE;
+        pathOfDisplayId[displayInfoId] = std::string();
+        cache[std::string()] = VK_NULL_HANDLE;
         return VK_NULL_HANDLE;
     }
 
@@ -92,7 +109,8 @@ VkDescriptorSet itemIconTexture(uint32_t displayInfoId,
         core::Logger::getInstance().warning(
             "itemIconTexture: displayInfoId=", displayInfoId,
             " not found in ItemDisplayInfo.dbc");
-        cache[displayInfoId] = VK_NULL_HANDLE;
+        pathOfDisplayId[displayInfoId] = std::string();
+        cache[std::string()] = VK_NULL_HANDLE;
         return VK_NULL_HANDLE;
     }
 
@@ -105,11 +123,15 @@ VkDescriptorSet itemIconTexture(uint32_t displayInfoId,
         core::Logger::getInstance().warning(
             "itemIconTexture: displayInfoId=", displayInfoId, " recIdx=", recIdx,
             " has empty iconName field");
-        cache[displayInfoId] = VK_NULL_HANDLE;
+        pathOfDisplayId[displayInfoId] = std::string();
+        cache[std::string()] = VK_NULL_HANDLE;
         return VK_NULL_HANDLE;
     }
 
     const std::string iconPath = "Interface\\Icons\\" + iconName + ".blp";
+    pathOfDisplayId[displayInfoId] = iconPath;
+    // Another display id already uploaded this exact icon: nothing more to do.
+    if (auto cit = cache.find(iconPath); cit != cache.end()) return cit->second;
     UiTextureLoad why{};
     VkDescriptorSet ds = uploadUiTextureFromBlp(assetManager, iconPath, window, &why);
     // Which of the two failures happened is worth saying: a missing file is a
@@ -122,7 +144,7 @@ VkDescriptorSet itemIconTexture(uint32_t displayInfoId,
         core::Logger::getInstance().warning(
             "itemIconTexture: BLP decode failed for '", iconPath, "'");
     }
-    cache[displayInfoId] = ds;
+    cache[iconPath] = ds;
     return ds;
 }
 

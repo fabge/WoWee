@@ -1725,15 +1725,16 @@ TileCoord TerrainManager::worldToTile(float glX, float glY) const {
 
 void TerrainManager::getTileBounds(const TileCoord& coord, float& minX, float& minY,
                                     float& maxX, float& maxY) const {
-    // Calculate world bounds for this tile
-    // Tile (32, 32) is at origin
-    float offsetX = (32 - coord.x) * TILE_SIZE;
-    float offsetY = (32 - coord.y) * TILE_SIZE;
-
-    minX = offsetX - TILE_SIZE;
-    minY = offsetY - TILE_SIZE;
-    maxX = offsetX;
-    maxY = offsetY;
+    // The inverse of worldToTile, asked of the same header that defines it.
+    //
+    // This took the X range from coord.x and the Y range from coord.y, while
+    // worldToTile derives tileX from render *Y* and tileY from render *X* - so
+    // every tile off the diagonal claimed a rectangle a tile's width away in
+    // both directions. findChunkAt falls back to a full scan and only lost
+    // speed; chunkHasHoles has no fallback and simply answered for the wrong
+    // chunk, which is what the camera asks before it lets the view through the
+    // floor.
+    core::coords::tileToRenderBounds(coord.x, coord.y, minX, minY, maxX, maxY);
 }
 
 std::string TerrainManager::getADTPath(const TileCoord& coord) const {

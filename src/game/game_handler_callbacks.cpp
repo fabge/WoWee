@@ -687,6 +687,11 @@ void GameHandler::resetStateForCharacterSwitch() {
         questHandler_->pendingQuestAcceptNpcGuidsRef().clear();
     }
     if (combatHandler_) combatHandler_->resetAllCombatState();
+    // The windows the previous character was standing in front of. The
+    // inventory handler is built once and outlives the character, so a mailbox,
+    // bank, vendor or trainer left open stayed open across the switch, still
+    // addressing an NPC guid from the other character's world.
+    if (inventoryHandler_) inventoryHandler_->closeAllInteractionWindows();
     // resetCastState() already called inside resetAllState() above
     pendingGameObjectInteractGuid_ = 0;
     lastInteractedGoGuid_ = 0;
@@ -695,6 +700,36 @@ void GameHandler::resetStateForCharacterSwitch() {
     corpseGuid_ = 0;
     corpsePositionValid_ = false;
     corpseReclaimAvailableMs_ = 0;
+    // The rest of dying, which this block had never named. Same fault as the
+    // eight above and the corpse map before them, and the same cause: each was
+    // added beside the code that sets it and nothing brought it here.
+    //
+    // resurrectPending_ is the one that bites hardest - MovementHandler drops
+    // every start, strafe and jump opcode while it is set, so a character
+    // switched away from mid-resurrection left the *next* character unable to
+    // move. corpseInRangeAnnounced_ is an edge, so a previous character ending
+    // in range of their corpse swallowed the next one's first CORPSE_IN_RANGE
+    // and FrameXML never raised the reclaim prompt. The release location would
+    // have pointed a new ghost at the old character's graveyard, on whatever
+    // map that was.
+    resurrectPending_ = false;
+    resurrectRequestPending_ = false;
+    resurrectIsSpiritHealer_ = false;
+    resurrectCasterGuid_ = 0;
+    resurrectCasterName_.clear();
+    selfResAvailable_ = false;
+    pendingSpiritHealerGuid_ = 0;
+    lastRepopRequestMs_ = 0;
+    corpseInRangeAnnounced_ = false;
+    deathReleaseValid_ = false;
+    deathReleaseMapId_ = 0;
+    deathReleaseCanonical_ = glm::vec3(0.0f);
+    // The counters that live beside the corpse position, for completeness:
+    // canRetrieveCorpse reads all of them together and a mixed set is a wrong
+    // answer about somebody else's corpse.
+    corpseX_ = 0.0f;
+    corpseY_ = 0.0f;
+    corpseZ_ = 0.0f;
     targetGuid = 0;
     focusGuid = 0;
     lastTargetGuid = 0;

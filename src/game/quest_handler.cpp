@@ -2407,18 +2407,21 @@ void QuestHandler::handleQuestPoiQueryResponse(network::Packet& packet) {
     //       per point: int32 x, int32 y
     if (!packet.hasRemaining(4)) return;
     const uint32_t questCount = packet.readUInt32();
+
+    // Parsed whole, then committed. This used to erase a quest's markers the
+    // moment its header was read and append as it went, so any short read -
+    // a truncated response, a disconnect mid-packet - returned having already
+    // thrown away markers it never replaced, and skipped the QUEST_POI_UPDATE
+    // that would have told anything about it. The map then showed a quest with
+    // some of its objectives, or none, until the next query.
+    std::vector<uint32_t> touchedQuests;
+    std::vector<GossipPoi> parsedPois;
     for (uint32_t qi = 0; qi < questCount; ++qi) {
         if (!packet.hasRemaining(8)) return;
         const uint32_t questId  = packet.readUInt32();
         const uint32_t poiCount = packet.readUInt32();
 
-        // Remove any previously added POI markers for this quest
-        gossipPois_.erase(
-            std::remove_if(gossipPois_.begin(), gossipPois_.end(),
-                [questId](const GossipPoi& p) {
-                    return p.data == questId;
-                }),
-            gossipPois_.end());
+        touchedQuests.push_back(questId);
 
         // Find the quest title for the marker label.
         std::string questTitle;
@@ -2466,9 +2469,20 @@ void QuestHandler::handleQuestPoiQueryResponse(network::Packet& packet) {
             poi.name = questTitle.empty() ? "Quest objective" : questTitle;
             LOG_DEBUG("Quest POI: questId=", questId, " mapId=", mapId,
                       " centroid=(", poi.x, ",", poi.y, ") title=", poi.name);
-            if (gossipPois_.size() >= 200) gossipPois_.erase(gossipPois_.begin());
-            gossipPois_.push_back(std::move(poi));
+            parsedPois.push_back(std::move(poi));
         }
+    }
+
+    // The packet parsed. Only now does the old state go.
+    for (uint32_t questId : touchedQuests) {
+        gossipPois_.erase(
+            std::remove_if(gossipPois_.begin(), gossipPois_.end(),
+                [questId](const GossipPoi& p) { return p.data == questId; }),
+            gossipPois_.end());
+    }
+    for (auto& poi : parsedPois) {
+        if (gossipPois_.size() >= 200) gossipPois_.erase(gossipPois_.begin());
+        gossipPois_.push_back(std::move(poi));
     }
     // The tracker draws its POI marks from this and had no way to know the
     // points had arrived - the query is answered well after the row is drawn.
