@@ -82,6 +82,13 @@ public:
 
     // Reset methods (for logout / character switch)
     void resetLoadedMap() { loadedMapId_ = 0xFFFFFFFF; }
+
+    /// Drop a world entry that has been requested but not yet acted on.
+    ///
+    /// Leaving the world with one still queued left a map waiting to be
+    /// entered after the session it belonged to had ended - and
+    /// processPendingEntry() is called from update() on the login screen too.
+    void clearPendingEntry() { pendingWorldEntry_.reset(); }
     void resetMapNameCache() { mapNameCacheLoaded_ = false; mapNameById_.clear(); }
 
 private:

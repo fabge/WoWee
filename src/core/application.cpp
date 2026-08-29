@@ -2004,7 +2004,12 @@ void Application::setState(AppState newState) {
             playerCharacterSpawned = false;
             if (appearanceComposer_) appearanceComposer_->setWeaponsSheathed(false);
             wasAutoAttacking_ = false;
-            if (worldLoader_) worldLoader_->resetLoadedMap();
+            if (worldLoader_) {
+                worldLoader_->resetLoadedMap();
+                // A world entry queued by the session being left has nothing
+                // left to enter.
+                worldLoader_->clearPendingEntry();
+            }
             spawnedPlayerGuid_ = 0;
             spawnedAppearanceBytes_ = 0;
             spawnedFacialFeatures_ = 0;
@@ -2294,8 +2299,17 @@ void Application::reloadExpansionData() {
 ///
 /// The same path a logout takes, so the world is torn down the way it is meant
 /// to be, and the reason is put on the login screen where WoW puts it.
+///
+/// Also reached from character select and character creation, where there is no
+/// world to tear down and every step of the teardown is a no-op on empty state.
+/// What matters there is the destination: those two screens talk to the world
+/// server for everything they do, so a drop leaves them showing a character
+/// list that cannot be entered and a create form that cannot be submitted.
 void Application::handleWorldDisconnect() {
-    if (state != AppState::IN_GAME) return;
+    if (state != AppState::IN_GAME && state != AppState::CHARACTER_SELECTION &&
+        state != AppState::CHARACTER_CREATION) {
+        return;
+    }
     LOG_WARNING("Disconnected from the world server; returning to login");
 
     disconnectNotice_ = "You have been disconnected from the server.";
@@ -2373,7 +2387,10 @@ void Application::performLogoutToLogin() {
     playerCharacterSpawned = false;
     if (appearanceComposer_) appearanceComposer_->setWeaponsSheathed(false);
     wasAutoAttacking_ = false;
-    if (worldLoader_) worldLoader_->resetLoadedMap();
+    if (worldLoader_) {
+        worldLoader_->resetLoadedMap();
+        worldLoader_->clearPendingEntry();
+    }
     if (worldEntryCallbacks_) worldEntryCallbacks_->resetState();
     facingSendCooldown_ = 0.0f;
     lastSentCanonicalYaw_ = 1000.0f;
@@ -3796,6 +3813,10 @@ void Application::update(float deltaTime) {
 
         case AppState::CHARACTER_CREATION:
             updateCheckpoint = "char_creation: enter";
+            if (gameHandler && gameHandler->getState() == game::WorldState::DISCONNECTED) {
+                handleWorldDisconnect();
+                break;
+            }
             if (gameHandler) {
                 gameHandler->update(deltaTime);
             }
@@ -3806,6 +3827,16 @@ void Application::update(float deltaTime) {
 
         case AppState::CHARACTER_SELECTION:
             updateCheckpoint = "char_selection: enter";
+            // The same check as IN_GAME, for the same reason. This screen was
+            // reached by a connect() that succeeded, so DISCONNECTED here means
+            // the realm dropped us: the character list on screen is a list of
+            // characters nothing can be done with. Enter World greys itself out
+            // on its own, but nothing said why or offered a way back, and a
+            // reconnect means logging in again in any case.
+            if (gameHandler && gameHandler->getState() == game::WorldState::DISCONNECTED) {
+                handleWorldDisconnect();
+                break;
+            }
             if (gameHandler) {
                 gameHandler->update(deltaTime);
             }
@@ -3827,8 +3858,14 @@ void Application::update(float deltaTime) {
             break;
     }
 
-    // Process any pending world entry request via WorldLoader
-    if (worldLoader_ && state != AppState::DISCONNECTED) {
+    // Process any pending world entry request via WorldLoader.
+    //
+    // Named states rather than "anything but DISCONNECTED": entering a world is
+    // only ever asked for from the two screens that can be in one or on their
+    // way into one, and the login screen loading a map is not a thing that
+    // should be possible however the entry got queued.
+    if (worldLoader_ &&
+        (state == AppState::IN_GAME || state == AppState::CHARACTER_SELECTION)) {
         worldLoader_->processPendingEntry();
     }
 
