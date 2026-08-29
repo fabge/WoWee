@@ -340,12 +340,25 @@ void EntitySpawner::clearAllQueues() {
     pendingOnlinePlayerEquipment_.clear();
     deferredEquipmentQueue_.clear();
     pendingGameObjectSpawns_.clear();
+    // Including the one that is already partway onto the GPU. An incremental
+    // upload survives a map change otherwise: processPendingWmoUploads() only
+    // gives up when the renderer pointer is null, and a transition leaves the
+    // WMORenderer alive with its contents cleared. The upload then finishes
+    // against a renderer that no longer knows the model, calls finishWmoSpawn()
+    // on the new map, and puts the old map's building - or a transport, which
+    // then registers itself here - into a world it does not belong to.
+    pendingWmoUploads_.clear();
     pendingTransportRegistrations_.clear();
     pendingTransportMoves_.clear();
     pendingTransportDoodadBatches_.clear();
     asyncCreatureLoads_.clear();
     asyncCreatureDisplayLoads_.clear();
     asyncEquipmentLoads_.clear();
+    // Their generation counters go with them. The counters exist to tell a
+    // late load from a current one, and every load that could still land has
+    // just been dropped - so keeping them only grows a map, by one entry per
+    // player seen, for the rest of the process.
+    equipmentGeneration_.clear();
     asyncNpcCompositeLoads_.clear();
     asyncGameObjectLoads_.clear();
 }
