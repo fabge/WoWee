@@ -4294,6 +4294,10 @@ void SocialHandler::handleInitializeFactions(network::Packet& packet) {
     LOG_INFO("Reputation: ", owner_.initialFactionsRef().size(),
              " factions initialised, ", owner_.factionStandingsRef().size(),
              " resolved to a faction id");
+    // The list the reputation tab draws has just arrived. ReputationFrame
+    // rebuilds on UPDATE_FACTION and on nothing else, so a tab opened before
+    // this packet stayed empty until a standing happened to move.
+    owner_.fireAddonEvent("UPDATE_FACTION", {});
 }
 
 void SocialHandler::handleSetFactionStanding(network::Packet& packet) {
@@ -4367,6 +4371,9 @@ void SocialHandler::handleSetFactionAtWar(network::Packet& packet) {
         else
             owner_.initialFactionsRef()[repListId].flags &= ~GameHandler::FACTION_FLAG_AT_WAR;
     }
+    // The crossed-swords marker and the at-war checkbox are both drawn from
+    // this flag, and both are only redrawn by ReputationFrame_Update.
+    owner_.fireAddonEvent("UPDATE_FACTION", {});
 }
 
 void SocialHandler::handleSetFactionVisible(network::Packet& packet) {
@@ -4379,6 +4386,9 @@ void SocialHandler::handleSetFactionVisible(network::Packet& packet) {
         else
             owner_.initialFactionsRef()[repListId].flags &= ~GameHandler::FACTION_FLAG_VISIBLE;
     }
+    // A faction becoming visible is a row appearing in the list, which is the
+    // one case where the pane is not merely stale but missing an entry.
+    owner_.fireAddonEvent("UPDATE_FACTION", {});
 }
 
 void SocialHandler::handleGroupSetLeader(network::Packet& packet) {

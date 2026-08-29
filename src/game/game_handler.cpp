@@ -2766,6 +2766,9 @@ uint32_t GameHandler::getRepListIdByFactionId(uint32_t factionId) const {
 
 void GameHandler::setWatchedFactionId(uint32_t factionId) {
     watchedFactionId_ = factionId;
+    // Before the early return below, so the pane follows the change even when
+    // there is no socket to tell about it.
+    fireAddonEvent("UPDATE_FACTION", {});
     if (!isInWorld()) return;
     // CMSG_SET_WATCHED_FACTION: int32 repListId (-1 = unwatch)
     int32_t repListId = -1;
@@ -2786,6 +2789,11 @@ void GameHandler::setFactionAtWar(uint32_t repListId, bool atWar) {
     // Optimistic local update; the server echoes SMSG_SET_FACTION_ATWAR to confirm.
     if (atWar) initialFactions_[repListId].flags |=  FACTION_FLAG_AT_WAR;
     else       initialFactions_[repListId].flags &= ~FACTION_FLAG_AT_WAR;
+    // The checkbox that called this does not redraw itself - none of the
+    // reputation detail controls do. FrameXML leaves that to UPDATE_FACTION,
+    // which nothing fired, so the flag changed and the pane did not: the box
+    // sprang back on the next redraw and declaring war looked like it failed.
+    fireAddonEvent("UPDATE_FACTION", {});
     if (!isInWorld() || !socket) return;
     // CMSG_SET_FACTION_ATWAR: uint32 repListId + uint8 flag
     network::Packet pkt(wireOpcode(Opcode::CMSG_SET_FACTION_ATWAR));
@@ -2800,6 +2808,9 @@ void GameHandler::setFactionInactive(uint32_t repListId, bool inactive) {
     // No SMSG confirmation is sent for inactive, so update the local flag directly.
     if (inactive) initialFactions_[repListId].flags |=  FACTION_FLAG_INACTIVE;
     else          initialFactions_[repListId].flags &= ~FACTION_FLAG_INACTIVE;
+    // And this one moves a faction between the active and inactive sections of
+    // the list, so without the event the row stays where it was.
+    fireAddonEvent("UPDATE_FACTION", {});
     if (!isInWorld() || !socket) return;
     // CMSG_SET_FACTION_INACTIVE: uint32 repListId + uint8 flag
     network::Packet pkt(wireOpcode(Opcode::CMSG_SET_FACTION_INACTIVE));
