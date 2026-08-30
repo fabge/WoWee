@@ -4088,8 +4088,19 @@ void Application::render() {
                         static int appliedZoom = -1;
                         if (mm->zoomLevel != appliedZoom) {
                             appliedZoom = mm->zoomLevel;
+                            // Bounded by what the composite actually holds.
+                            //
+                            // It is three tiles square with the player somewhere
+                            // in the middle one, so coverage is one tile in the
+                            // worst case - 533 yards - and the furthest levels
+                            // used to ask for 800 and 620. Past the edge the
+                            // sampler has nothing, and since the shader stopped
+                            // smearing the edge row to hide it, that shortfall
+                            // is drawn honestly as a dark wedge across a third
+                            // of the disc. Ask for what we can answer: 500 is
+                            // still a wider view than WoW's own furthest zoom.
                             static const float kRadius[5] = {
-                                800.0f, 620.0f, 460.0f, 320.0f, 200.0f
+                                500.0f, 420.0f, 340.0f, 265.0f, 190.0f
                             };
                             const int lvl = (mm->zoomLevel < 0) ? 0
                                           : (mm->zoomLevel > 4 ? 4 : mm->zoomLevel);

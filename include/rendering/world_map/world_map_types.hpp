@@ -157,6 +157,12 @@ struct QuestPOI {
     float wowX = 0, wowY = 0;  ///< Canonical WoW coordinates (centroid)
     std::string name;           ///< Quest title
     Kind kind = Kind::OBJECTIVE;
+    /// Which row of the map's quest list this belongs to, one-based, or zero
+    /// where the quest is not in it. The same number the interface writes in
+    /// the list beside the title, so a marker and its row can be matched by
+    /// eye - which is the whole reason WoW numbers them rather than labelling
+    /// them. Every objective area of one quest carries that quest's number.
+    int number = 0;
 };
 
 } // namespace world_map

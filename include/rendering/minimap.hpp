@@ -57,7 +57,10 @@ public:
     [[nodiscard]] float getViewRadius() const { return viewRadius; }
 
     void zoomIn() { viewRadius = std::max(100.0f, viewRadius - 50.0f); }
-    void zoomOut() { viewRadius = std::min(800.0f, viewRadius + 50.0f); }
+    /// Bounded by the composite's own coverage - three tiles square with the
+    /// player somewhere in the middle one, so one tile, 533 yards, is the
+    /// worst case. Asking for more draws the shortfall as a dark wedge.
+    void zoomOut() { viewRadius = std::min(500.0f, viewRadius + 50.0f); }
 
     void setOpacity(float opacity) { opacity_ = opacity; }
 
@@ -134,7 +137,7 @@ private:
     VkDescriptorSet displayDescSet = VK_NULL_HANDLE;
 
     int mapSize = 200;
-    float viewRadius = 400.0f;
+    float viewRadius = 400.0f;  ///< Kept inside one tile - see zoomOut().
     bool enabled = true;
     bool rotateWithCamera = false;
     bool squareShape = false;

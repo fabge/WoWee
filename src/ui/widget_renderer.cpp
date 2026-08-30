@@ -1808,8 +1808,24 @@ void WidgetRenderer::draw(WidgetTree& tree, float screenW, float screenH) {
 
     // Behind ImGui's own windows, so the existing interface stays on top while
     // the two coexist, but still over the 3D scene.
-    ImDrawList* dl = ImGui::GetBackgroundDrawList();
-    if (!dl) return;
+    ImDrawList* const bgList = ImGui::GetBackgroundDrawList();
+    if (!bgList) return;
+
+    // Except for the strata WoW puts above everything.
+    //
+    // A dropdown, a popup and a tooltip are declared DIALOG or higher, and the
+    // whole point of that declaration is that they open over whatever is
+    // beneath them. Drawn into the background list they went under this
+    // client's own windows instead - and the world map is the case that
+    // matters, because its three dropdowns open downward into the map area:
+    // the menu appeared, took the click, and was invisible the whole time
+    // under the map surface. Three of them, reported by a player as "the
+    // dropdowns don't work".
+    //
+    // The foreground list is drawn after every ImGui window, which is where
+    // these belong and where WoW puts them.
+    ImDrawList* const fgList = ImGui::GetForegroundDrawList();
+    ImDrawList* dl = bgList;
 
     // Level 5 draws ImGui's own font atlas through this same call, at a fixed
     // place. It is the one texture ImGui is certain to have uploaded, so it
@@ -1823,6 +1839,10 @@ void WidgetRenderer::draw(WidgetTree& tree, float screenW, float screenH) {
     }
 
     for (const Widget* w : order) {
+        // Which list this one belongs in. Chosen per widget rather than once,
+        // because the interface is one tree with frames at every strata in it.
+        dl = (fgList && w->effStrata >= FrameStrata::Dialog) ? fgList : bgList;
+
         // Anything inside a scroll frame is bounded by it. Without this a
         // scroll child taller than its window draws over everything above and
         // below, which is not a window onto it at all.

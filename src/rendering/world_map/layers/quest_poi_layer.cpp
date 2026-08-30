@@ -4,6 +4,7 @@
 #include "rendering/world_map/coordinate_projection.hpp"
 #include "core/coordinates.hpp"
 #include <imgui.h>
+#include <cstdio>
 
 namespace wowee {
 namespace rendering {
@@ -58,8 +59,21 @@ void QuestPOILayer::render(const LayerContext& ctx) {
                 break;
         }
 
-        ctx.drawList->AddCircleFilled(ImVec2(px, py), 5.0f, fill);
-        ctx.drawList->AddCircle(ImVec2(px, py), 5.0f, outline, 0, 1.5f);
+        // An objective marker wears its quest's number, which is how the map
+        // is read: the list on the right numbers the same quests, so a dot and
+        // a row are matched by eye rather than by hovering each one in turn.
+        // Bigger than a bare dot, because a digit has to fit inside it.
+        char numberText[8] = {0};
+        if (!marker && qp.number > 0) {
+            std::snprintf(numberText, sizeof(numberText), "%d", qp.number);
+            marker = numberText;
+            fill = IM_COL32(255, 210, 0, 255);
+            outline = IM_COL32(80, 55, 0, 230);
+        }
+        const float radius = marker ? 7.0f : 5.0f;
+
+        ctx.drawList->AddCircleFilled(ImVec2(px, py), radius, fill);
+        ctx.drawList->AddCircle(ImVec2(px, py), radius, outline, 0, 1.5f);
         if (marker) {
             const float markerSize = ImGui::GetFontSize() * 0.8f;
             ImVec2 markerSz = qFont->CalcTextSizeA(markerSize, FLT_MAX, 0.0f, marker);

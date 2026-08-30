@@ -847,55 +847,9 @@ static int lua_GetQuestLogLeaderBoard(lua_State* L);
 /// appearing once. Built on demand: the list is short and changes whenever the
 /// server sends a new one.
 static std::vector<uint32_t> questsWithPois(game::GameHandler* gh) {
-    std::vector<uint32_t> out;
-    if (!gh) return out;
-    for (const auto& poi : gh->getGossipPois()) {
-        // -2 is an ordinary gossip marker rather than a quest one.
-        if (poi.questObjectiveIndex == -2 || poi.data == 0) continue;
-        if (std::find(out.begin(), out.end(), poi.data) == out.end()) out.push_back(poi.data);
-    }
-
-    // The map's own button arithmetic assumes every completed quest appears
-    // first. Server POIs arrive in no such order: an incomplete quest followed
-    // by a complete one made the complete button start at index two, leaving
-    // index one absent. The next hide pass walked one through the maximum and
-    // raised in QuestPOI.lua while indexing that gap.
-    //
-    // Complete as the *map* judges it, which is not as the quest log does.
-    // WorldMapFrame_UpdateQuests also calls a quest complete when it has no
-    // objectives and the player can cover its required money - so a quest
-    // whose objectives never arrived is complete to the map and incomplete
-    // here, and one of those in the middle of the list reopens exactly the gap
-    // this ordering closes. That is what it was still doing: the session log
-    // of 2026-08-28 raised in QuestPOI_HideButtons on every map update, with
-    // two such quests sitting at positions eight and nine.
-    const int64_t money = static_cast<int64_t>(gh->getMoneyCopper());
-    std::set<uint32_t> completed;
-    for (const auto& quest : gh->getQuestLog()) {
-        int isComplete = 0;
-        if (quest.failed)        isComplete = -1;
-        else if (quest.complete) isComplete = 1;
-
-        int objectives = 0;
-        for (const auto& ko : quest.killObjectives) {
-            if (ko.npcOrGoId != 0 || ko.required > 0) ++objectives;
-        }
-        for (const auto& io : quest.itemObjectives) {
-            if (io.itemId != 0 || io.required > 0) ++objectives;
-        }
-
-        // Negative reward money is a cost, which is what the map compares
-        // against; a reward is not required money at all.
-        const int64_t required =
-            quest.rewardMoney < 0 ? -static_cast<int64_t>(quest.rewardMoney) : 0;
-
-        if (game::worldMapCountsQuestComplete(isComplete, objectives, money,
-                                              required)) {
-            completed.insert(quest.questId);
-        }
-    }
-    game::orderQuestPoisForFrameXml(out, completed);
-    return out;
+    // One ordering, kept on GameHandler, because the map surface numbers the
+    // same quests on its markers and two spellings of this rule would drift.
+    return gh ? gh->questPoiVisibleOrder() : std::vector<uint32_t>{};
 }
 
 /// QuestMapUpdateAllQuests() → how many quests have a marker on the map.

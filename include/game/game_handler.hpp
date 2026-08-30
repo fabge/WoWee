@@ -2106,6 +2106,16 @@ public:
     using GossipPoi = game::GossipPoi;
     const std::vector<GossipPoi>& getGossipPois() const;
 
+    /// The quests that have POIs, in the order the world map's own list puts
+    /// them: completed first, as the map judges completion, then the rest in
+    /// the order the server sent them.
+    ///
+    /// One list, because two things number the same quests and disagreeing
+    /// would be worse than either - QuestPOIGetQuestIDByVisibleIndex hands
+    /// these to the interface for its list, and the map surface draws the same
+    /// number on the marker.
+    [[nodiscard]] std::vector<uint32_t> questPoiVisibleOrder() const;
+
     // Quest turn-in
     bool isQuestRequestItemsOpen() const;
     const QuestRequestItemsData& getQuestRequestItems() const;

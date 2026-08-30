@@ -639,6 +639,15 @@ void GameScreen::renderWorldMap(game::GameHandler& gameHandler) {
         constexpr float kQuestGiverPoiMergeDistance = 15.0f;
         constexpr float kQuestGiverPoiMergeDistanceSq =
             kQuestGiverPoiMergeDistance * kQuestGiverPoiMergeDistance;
+        // What number each quest wears on the map, from the same order the
+        // interface numbers its list by - so a marker and its row match.
+        std::unordered_map<uint32_t, int> poiNumberByQuest;
+        {
+            int n = 0;
+            for (uint32_t questId : gameHandler.questPoiVisibleOrder()) {
+                poiNumberByQuest[questId] = ++n;
+            }
+        }
         for (const auto& poi : gameHandler.getGossipPois()) {
             // Keep ordinary gossip navigation POIs, but only include quest
             // objectives/endpoints explicitly enabled from the tracker.
@@ -662,6 +671,13 @@ void GameScreen::renderWorldMap(game::GameHandler& gameHandler) {
             qp.wowX = poi.x;
             qp.wowY = poi.y;
             qp.name = poi.name;
+            // The row this quest occupies in the map's own list, so the marker
+            // and the list entry carry the same number. Built once above from
+            // the same ordering the interface is handed.
+            if (const auto it = poiNumberByQuest.find(poi.data);
+                it != poiNumberByQuest.end()) {
+                qp.number = it->second;
+            }
             if (poi.questObjectiveIndex == -1) {
                 // A quest POI with no objective index is the quest endpoint,
                 // not an objective area. Completed quests use a yellow ?,
@@ -680,10 +696,15 @@ void GameScreen::renderWorldMap(game::GameHandler& gameHandler) {
         wm->setQuestPois(std::move(qpois));
     }
 
-    // Corpse marker: show skull X on world map when ghost with unclaimed corpse
+    // Corpse marker: the skull on the world map, while the corpse is unclaimed.
+    //
+    // Dead rather than ghost, for the reason renderMinimapCorpseMarker gives:
+    // ghost state comes from the PLAYER_FLAGS ghost bit and the corpse position
+    // does not, so asking for the flag hid the marker in exactly the case it
+    // was wanted - a player looking for their body.
     {
         float corpseCanX = 0.0f, corpseCanY = 0.0f;
-        bool ghostWithCorpse = gameHandler.isPlayerGhost() &&
+        bool ghostWithCorpse = (gameHandler.isPlayerGhost() || gameHandler.isPlayerDead()) &&
                                gameHandler.getCorpseCanonicalPos(corpseCanX, corpseCanY);
         glm::vec3 corpseRender = ghostWithCorpse
             ? core::coords::canonicalToRender(glm::vec3(corpseCanX, corpseCanY, 0.0f))

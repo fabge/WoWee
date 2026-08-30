@@ -1155,8 +1155,20 @@ void GameScreen::renderMinimapBattlegroundPositions(const MinimapFrame& frame, g
 // skipped - it becomes an arrow at the rim pointing at it, which is why this
 // one keeps the render position rather than only the projected point.
 void GameScreen::renderMinimapCorpseMarker(const MinimapFrame& frame, game::GameHandler& gameHandler) {
-    // Corpse direction indicator - shown when player is a ghost
-    if (gameHandler.isPlayerGhost()) {
+    // Dead is enough; a ghost is one way of being dead and not the only one.
+    //
+    // This asked for ghost state alone, and ghost state is set from the
+    // PLAYER_FLAGS ghost bit - so on a realm or a moment where that bit does
+    // not arrive, the player is dead, the corpse position is known from
+    // MSG_CORPSE_QUERY, and the marker that would point at it is never drawn.
+    // That is what happened: the corpse was queried and answered, and the
+    // diagnostic below - which sits inside both of these tests - never printed
+    // a line, so neither branch of the marker had run at all.
+    //
+    // The position is what actually decides whether there is anything to
+    // point at, and it is cleared on resurrection, so a stale corpse cannot
+    // outlive the death that made it.
+    if (gameHandler.isPlayerGhost() || gameHandler.isPlayerDead()) {
         float corpseCanX = 0.0f, corpseCanY = 0.0f;
         if (gameHandler.getCorpseCanonicalPos(corpseCanX, corpseCanY)) {
             // The render position is kept: unlike the loops above, a corpse off

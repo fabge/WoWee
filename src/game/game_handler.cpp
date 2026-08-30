@@ -1,4 +1,5 @@
 #include "game/game_handler.hpp"
+#include "game/quest_poi_order.hpp"
 #include "game/item_text.hpp"
 #include "game/achievement_criteria.hpp"
 #include "game/game_utils.hpp"
@@ -4207,6 +4208,48 @@ const std::vector<GossipPoi>& GameHandler::getGossipPois() const {
 
 void GameHandler::clearGossipPois() {
     if (questHandler_) questHandler_->clearGossipPois();
+}
+
+std::vector<uint32_t> GameHandler::questPoiVisibleOrder() const {
+    std::vector<uint32_t> out;
+    for (const auto& poi : getGossipPois()) {
+        // -2 is an ordinary gossip marker rather than a quest one.
+        if (poi.questObjectiveIndex == -2 || poi.data == 0) continue;
+        if (std::find(out.begin(), out.end(), poi.data) == out.end()) {
+            out.push_back(poi.data);
+        }
+    }
+
+    // Complete as the *map* judges it, which is not as the quest log does -
+    // see worldMapCountsQuestComplete. The map's button arithmetic assumes
+    // every completed quest comes first, and judging completion the log's way
+    // puts the two halves out of step.
+    const int64_t money = static_cast<int64_t>(getMoneyCopper());
+    std::set<uint32_t> completed;
+    for (const auto& quest : getQuestLog()) {
+        int isComplete = 0;
+        if (quest.failed)        isComplete = -1;
+        else if (quest.complete) isComplete = 1;
+
+        int objectives = 0;
+        for (const auto& ko : quest.killObjectives) {
+            if (ko.npcOrGoId != 0 || ko.required > 0) ++objectives;
+        }
+        for (const auto& io : quest.itemObjectives) {
+            if (io.itemId != 0 || io.required > 0) ++objectives;
+        }
+
+        // Negative reward money is a cost, which is what the map compares
+        // against; a reward is not required money at all.
+        const int64_t required =
+            quest.rewardMoney < 0 ? -static_cast<int64_t>(quest.rewardMoney) : 0;
+
+        if (worldMapCountsQuestComplete(isComplete, objectives, money, required)) {
+            completed.insert(quest.questId);
+        }
+    }
+    orderQuestPoisForFrameXml(out, completed);
+    return out;
 }
 const std::unordered_map<uint64_t, QuestGiverStatus>& GameHandler::getNpcQuestStatuses() const {
     if (questHandler_) return questHandler_->getNpcQuestStatuses();
