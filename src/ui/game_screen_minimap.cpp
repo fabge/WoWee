@@ -1167,6 +1167,25 @@ void GameScreen::renderMinimapCorpseMarker(const MinimapFrame& frame, game::Game
             float csx = 0.0f, csy = 0.0f;
             const bool onMap = frame.project(corpseRender, csx, csy);
 
+            // Said once per crossing, because the off-map half of this could
+            // not be shown to work from a screenshot: a corpse out of range
+            // drew nothing the player could see, and reading the code says it
+            // should draw an arrow at the rim. This reports which branch ran
+            // and where it put the marker, so the next corpse run answers it.
+            {
+                static bool lastOnMap = false;
+                static bool everReported = false;
+                if (!everReported || onMap != lastOnMap) {
+                    everReported = true;
+                    lastOnMap = onMap;
+                    LOG_WARNING("Corpse marker: ", onMap ? "on the map at " : "off the map, arrow at rim; ",
+                                onMap ? std::to_string(csx) + "," + std::to_string(csy) : std::string("map"),
+                                " centre=", frame.centerX, ",", frame.centerY,
+                                " radius=", frame.mapRadius,
+                                " viewRadius=", frame.view.viewRadius);
+                }
+            }
+
             if (onMap) {
                 // Draw a small skull-like X marker at the corpse position
                 const float r = 5.0f;

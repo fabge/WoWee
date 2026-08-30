@@ -2642,3 +2642,47 @@ copy upstream still says clamps.
 The lesson is narrow and worth writing down: a comment in this repository is not
 evidence about the wire. Server source or a capture is. Two of the three hunks
 in #135 were right and both were checked against behaviour rather than prose.
+
+## 2026-08-30 — the map had no quest locations because nothing ever turned them on
+
+The realm is ChromieCraft, which is AzerothCore at 3.3.5a. That matters more
+than anything else here: quest POIs are a WotLK *server* feature, the server
+sends them, and this client already asks for them, parses them, and has a layer
+to draw them. So the answer to "should we install Questie" is no - Questie is
+for vanilla realms with no POI data, and this realm has it.
+
+What was missing was a way to turn a POI on.
+
+`isQuestShownOnMap` gates every quest objective marker on both the world map
+(`game_screen_hud.cpp:646`) and the minimap (`game_screen_minimap.cpp:987`).
+Nothing ever put a quest into `mapVisibleQuestIds_`: the three callers of
+`setQuestShownOnMap` all pass false, on abandon and on removal. The set was
+empty for the life of every session, every objective POI the server sent was
+filtered out, and the map showed nothing. A complete feature with no switch.
+
+Tracked now counts as shown. That is the switch WoW uses and the one the player
+already has - accepting a quest tracks it, and the tracker's checkbox untracks
+it - and the explicit set stays as an override.
+
+### The totem that said "47 d"
+
+The button under the player portrait was drawing a totem's remaining time as
+forty-seven days. 47 d is 4.06e9 ms, and a number that size out of a packet is
+four bytes read from the wrong offset.
+
+`handleTotemCreated` read the guid as *packed* on WotLK, on the strength of the
+comment above it. SMSG_TOTEM_CREATED does not carry a packed guid in any
+expansion: `SendTotemCreated` writes `data << uint8(slot); data << totemGuid;`
+and an ObjectGuid streams as a plain uint64. Packed is written explicitly where
+it is meant, and this message never asks for it. A packed read consumes as many
+bytes as its own mask byte says - fewer than eight - so the duration was read
+from inside the guid.
+
+Full eight bytes now, in every expansion. The implausibility warning added
+alongside it stays: a duration over thirty minutes says so with the packet's
+shape, which is how this would have been caught the first time.
+
+Both of these are the same lesson as the spell-go revert two days ago, from the
+other side. There the comment said packed and the wire was full, and trusting
+the comment was the mistake. Here the comment said packed and the wire is full
+again - and this time the comment had been believed for longer.

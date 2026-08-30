@@ -4499,20 +4499,40 @@ void SpellHandler::handleDispelFailed(network::Packet& packet) {
 }
 
 void SpellHandler::handleTotemCreated(network::Packet& packet) {
-    // WotLK:       uint8 slot + packed_guid + uint32 duration + uint32 spellId
-    // TBC/Classic: uint8 slot + uint64 guid  + uint32 duration + uint32 spellId
-    const bool totemTbcLike = isPreWotlk();
-    if (!packet.hasRemaining(totemTbcLike ? 17u : 9u) ) return;
+    // uint8 slot + uint64 guid + uint32 duration + uint32 spellId, and the
+    // guid is a full eight bytes in every expansion this client speaks.
+    //
+    // This read it as packed on WotLK, on the strength of a comment. It is not:
+    // SendTotemCreated writes `data << uint8(slot); data << totemGuid;` and an
+    // ObjectGuid streams as a plain uint64 - packed is written explicitly, and
+    // this message never asks for it. A packed read of a full guid consumes as
+    // many bytes as its first byte's mask says, which is fewer, and every field
+    // after it comes from the wrong offset: the duration lands inside the guid
+    // and reads about 4.06e9 ms. That is what the totem bar under the player
+    // portrait was drawing as "47 d".
+    if (!packet.hasRemaining(17u)) return;
     uint8_t slot = packet.readUInt8();
-    if (totemTbcLike)
-        /*uint64_t guid =*/ packet.readUInt64();
-    else
-        /*uint64_t guid =*/ packet.readPackedGuid();
+    /*uint64_t guid =*/ packet.readUInt64();
     if (!packet.hasRemaining(8)) return;
     uint32_t duration = packet.readUInt32();
     uint32_t spellId  = packet.readUInt32();
     LOG_DEBUG("SMSG_TOTEM_CREATED: slot=", static_cast<int>(slot),
               " spellId=", spellId, " duration=", duration, "ms");
+    // A totem lasts at most a few minutes. Anything beyond that is not a
+    // duration at all - it is four bytes read from the wrong offset, and the
+    // totem bar then draws the number: the button under the player portrait
+    // has been seen reading "47 d", which is 4.06e9 ms and the size of a GUID
+    // half. Said at WARNING with the shape of the packet, because a release
+    // build drops the line above and this is the only way it reaches a log.
+    constexpr uint32_t kImplausibleTotemMs = 30u * 60u * 1000u;
+    if (duration > kImplausibleTotemMs) {
+        LOG_WARNING("SMSG_TOTEM_CREATED: slot=", static_cast<int>(slot),
+                    " spellId=", spellId, " duration=", duration,
+                    "ms is not a totem duration - packet size=", packet.getSize(),
+                    " preWotlk=", isPreWotlk() ? "yes" : "no",
+                    " (the guid this message carries may not be the full eight"
+                    " bytes read above)");
+    }
     if (slot < GameHandler::NUM_TOTEM_SLOTS) {
         activeTotemSlots_[slot].spellId    = spellId;
         activeTotemSlots_[slot].durationMs = duration;

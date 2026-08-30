@@ -2145,8 +2145,23 @@ public:
         if (changed) saveCharacterConfig();
     }
     const std::unordered_set<uint32_t>& getTrackedQuestIds() const;
+    /// Whether this quest's objective markers belong on the map.
+    ///
+    /// Tracked counts, and that is the whole of what was missing. The world map
+    /// and the minimap both filter the server's quest POIs through this, and
+    /// nothing anywhere ever put a quest *into* mapVisibleQuestIds_ - the three
+    /// call sites of setQuestShownOnMap all pass false, on abandon and on
+    /// removal. So the set was empty for the life of every session, every
+    /// objective POI the server sent was filtered out, and the map showed no
+    /// quest locations at all: the feature was complete apart from a way to
+    /// turn it on.
+    ///
+    /// Tracking is the switch WoW uses and the one the player already has -
+    /// accepting a quest tracks it, and the tracker's own checkbox untracks it.
+    /// The explicit set stays as an override for a quest shown on the map
+    /// without being tracked.
     bool isQuestShownOnMap(uint32_t questId) const {
-        return mapVisibleQuestIds_.count(questId) > 0;
+        return mapVisibleQuestIds_.count(questId) > 0 || isQuestTracked(questId);
     }
     void setQuestShownOnMap(uint32_t questId, bool shown) {
         const bool changed = shown ? mapVisibleQuestIds_.insert(questId).second

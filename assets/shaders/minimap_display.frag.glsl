@@ -43,7 +43,25 @@ void main() {
     vec2 rotated = vec2(mapCenter.x * cs - mapCenter.y * sn, mapCenter.x * sn + mapCenter.y * cs);
     vec2 mapUV = push.playerUV + vec2(rotated.y, -rotated.x) * push.zoomRadius * 2.0;
 
-    vec4 mapColor = texture(uComposite, mapUV);
+    // Outside the composite is nothing, not more of the edge.
+    //
+    // The composite is three tiles square and the player stands somewhere in
+    // the middle one, so the map has between one and one and a half tiles of
+    // coverage in any direction - 533 to 800 yards. The furthest zoom level
+    // asks for 800, which the coverage only meets when the player happens to
+    // be centred in their tile. Every other position samples past the edge on
+    // one side, and CLAMP_TO_EDGE answered with the last row stretched: a band
+    // of vertical streaks along that side of the disc, made of real terrain
+    // colours, which reads as corrupt rendering rather than as absent data.
+    //
+    // The same colour the missing-tile texture uses, so a hole in the map
+    // looks the same wherever it comes from.
+    vec4 mapColor;
+    if (any(lessThan(mapUV, vec2(0.0))) || any(greaterThan(mapUV, vec2(1.0)))) {
+        mapColor = vec4(12.0 / 255.0, 20.0 / 255.0, 30.0 / 255.0, 1.0);
+    } else {
+        mapColor = texture(uComposite, mapUV);
+    }
 
     // Single player direction indicator (center arrow) rendered in-shader.
     vec2 local = center; // [-0.5, 0.5] around minimap center
