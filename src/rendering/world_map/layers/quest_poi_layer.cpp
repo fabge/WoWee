@@ -68,15 +68,14 @@ void QuestPOILayer::render(const LayerContext& ctx) {
                                   IM_COL32(0, 0, 0, 255), marker);
         }
 
-        if (!qp.name.empty()) {
-            ImVec2 nameSz = qFont->CalcTextSizeA(ImGui::GetFontSize() * 0.85f, FLT_MAX, 0.0f, qp.name.c_str());
-            float tx = px - nameSz.x * 0.5f;
-            float ty = py - nameSz.y - 7.0f;
-            ctx.drawList->AddText(qFont, ImGui::GetFontSize() * 0.85f,
-                                  ImVec2(tx + 1.0f, ty + 1.0f), IM_COL32(0, 0, 0, 180), qp.name.c_str());
-            ctx.drawList->AddText(qFont, ImGui::GetFontSize() * 0.85f,
-                                  ImVec2(tx, ty), IM_COL32(255, 230, 100, 230), qp.name.c_str());
-        }
+        // No name on the map itself. WoW draws these as bare markers and puts
+        // the quest's name in a tooltip, and the reason is visible the moment
+        // a real quest log is on screen: one quest owns several objective
+        // areas - Preparation for Ceremony has four - so a label per marker
+        // writes the same name four times, and a dozen tracked quests turn the
+        // middle of the zone into overlapping text with the map unreadable
+        // underneath it. The tooltip below already answers "which quest is
+        // this", on demand and one at a time.
         float mdx = mp.x - px, mdy = mp.y - py;
         if (mdx * mdx + mdy * mdy < 49.0f && !qp.name.empty()) {
             ImGui::SetTooltip("%s\n(%s)", qp.name.c_str(), description);
